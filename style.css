@@ -17880,3 +17880,23 @@ body.frame-mode-active .cphone-dock-container {
     background-color: rgba(255, 255, 255, 0.15) !important; /* 深色下的半透明白 */
     color: #8d8d92 !important; /* 浅灰字 */
 }
+/* =========================================================
+   Mobile viewport fix: keep the chat composer fully visible.
+   100vh can extend under Android/browser UI; dynamic viewport
+   units track the actually visible screen height.
+   ========================================================= */
+@supports (height: 100dvh) {
+    #phone-screen {
+        height: 100dvh !important;
+        max-height: 100dvh !important;
+    }
+}
+
+#chat-interface-screen {
+    max-height: 100% !important;
+}
+
+#chat-interface-screen #chat-input-area {
+    box-sizing: border-box !important;
+    bottom: 0 !important;
+}
