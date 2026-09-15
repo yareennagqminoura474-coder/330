@@ -1,7 +1,7 @@
 // Service Worker 文件 (sw.js) - 强力保活版
 
 // 缓存版本号
-const CACHE_VERSION = "v1.7.31"; // 版本号+1
+const CACHE_VERSION = "v1.7.32"; // 版本号+1
 const CACHE_NAME = `ephone-cache-${CACHE_VERSION}`;
 
 const URLS_TO_CACHE = [
@@ -9,6 +9,7 @@ const URLS_TO_CACHE = [
   "./style.css",
   "./script.js",
   "./narration-mode.js",
+  "./time-machine.js",
   "https://unpkg.com/dexie/dist/dexie.js",
   "https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js",
   "https://phoebeboo.github.io/mewoooo/pp.js",
