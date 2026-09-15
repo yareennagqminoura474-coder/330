@@ -24,6 +24,7 @@
   <script src="https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.6.0/mammoth.browser.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/crypto-js/4.1.1/crypto-js.min.js"></script>
   <script src="script.js" defer="defer"></script>
+  <script src="narration-mode.js" defer="defer"></script>
 </head>
 <body>
   <div id="phone-screen">
@@ -1355,7 +1356,7 @@
         <line x1="9" y1="9" x2="9.01" y2="9"></line>
         <line x1="15" y1="9" x2="15.01" y2="9"></line>
     </svg>
-</button> <button id="send-photo-btn" class="chat-action-icon-btn action-button" title="发送照片"><svg width="24" height="24" viewBox="0 0 24 24" fill="none"
+</button> <button id="narration-mode-btn" class="chat-action-icon-btn action-button" type="button" title="旁白模式" aria-label="旁白模式" aria-pressed="false"><span aria-hidden="true">旁白</span></button> <button id="send-photo-btn" class="chat-action-icon-btn action-button" title="发送照片"><svg width="24" height="24" viewBox="0 0 24 24" fill="none"
               xmlns="http://www.w3.org/2000/svg" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
               <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"></path>
               <circle cx="12" cy="13" r="4"></circle>
@@ -2304,8 +2305,8 @@
 </div>
 <div class="settings-item" id="narrator-mode-group" style="display: flex; justify-content: space-between; align-items: center;">
     <div style="flex: 1; padding-right: 10px;">
-        <label style="margin-bottom: 2px;">启用旁白模式</label>
-        <div class="settings-desc">AI每轮回复都会附带环境或心理描写 (灰色系统字)</div>
+        <label style="margin-bottom: 2px;">AI 自动旁白</label>
+        <div class="settings-desc">要求 AI 每轮回复附带环境或心理描写；手动发送旁白请使用聊天工具栏的“旁白”按钮</div>
     </div>
     <label class="toggle-switch" style="margin: 0;"> 
         <input type="checkbox" id="narrator-mode-toggle"> 
@@ -4202,7 +4203,6 @@
 
 </body>
 </html>
-
 
 
 

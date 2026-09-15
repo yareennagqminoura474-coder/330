@@ -2188,6 +2188,67 @@
             padding: 4px 12px;
             border-radius: 10px;
         }
+
+        /* 糯叽机式旁白：独立居中、无气泡、与台词严格区分。 */
+        .message-wrapper.system-pat.narration-wrapper {
+            align-self: stretch;
+            justify-content: center;
+            width: 100%;
+            max-width: 100%;
+            margin: 0;
+            gap: 0;
+        }
+        .message-bubble.system-bubble.narration-bubble {
+            display: block;
+            max-width: calc(100% - 64px);
+            margin: 12px 32px;
+            padding: 4px 8px;
+            border: none;
+            border-radius: 8px;
+            background: transparent;
+            box-shadow: none;
+            color: #8e8e8e;
+            font-size: 13px;
+            font-style: italic;
+            font-weight: 400;
+            line-height: 1.5;
+            text-align: center;
+            text-shadow: none;
+            word-break: break-word;
+            user-select: none;
+            -webkit-user-select: none;
+        }
+        .message-bubble.system-bubble.narration-bubble > span {
+            font-style: inherit !important;
+            opacity: 1 !important;
+            white-space: pre-wrap;
+        }
+
+        #narration-mode-btn > span {
+            font-size: 11px;
+            font-weight: 600;
+            line-height: 1;
+            white-space: nowrap;
+        }
+        #narration-mode-btn.active,
+        #chat-input-area.narration-mode-active #narration-mode-btn {
+            border-color: var(--accent-color);
+            background: var(--accent-color);
+            color: #fff;
+            box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent-color) 18%, transparent);
+        }
+        #chat-input-area.narration-mode-active #chat-input {
+            outline: 1px solid color-mix(in srgb, var(--accent-color) 60%, transparent);
+            background: color-mix(in srgb, var(--accent-color) 8%, var(--secondary-bg));
+        }
+        #phone-screen.dark-mode .message-bubble.system-bubble.narration-bubble {
+            color: #98989d;
+        }
+        #phone-screen.dark-mode #narration-mode-btn.active,
+        #phone-screen.dark-mode #chat-input-area.narration-mode-active #narration-mode-btn {
+            background: var(--accent-color);
+            color: #fff;
+        }
         #chat-input-actions-top {
             display: flex;
             gap: 8px;
@@ -17879,24 +17940,4 @@ body.frame-mode-active .cphone-dock-container {
 #phone-screen.dark-mode .message-wrapper.hidden-revealed .message-bubble {
     background-color: rgba(255, 255, 255, 0.15) !important; /* 深色下的半透明白 */
     color: #8d8d92 !important; /* 浅灰字 */
-}
-/* =========================================================
-   Mobile viewport fix: keep the chat composer fully visible.
-   100vh can extend under Android/browser UI; dynamic viewport
-   units track the actually visible screen height.
-   ========================================================= */
-@supports (height: 100dvh) {
-    #phone-screen {
-        height: 100dvh !important;
-        max-height: 100dvh !important;
-    }
-}
-
-#chat-interface-screen {
-    max-height: 100% !important;
-}
-
-#chat-interface-screen #chat-input-area {
-    box-sizing: border-box !important;
-    bottom: 0 !important;
 }
