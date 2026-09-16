@@ -153,8 +153,8 @@ function getDeviceId() {
 }
 const EPHONE_DEVICE_ID = getDeviceId();
 console[_0xca61b6(0x13f0)](_0xca61b6(0x35b) + EPHONE_DEVICE_ID);
-let isPinActivated =
-  localStorage[_0xca61b6(0x1b66)](_0xca61b6(0x161e)) === _0xca61b6(0x12f2);
+let isPinActivated = !![];
+localStorage.setItem("ephonePinActivated", "true");
 const translations = {
   "zh-CN": {
     save: "保存",
@@ -7887,6 +7887,10 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
     return _0x1b9b9c[_0x5975a6(0x2d0)](0x0, 0x6)["toUpperCase"]();
   }
   function _0xc5e259() {
+    isPinActivated = !![];
+    localStorage.setItem("ephonePinActivated", "true");
+    return Promise.resolve(!![]);
+    /* PIN 激活已取消：保留旧实现仅用于兼容历史代码结构。 */
     return new Promise(async (_0xdfd72f, _0x3027d4) => {
       const _0x3050c6 = _0x14a8;
       if (isPinActivated) {
@@ -7950,8 +7954,7 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
   }
   function _0x426f02() {
     const _0x55ebcc = _0x3ce505,
-      _0x45b4df =
-        localStorage["getItem"]("ephonePinActivated") === _0x55ebcc(0x12f2),
+      _0x45b4df = !![],
       _0x34306c = document[_0x55ebcc(0x1023)](_0x55ebcc(0x664)),
       _0x5a64e4 = document[_0x55ebcc(0x1023)]("import-world-book-btn");
     (_0x34306c &&
@@ -8957,6 +8960,10 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
     _0x21b4b8 = ![],
     _0x3b36c5 = _0x3ce505(0x937),
     _0x36a004 = new Set(),
+    _0xephoneSelectToHereArmed = ![],
+    _0xephoneSendAsName = null,
+    _0xephoneRerollInstruction = "",
+    _0xephoneGenerationController = null,
     _0xc5146b = null,
     _0x5ea87c = ![],
     _0x38870c = null,
@@ -14310,10 +14317,17 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
     (_0x50e90a(), _0x232053());
     const _0xc04a0d = _0x5ea3c1[_0x2ad8a8(0x1255)][_0x37236d];
     if (!_0xc04a0d) return;
+    if (window.ephoneActiveChatForSendAs !== String(_0xc04a0d.id || _0x37236d)) {
+      _0xephoneSendAsName = null;
+      window.ephoneActiveChatForSendAs = String(_0xc04a0d.id || _0x37236d);
+      _0xephoneUpdateSendAsButton();
+    }
     if (window.ephoneTimeMachine) {
       window.ephoneTimeMachine.bindChat({
         id: String(_0xc04a0d.id || _0x37236d),
         name: _0xc04a0d.name,
+        originalName: _0xc04a0d.originalName,
+        members: _0xc04a0d.members,
         isGroup: Boolean(_0xc04a0d.isGroup),
         settings: _0xc04a0d.settings,
         getMessages: () => _0xc04a0d.history,
@@ -17070,9 +17084,68 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
         _0xff8a5b(_0x4203ee, ![]));
     }
   }
-  async function _0x456d1d() {
+  function _0xephoneSetGenerating(_0xActive) {
+    const _0xButton = document.getElementById("wait-reply-btn");
+    if (!_0xButton) return;
+    if (!_0xButton.dataset.idleHtml) _0xButton.dataset.idleHtml = _0xButton.innerHTML;
+    _0xButton.classList.toggle("is-generating", Boolean(_0xActive));
+    _0xButton.setAttribute("aria-pressed", String(Boolean(_0xActive)));
+    _0xButton.title = _0xActive ? "停止回复" : "等待回复";
+    _0xButton.setAttribute("aria-label", _0xButton.title);
+    _0xButton.innerHTML = _0xActive
+      ? '<span class="ephone-generating-bars" aria-hidden="true"><i></i><i></i><i></i></span><span class="ephone-generating-stop" aria-hidden="true"></span>'
+      : _0xButton.dataset.idleHtml;
+  }
+  function _0xephoneUpdateSendAsButton() {
+    const _0xButton = document.getElementById("send-as-character-btn");
+    if (!_0xButton) return;
+    _0xButton.classList.toggle("active", Boolean(_0xephoneSendAsName));
+    const _0xLabel = _0xButton.querySelector("span");
+    if (_0xLabel) _0xLabel.textContent = _0xephoneSendAsName || "角色";
+    _0xButton.title = _0xephoneSendAsName
+      ? `正以 ${_0xephoneSendAsName} 身份发送；点击可切换`
+      : "以角色身份发送";
+  }
+  async function _0xephoneChooseSendAsCharacter() {
+    const _0xChat = _0x5ea3c1.chats[_0x5ea3c1.activeChatId];
+    if (!_0xChat) return;
+    const _0xNames = _0xChat.isGroup
+      ? (_0xChat.members || [])
+          .map((_0xMember) => _0xMember.originalName || _0xMember.name)
+          .filter(Boolean)
+      : [_0xChat.originalName || _0xChat.name].filter(Boolean);
+    const _0xOptions = [
+      { text: "我（恢复正常发送）", value: "__user__" },
+      ...[...new Set(_0xNames)].map((_0xName) => ({
+        text: `以 ${_0xName} 的身份发送`,
+        value: _0xName,
+      })),
+    ];
+    const _0xChoice = await _0x1f9d16("选择发送身份", _0xOptions);
+    if (!_0xChoice) return;
+    _0xephoneSendAsName = _0xChoice === "__user__" ? null : _0xChoice;
+    _0xephoneUpdateSendAsButton();
+    const _0xInput = document.getElementById("chat-input");
+    if (_0xInput) {
+      _0xInput.placeholder = _0xephoneSendAsName
+        ? `以 ${_0xephoneSendAsName} 的身份发送…`
+        : "输入消息...";
+      _0xInput.focus();
+    }
+  }
+  async function _0x456d1d(_0xephoneMode = null) {
     const _0x25f1e5 = _0x3ce505;
     if (!_0x5ea3c1["activeChatId"]) return;
+    const _0xephoneContinue = _0xephoneMode === "__ephone_continue__";
+    if (_0xephoneGenerationController && !_0xephoneContinue) {
+      _0xephoneGenerationController.abort();
+      return;
+    }
+    if (!_0xephoneGenerationController) {
+      _0xephoneGenerationController = new AbortController();
+    }
+    const _0xephoneController = _0xephoneGenerationController;
+    _0xephoneSetGenerating(!![]);
     const _0x973a29 = _0x5ea3c1[_0x25f1e5(0x1aba)],
       _0x5b16cb = _0x5ea3c1[_0x25f1e5(0x1255)][_0x5ea3c1[_0x25f1e5(0x1aba)]],
       _0x17004b =
@@ -19588,14 +19661,22 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
           }
         }
       }
+      if (_0xephoneRerollInstruction) {
+        _0x539674 +=
+          "\n# 【本次重 Roll 的用户补充说明（高优先级）】\n" +
+          _0xephoneRerollInstruction +
+          "\n请在不复述说明文字的前提下重写上一轮回复。\n";
+      }
       let _0x401894 = _0x275228 === GEMINI_API_URL,
         _0x25b2a9 = _0x20e281(_0x1d2298, _0xdbefc3, _0x539674, _0x4e7a2c),
         _0x114828;
       try {
+        if (_0x25b2a9?.data) _0x25b2a9.data.signal = _0xephoneController.signal;
         _0x114828 = _0x401894
           ? await fetch(_0x25b2a9[_0x25f1e5(0x863)], _0x25b2a9["data"])
           : await fetch(_0x275228 + _0x25f1e5(0x1905), {
               method: "POST",
+              signal: _0xephoneController.signal,
               headers: {
                 "Content-Type": _0x25f1e5(0x1206),
                 Authorization: _0x25f1e5(0x654) + _0xdbefc3,
@@ -19612,6 +19693,7 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
               }),
             });
       } catch (_0x3a545a) {
+        if (_0x3a545a?.name === "AbortError") throw _0x3a545a;
         throw new Error("网络请求失败:\x20" + _0x3a545a["message"]);
       }
       if (!_0x114828["ok"]) {
@@ -19640,7 +19722,12 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
         (_0x5b16cb[_0x25f1e5(0x8e6)] = _0x5b16cb[_0x25f1e5(0x8e6)][
           _0x25f1e5(0x1916)
         ]((_0x15fb5f) => !_0x15fb5f[_0x25f1e5(0x1563)])));
-      const _0x899a3d = _0x297b4d(_0x5eb79b);
+      const _0x899a3d = window.ephoneTimeMachine?.ensureReplyHeader
+        ? window.ephoneTimeMachine.ensureReplyHeader(_0x297b4d(_0x5eb79b))
+        : _0x297b4d(_0x5eb79b);
+      if (_0xephoneController.signal.aborted) {
+        throw new DOMException("回复已停止", "AbortError");
+      }
       let _0x55b319 = [];
       if (_0x5b16cb[_0x25f1e5(0x17c5)]["isOfflineMode"]) {
         let _0x5c3e2b = { content: [], dialogue: [], description: [] };
@@ -19742,6 +19829,9 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
         _0x533c64 = [],
         _0x59636a = ![];
       for (const _0x58c66c of _0x55b319) {
+        if (_0xephoneController.signal.aborted) {
+          throw new DOMException("回复已停止", "AbortError");
+        }
         if (_0x58c66c[_0x25f1e5(0x1140)] === _0x25f1e5(0x51c)) continue;
         _0x5b16cb[_0x25f1e5(0x17c5)]["enableTts"] !== ![] &&
           _0x58c66c[_0x25f1e5(0x1140)] === "text" &&
@@ -22152,7 +22242,7 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
             _0x275208(_0x25f1e5(0xbf1)),
             alert(_0x25f1e5(0x126b))));
       if (_0x8d5b3f) {
-        await _0x456d1d();
+        await _0x456d1d("__ephone_continue__");
         return;
       }
       await _0x24f906[_0x25f1e5(0x1255)][_0x25f1e5(0x114d)](_0x5b16cb);
@@ -22166,6 +22256,13 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
       _0x136ca8 &&
         (console[_0x25f1e5(0x13f0)](_0x25f1e5(0x4c6)), await _0x2a2e8a());
     } catch (_0x3ec73f) {
+      if (
+        _0x3ec73f?.name === "AbortError" ||
+        _0xephoneController.signal.aborted
+      ) {
+        console.log("回复已由用户停止。");
+        return;
+      }
       ((_0x5b16cb["history"] = _0x5b16cb["history"][_0x25f1e5(0x1916)](
         (_0xb93b09) => !_0xb93b09[_0x25f1e5(0x1563)],
       )),
@@ -22188,7 +22285,10 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
           (await _0x24f906[_0x25f1e5(0x1255)][_0x25f1e5(0x114d)](_0x5b16cb)),
         (_0x5a302c["isAwaitingResponse"] = ![]));
     } finally {
-      (_0xff8a5b(_0x973a29, ![]),
+      (_0xephoneGenerationController === _0xephoneController &&
+        (_0xephoneGenerationController = null),
+        _0xephoneSetGenerating(![]),
+        _0xff8a5b(_0x973a29, ![]),
         _0x5b16cb[_0x25f1e5(0x126)]
           ? _0x4dc728 &&
             (_0x4dc728[_0x25f1e5(0x791)]["display"] = _0x25f1e5(0x1099))
@@ -22472,6 +22572,8 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
   }
   function _0x276139() {
     const _0x5a0450 = _0x3ce505;
+    _0xephoneSelectToHereArmed = ![];
+    document.getElementById("selection-to-here-btn")?.classList.remove("armed");
     _0x232053();
     if (!_0x229236) return;
     ((_0x229236 = ![]),
@@ -22502,6 +22604,57 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
       (document[_0x1587da(0x1023)](_0x1587da(0x39b))[_0x1587da(0x71a)] =
         _0x1587da(0x1503) + _0x36a004[_0x1587da(0xb1e)] + "\x20条"),
       _0x36a004[_0x1587da(0xb1e)] === 0x0 && _0x276139());
+  }
+  function _0xephoneArmSelectToHere() {
+    if (_0x36a004.size === 0x0) {
+      alert("请先选择一条消息作为起点。");
+      return;
+    }
+    _0xephoneSelectToHereArmed = !_0xephoneSelectToHereArmed;
+    const _0xButton = document.getElementById("selection-to-here-btn");
+    _0xButton?.classList.toggle("armed", _0xephoneSelectToHereArmed);
+    if (_0xephoneSelectToHereArmed) {
+      _0xButton.title = "请再点一条消息作为终点";
+    } else if (_0xButton) {
+      _0xButton.title = "选到这";
+    }
+  }
+  function _0xephoneSelectRangeTo(_0xTargetTimestamp) {
+    const _0xChat = _0x5ea3c1.chats[_0x5ea3c1.activeChatId];
+    if (!_0xChat) return;
+    const _0xMessages = _0xChat.history.filter(
+      (_0xMessage) => !_0xMessage.isHidden && _0xMessage.timestamp != null,
+    );
+    const _0xTargetIndex = _0xMessages.findIndex(
+      (_0xMessage) => Number(_0xMessage.timestamp) === Number(_0xTargetTimestamp),
+    );
+    if (_0xTargetIndex < 0) return;
+    const _0xSelectedIndexes = _0xMessages
+      .map((_0xMessage, _0xIndex) =>
+        _0x36a004.has(_0xMessage.timestamp) ? _0xIndex : -1,
+      )
+      .filter((_0xIndex) => _0xIndex >= 0);
+    const _0xStart = Math.min(
+      _0xTargetIndex,
+      ...(_0xSelectedIndexes.length ? _0xSelectedIndexes : [_0xTargetIndex]),
+    );
+    const _0xEnd = Math.max(
+      _0xTargetIndex,
+      ...(_0xSelectedIndexes.length ? _0xSelectedIndexes : [_0xTargetIndex]),
+    );
+    for (let _0xIndex = _0xStart; _0xIndex <= _0xEnd; _0xIndex++) {
+      const _0xTimestamp = _0xMessages[_0xIndex].timestamp;
+      _0x36a004.add(_0xTimestamp);
+      document
+        .querySelector(`.message-bubble[data-timestamp="${_0xTimestamp}"]`)
+        ?.classList.add("selected");
+    }
+    document.getElementById("selection-count").textContent =
+      `已选择 ${_0x36a004.size} 条`;
+    _0xephoneSelectToHereArmed = ![];
+    const _0xButton = document.getElementById("selection-to-here-btn");
+    _0xButton?.classList.remove("armed");
+    if (_0xButton) _0xButton.title = "选到这";
   }
   function _0x100ddd(_0x35d896, _0x36e021) {
     const _0x223981 = _0x3ce505;
@@ -35525,7 +35678,7 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
         _0x38839a[_0xc4ea32(0xd57)][_0xc4ea32(0x1aa6)](_0xc4ea32(0x1ea)));
     }
   }
-  async function _0x4c1183() {
+  async function _0x4c1183(_0xephoneInstruction = "") {
     const _0x7474c6 = _0x3ce505,
       _0x292db5 = _0x5ea3c1[_0x7474c6(0x1255)][_0x5ea3c1["activeChatId"]];
     if (!_0x292db5) return;
@@ -35545,12 +35698,20 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
       alert(_0x7474c6(0x6b2));
       return;
     }
-    ((_0x292db5[_0x7474c6(0x8e6)] = _0x292db5[_0x7474c6(0x8e6)][
-      _0x7474c6(0x1655)
-    ](0x0, _0x28965b + 0x1)),
-      await _0x24f906[_0x7474c6(0x1255)][_0x7474c6(0x114d)](_0x292db5),
-      await _0x57e676(_0x5ea3c1["activeChatId"]),
-      await _0x456d1d());
+    _0xephoneRerollInstruction =
+      typeof _0xephoneInstruction === "string"
+        ? _0xephoneInstruction.trim()
+        : "";
+    try {
+      ((_0x292db5[_0x7474c6(0x8e6)] = _0x292db5[_0x7474c6(0x8e6)][
+        _0x7474c6(0x1655)
+      ](0x0, _0x28965b + 0x1)),
+        await _0x24f906[_0x7474c6(0x1255)][_0x7474c6(0x114d)](_0x292db5),
+        await _0x57e676(_0x5ea3c1["activeChatId"]),
+        await _0x456d1d());
+    } finally {
+      _0xephoneRerollInstruction = "";
+    }
   }
   async function _0x1ddd51() {
     const _0xe4eeb4 = _0x3ce505;
@@ -49719,6 +49880,10 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
   function _0x48b432() {
     const _0x53ab1f = _0x3ce505,
       _0x555c3a = document["getElementById"](_0x53ab1f(0x2c0));
+    _0x5ea3c1.globalSettings.lockScreenEnabled = ![];
+    _0x5ea3c1.globalSettings.lockScreenPassword = "";
+    _0x1844eb.isLocked = ![];
+    _0x555c3a?.classList.remove("active", "input-mode", "unlocking");
     _0x5ea3c1[_0x53ab1f(0x9b1)][_0x53ab1f(0x10b1)] &&
       (_0x5ea3c1[_0x53ab1f(0x9b1)][_0x53ab1f(0x2fc)]
         ? (_0x555c3a[_0x53ab1f(0x791)]["backgroundImage"] =
@@ -49732,6 +49897,12 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
       _0x344681 = document["getElementById"](_0x53ab1f(0x675)),
       _0x398789 = document[_0x53ab1f(0x1023)]("lock-screen-password-input"),
       _0x9e3e33 = document["getElementById"]("lock-wallpaper-preview");
+    if (_0x52e0a1) {
+      _0x52e0a1.checked = ![];
+      _0x52e0a1.disabled = !![];
+      _0x52e0a1.closest(".settings-item")?.setAttribute("hidden", "hidden");
+    }
+    if (_0x344681) _0x344681.style.display = "none";
     (_0x52e0a1 &&
       ((_0x52e0a1[_0x53ab1f(0x136b)] =
         _0x5ea3c1["globalSettings"][_0x53ab1f(0x10b1)] || ![]),
@@ -55488,6 +55659,29 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
         if (!_0x50da37 || !_0x5ea3c1["activeChatId"]) return;
         const _0x3fc5c8 =
           _0x5ea3c1[_0xf6e6fe(0x1255)][_0x5ea3c1[_0xf6e6fe(0x1aba)]];
+        if (_0xephoneSendAsName) {
+          const _0xephoneCharacterMessage = {
+            role: "assistant",
+            senderName: _0xephoneSendAsName,
+            name: _0xephoneSendAsName,
+            type: "text",
+            content: _0x50da37,
+            timestamp: Date.now(),
+            vts: window.ephoneTimeMachine?.nowMs(_0x3fc5c8.id),
+            sentAsCharacter: true,
+          };
+          (_0xbb356a(_0xephoneCharacterMessage, _0x3fc5c8),
+            (async () => {
+              _0x3fc5c8.history.push(_0xephoneCharacterMessage);
+              await _0x24f906.chats.put(_0x3fc5c8);
+              _0x4bb316();
+            })(),
+            (_0x2f0fb4.value = ""),
+            (_0x2f0fb4.style.height = "auto"),
+            _0x2f0fb4.focus(),
+            document.body.classList.remove("chat-actions-expanded"));
+          return;
+        }
         if (
           _0x50da37[_0xf6e6fe(0x73c)](_0xf6e6fe(0xe47)) ||
           _0x50da37[_0xf6e6fe(0x73c)]("/旁白\x20")
@@ -57577,6 +57771,23 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
       document[_0x274136(0x1023)](_0x274136(0x823))[_0x274136(0x111e)](
         _0x274136(0x34e),
         _0x276139,
+      ),
+      document
+        .getElementById("selection-to-here-btn")
+        .addEventListener("click", _0xephoneArmSelectToHere),
+      document.getElementById("chat-messages").addEventListener(
+        "click",
+        (_0xephoneEvent) => {
+          if (!_0xephoneSelectToHereArmed) return;
+          const _0xephoneBubble = _0xephoneEvent.target.closest(
+            ".message-bubble[data-timestamp]",
+          );
+          if (!_0xephoneBubble) return;
+          _0xephoneEvent.preventDefault();
+          _0xephoneEvent.stopImmediatePropagation();
+          _0xephoneSelectRangeTo(Number(_0xephoneBubble.dataset.timestamp));
+        },
+        true,
       ),
       document["getElementById"](_0x274136(0x1221))["addEventListener"](
         _0x274136(0x34e),
@@ -60833,6 +61044,21 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
         _0x274136(0x34e),
         _0x4c1183,
       ),
+      document.getElementById("reroll-with-note-btn").addEventListener(
+        "click",
+        async () => {
+          const _0xephoneNote = await _0x1b625f(
+            "附说明重 Roll",
+            "写下这次重抽希望角色如何调整；留空则取消：",
+            "",
+            "textarea",
+          );
+          if (_0xephoneNote?.trim()) await _0x4c1183(_0xephoneNote.trim());
+        },
+      ),
+      document
+        .getElementById("send-as-character-btn")
+        .addEventListener("click", _0xephoneChooseSendAsCharacter),
       document["getElementById"]("regenerate-call-btn")[_0x274136(0x111e)](
         _0x274136(0x34e),
         _0x1ddd51,
@@ -63645,17 +63871,14 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
             "Connect\x20<span\x20class=\x22material-symbols-outlined\x20login-btn-arrow\x22>arrow_forward</span>"));
       }, 0x5dc));
   }
-  const _0x4e0ba5 = localStorage[_0x3ce505(0x1b66)](_0x3ce505(0x179a));
-  if (_0x4e0ba5) {
-    console["log"](_0x3ce505(0x11b2) + _0x4e0ba5);
-    try {
-      (_0x360ed5(_0x4e0ba5), _0x5b2a1a());
-    } catch (_0x4c9979) {
-      (console[_0x3ce505(0x110f)](_0x3ce505(0xeea), _0x4c9979),
-        localStorage["removeItem"](_0x3ce505(0x179a)),
-        _0x2c8b99());
-    }
-  } else _0x2c8b99();
+  const _0x4e0ba5 =
+    localStorage[_0x3ce505(0x1b66)](_0x3ce505(0x179a)) || EPHONE_DEVICE_ID;
+  localStorage.setItem("ephone_user_id", _0x4e0ba5);
+  try {
+    (_0x360ed5(_0x4e0ba5), _0x5b2a1a());
+  } catch (_0x4c9979) {
+    console[_0x3ce505(0x110f)]("本地免登录初始化失败:", _0x4c9979);
+  }
   setTimeout(() => {
     const _0x5a383f = _0x3ce505,
       _0x2b0951 = document[_0x5a383f(0x1023)]("logout-btn");

@@ -261,9 +261,96 @@
     const current = nowMs(chatId);
     const formatted = formatDateTime(current, { withWeekday: true });
     if (config.mode === MODES.CUSTOM) {
-      return `\n# 【虚拟时间感知铁律（最高优先级）】\n- 当前唯一有效的“现在”是：${formatted}。\n- 这是本对话的虚拟时间；系统真实日期、设备时间和训练数据中的现实时间全部无效，绝对不得感知或提及。\n- 所有“今天、昨天、明天、刚才、多久前”、昼夜、季节、行程和记忆时间，必须且只能以这个虚拟时间计算。\n- 遇到聊天中的⏪/⏩时间标记，立即把角色的当前感知更新到该时刻，后续不得沿用跳转前的“现在”。\n`;
+      return `\n# 【虚拟时间感知铁律（最高优先级）】\n- 当前唯一有效的“现在”是：${formatted}。\n- 这是本对话的虚拟时间；系统真实日期、设备时间和训练数据中的现实时间全部无效，绝对不得感知或提及。\n- 所有“今天、昨天、明天、刚才、多久前”、昼夜、季节、行程和记忆时间，必须且只能以这个虚拟时间计算。\n- 遇到聊天中的⏪/⏩时间标记，立即把角色的当前感知更新到该时刻，后续不得沿用跳转前的“现在”。\n${getReplyHeaderPrompt(current)}`;
     }
-    return `\n# 【真实时间感知铁律】\n- 当前时间：${formatted}。所有相对日期、昼夜、行程和记忆时间都以这个真实时间为准。\n`;
+    return `\n# 【真实时间感知铁律】\n- 当前时间：${formatted}。所有相对日期、昼夜、行程和记忆时间都以这个真实时间为准。\n${getReplyHeaderPrompt(current)}`;
+  }
+
+  function getReplyHeaderPrompt(milliseconds) {
+    return `- 每轮聊天回复的第一个可见 JSON 对象必须是 narration，content 严格写成“${formatReplyHeader(milliseconds, "<角色当前实际所在地点>")}”。地点必须根据人设、最近旁白和聊天情境推断，不能写系统设备的所在地；之后再输出动作或台词。\n`;
+  }
+
+  function formatReplyHeader(milliseconds, location) {
+    const date = new Date(milliseconds);
+    const weekday = ["日", "一", "二", "三", "四", "五", "六"][date.getDay()];
+    const safeLocation = String(location || "线上聊天")
+      .replace(/^地点[：:]\s*/, "")
+      .trim();
+    return `${date.getFullYear()}年${date.getMonth() + 1}月${date.getDate()}日，${pad(date.getHours())}点${pad(date.getMinutes())}分，星期${weekday}，地点：${safeLocation || "线上聊天"}`;
+  }
+
+  function inferLocation(items) {
+    const currentNarrations = (Array.isArray(items) ? items : []).filter(
+      (item) => item?.type === "narration" && item.content,
+    );
+    for (const narration of currentNarrations) {
+      const content = String(narration.content || "");
+      const headerMatch = content.match(/地点[：:]\s*([^，。\n]+)/);
+      if (headerMatch?.[1] && !headerMatch[1].includes("<")) {
+        return headerMatch[1].trim();
+      }
+      const narrationMatch = content.match(
+        /(?:位于|身处|来到|走进|回到|在)([^，。；\n]{2,24})/,
+      );
+      if (narrationMatch?.[1]) return narrationMatch[1].trim();
+    }
+    const history = activeBinding?.getMessages?.() || [];
+    const candidates = [...history].reverse();
+    for (const message of candidates) {
+      if (!message) continue;
+      if (message.type === "location_share" && message.content) {
+        return String(message.content).trim();
+      }
+      const content = String(message.content || "");
+      const headerMatch = content.match(/地点[：:]\s*([^，。\n]+)/);
+      if (headerMatch?.[1]) return headerMatch[1].trim();
+    }
+    const settings = activeBinding?.settings || {};
+    return (
+      settings.currentLocation ||
+      settings.sceneLocation ||
+      settings.location ||
+      settings.scenarioLocation ||
+      "线上聊天"
+    );
+  }
+
+  function ensureReplyHeader(items) {
+    if (!Array.isArray(items) || !activeChatId) return items;
+    const chatTypes = new Set([
+      "text",
+      "narration",
+      "voice_message",
+      "sticker",
+      "quote_reply",
+      "offline_text",
+      "ai_image",
+      "naiimag",
+      "realimag",
+    ]);
+    if (!items.some((item) => item && chatTypes.has(item.type || "text"))) {
+      return items;
+    }
+    const headerPattern = /^\d{4}年\d{1,2}月\d{1,2}日，\d{1,2}点\d{1,2}分，星期[日一二三四五六]，地点[：:]/;
+    const existingIndex = items.findIndex(
+      (item) => item?.type === "narration" && headerPattern.test(String(item.content || "")),
+    );
+    let location = inferLocation(items);
+    if (existingIndex >= 0) {
+      const match = String(items[existingIndex].content).match(/地点[：:]\s*(.+)$/);
+      if (match?.[1] && !match[1].includes("<")) location = match[1].trim();
+      items.splice(existingIndex, 1);
+    }
+    const header = {
+      type: "narration",
+      name: "时间",
+      content: formatReplyHeader(nowMs(), location),
+      isReplyHeader: true,
+      vts: nowMs(),
+    };
+    const thoughtCount = items.findIndex((item) => item?.type !== "thought_chain");
+    items.splice(thoughtCount < 0 ? items.length : thoughtCount, 0, header);
+    return items;
   }
 
   function configForChatSettings(config) {
@@ -430,6 +517,8 @@
     resolveTimestamp,
     messageTime,
     formatDateTime,
+    formatReplyHeader,
+    ensureReplyHeader,
     getPromptRule,
     configForChatSettings,
     jumpTo,

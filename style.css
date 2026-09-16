@@ -2260,6 +2260,77 @@
             background: color-mix(in srgb, var(--accent-color) 14%, var(--secondary-bg));
             color: var(--accent-color);
         }
+        #send-as-character-btn > span,
+        #reroll-with-note-btn > span {
+            font-size: 10px;
+            font-weight: 600;
+            line-height: 1;
+            white-space: nowrap;
+        }
+        #send-as-character-btn.active {
+            border-color: var(--accent-color);
+            background: var(--accent-color);
+            color: #fff;
+        }
+        #send-as-character-btn.active > span {
+            max-width: 54px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        .selection-text-action {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            min-width: 48px;
+            padding: 5px 8px;
+            border-radius: 12px;
+            color: var(--accent-color);
+            font-size: 12px;
+            font-weight: 600;
+            white-space: nowrap;
+        }
+        .selection-text-action.armed {
+            background: var(--accent-color);
+            color: #fff;
+            animation: ephone-select-target-pulse 1s ease-in-out infinite;
+        }
+        @keyframes ephone-select-target-pulse {
+            50% { opacity: 0.58; }
+        }
+        #wait-reply-btn.is-generating {
+            min-width: 44px;
+            border-color: var(--accent-color);
+            background: color-mix(in srgb, var(--accent-color) 15%, #fff);
+            color: var(--accent-color);
+        }
+        .ephone-generating-bars {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 2px;
+            width: 24px;
+            height: 22px;
+        }
+        .ephone-generating-bars i {
+            display: block;
+            width: 3px;
+            height: 7px;
+            border-radius: 2px;
+            background: currentColor;
+            animation: ephone-generating-bar 0.72s ease-in-out infinite alternate;
+        }
+        .ephone-generating-bars i:nth-child(2) { animation-delay: 0.18s; }
+        .ephone-generating-bars i:nth-child(3) { animation-delay: 0.36s; }
+        .ephone-generating-stop {
+            width: 7px;
+            height: 7px;
+            margin-left: 3px;
+            border-radius: 1px;
+            background: currentColor;
+        }
+        @keyframes ephone-generating-bar {
+            to { height: 18px; }
+        }
         .message-wrapper.system-pat.time-marker-wrapper {
             align-self: stretch;
             justify-content: center;
