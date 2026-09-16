@@ -17176,7 +17176,9 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
             _0x47be92[_0x8d2d1c(0xd57)][_0x8d2d1c(0x17db)]("typing-status"),
             (_0x47be92[_0x8d2d1c(0x791)][_0x8d2d1c(0x24c)] = 0x1));
         }, 0xc8));
-    let _0x8d5b3f = ![];
+    let _0x8d5b3f = ![],
+      _0xephoneTimePreparation = null,
+      _0xephoneTimeCommitted = ![];
     try {
       const {
         proxyUrl: _0x275228,
@@ -17435,6 +17437,11 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
         }
         return;
       }
+      _0xephoneTimePreparation = window.ephoneTimeMachine?.prepareReplyTime
+        ? window.ephoneTimeMachine.prepareReplyTime(_0x5b16cb["history"], {
+            advance: !_0xephoneIsRerolling && !_0xephoneContinue,
+          })
+        : null;
       let _0x5e0f42 = "";
       const _0x3e2aea =
           window.ephoneTimeMachine?.nowDate(_0x973a29) ?? new Date(),
@@ -19725,12 +19732,13 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
         ]((_0x15fb5f) => !_0x15fb5f[_0x25f1e5(0x1563)])));
       const _0x899a3d = window.ephoneTimeMachine?.ensureReplyHeader
         ? window.ephoneTimeMachine.ensureReplyHeader(_0x297b4d(_0x5eb79b), {
-            advance: !_0xephoneIsRerolling,
+            advancedMinutes: _0xephoneTimePreparation?.minutes || 0,
           })
         : _0x297b4d(_0x5eb79b);
       if (_0xephoneController.signal.aborted) {
         throw new DOMException("回复已停止", "AbortError");
       }
+      _0xephoneTimeCommitted = !![];
       let _0x55b319 = [];
       if (_0x5b16cb[_0x25f1e5(0x17c5)]["isOfflineMode"]) {
         let _0x5c3e2b = { content: [], dialogue: [], description: [] };
@@ -22259,6 +22267,11 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
       _0x136ca8 &&
         (console[_0x25f1e5(0x13f0)](_0x25f1e5(0x4c6)), await _0x2a2e8a());
     } catch (_0x3ec73f) {
+      if (!_0xephoneTimeCommitted && _0xephoneTimePreparation) {
+        await window.ephoneTimeMachine?.rollbackPreparedReplyTime?.(
+          _0xephoneTimePreparation,
+        );
+      }
       if (
         _0x3ec73f?.name === "AbortError" ||
         _0xephoneController.signal.aborted

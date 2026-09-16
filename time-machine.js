@@ -263,7 +263,7 @@
     if (config.mode === MODES.CUSTOM) {
       const flowRule =
         config.flow === FLOWS.FROZEN
-          ? "- 当前采用“按剧情推进”：不跟随现实钟表流逝；每轮回复后的新时间由程序根据回复中的对话、动作和场景变化自动推进。"
+          ? "- 当前采用“按剧情推进”：不跟随现实钟表流逝；程序已在生成本轮回复前，根据本轮对话和情境自动推进时间。下方的当前时间就是角色本轮唯一能感知的时刻，所有台词、动作与旁白必须与它完全一致，禁止沿用上一轮时刻。"
           : "- 当前采用“保持流动”：虚拟时间会按现实经过的时长持续流动。";
       return `\n# 【虚拟时间感知铁律（最高优先级）】\n- 当前唯一有效的“现在”是：${formatted}。\n- 这是本对话的虚拟时间；系统真实日期、设备时间和训练数据中的现实时间全部无效，绝对不得感知或提及。\n${flowRule}\n- 所有“今天、昨天、明天、刚才、多久前”、昼夜、季节、行程和记忆时间，必须且只能以这个虚拟时间计算。\n- 遇到聊天中的⏪/⏩时间标记，立即把角色的当前感知更新到该时刻，后续不得沿用跳转前的“现在”。\n${getReplyHeaderPrompt(current)}`;
     }
@@ -382,6 +382,71 @@
     return minutes;
   }
 
+  function latestReplyContext(history) {
+    if (!Array.isArray(history)) return [];
+    const latestUserMessage = [...history]
+      .reverse()
+      .find(
+        (item) =>
+          item &&
+          item.role === "user" &&
+          !item.isHidden &&
+          item.type !== "time_marker",
+      );
+    if (!latestUserMessage) return [];
+    const recentContext = history
+      .filter(
+        (item) =>
+          item &&
+          !item.isHidden &&
+          item.type !== "time_marker" &&
+          (item.role === "user" || item.role === "assistant"),
+      )
+      .slice(-3);
+    return recentContext.includes(latestUserMessage)
+      ? recentContext
+      : [latestUserMessage];
+  }
+
+  function prepareReplyTime(history, options = {}) {
+    const beforeMs = nowMs();
+    const preparation = {
+      chatId: activeChatId,
+      beforeMs,
+      afterMs: beforeMs,
+      minutes: 0,
+      changed: false,
+    };
+    if (options.advance === false || !activeChatId) return preparation;
+    const minutes = advanceFrozenForReply(latestReplyContext(history));
+    if (!minutes) return preparation;
+    preparation.minutes = minutes;
+    preparation.afterMs = nowMs();
+    preparation.changed = true;
+    return preparation;
+  }
+
+  async function rollbackPreparedReplyTime(preparation) {
+    if (
+      !preparation?.changed ||
+      !activeChatId ||
+      preparation.chatId !== activeChatId
+    ) {
+      return;
+    }
+    const config = getConfig();
+    if (
+      config.mode !== MODES.CUSTOM ||
+      config.flow !== FLOWS.FROZEN ||
+      config.anchorVirtualMs !== preparation.afterMs
+    ) {
+      return;
+    }
+    config.anchorVirtualMs = preparation.beforeMs;
+    config.anchorRealMs = Date.now();
+    await saveActive(config, false);
+  }
+
   function ensureReplyHeader(items, options = {}) {
     if (!Array.isArray(items) || !activeChatId) return items;
     const chatTypes = new Set([
@@ -398,8 +463,9 @@
     if (!items.some((item) => item && chatTypes.has(item.type || "text"))) {
       return items;
     }
-    const advancedMinutes =
-      options.advance === false ? 0 : advanceFrozenForReply(items);
+    const advancedMinutes = Number.isFinite(Number(options.advancedMinutes))
+      ? Number(options.advancedMinutes)
+      : 0;
     const headerPattern = /^\d{4}年\d{1,2}月\d{1,2}日，\d{1,2}点\d{1,2}分，星期[日一二三四五六]，地点[：:]/;
     const existingIndex = items.findIndex(
       (item) => item?.type === "narration" && headerPattern.test(String(item.content || "")),
@@ -589,6 +655,8 @@
     formatDateTime,
     formatReplyHeader,
     ensureReplyHeader,
+    prepareReplyTime,
+    rollbackPreparedReplyTime,
     getPromptRule,
     configForChatSettings,
     jumpTo,
