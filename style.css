@@ -9969,6 +9969,65 @@ body.minimal-chat-ui-active.chat-actions-expanded #chat-interface-screen #chat-m
     margin-top: 2px;
 }
 
+.chat-memory-summary-heading {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+}
+
+.chat-memory-summary-btn {
+    width: 100%;
+    min-height: 40px;
+    padding: 10px 14px;
+    border: none;
+    border-radius: 8px;
+    background: rgba(0, 122, 255, 0.08);
+    color: #007aff;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: opacity 0.2s, transform 0.15s, background-color 0.2s;
+}
+
+.chat-memory-summary-btn:active:not(:disabled) {
+    transform: scale(0.985);
+    background: rgba(0, 122, 255, 0.14);
+}
+
+.chat-memory-summary-btn:disabled {
+    cursor: default;
+    opacity: 0.55;
+}
+
+.chat-memory-summary-btn.is-running::before {
+    content: "";
+    display: inline-block;
+    width: 12px;
+    height: 12px;
+    margin-right: 7px;
+    vertical-align: -1px;
+    border: 2px solid currentColor;
+    border-right-color: transparent;
+    border-radius: 50%;
+    animation: chat-memory-summary-spin 0.8s linear infinite;
+}
+
+.chat-memory-summary-status {
+    min-height: 16px;
+    margin-top: 0;
+    text-align: center;
+    line-height: 1.35;
+}
+
+#phone-screen.dark-mode .chat-memory-summary-btn {
+    background: rgba(10, 132, 255, 0.16);
+    color: #5eb0ff;
+}
+
+@keyframes chat-memory-summary-spin {
+    to { transform: rotate(360deg); }
+}
+
 /* 右侧区域 (输入框、按钮等) */
 .settings-right {
     display: flex;

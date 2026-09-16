@@ -659,6 +659,9 @@
                      <button id="delete-api-preset-btn" class="settings-mini-btn">删除</button>
                  </div>
             </div>
+            <div class="settings-tip-wrapper">
+                <div class="settings-tip-content">每个配置预设会分别记住主模型和副模型，切换回来时自动恢复。</div>
+            </div>
         </div>
 
         <!-- 主 API 设置 -->
@@ -2203,6 +2206,16 @@
                  <div class="settings-right">
                     <input type="number" id="auto-memory-interval" class="settings-num-input">
                  </div>
+            </div>
+            <div class="settings-item-block" id="chat-memory-summary-group">
+                 <div class="chat-memory-summary-heading">
+                    <div>
+                       <label>记忆总结</label>
+                       <div class="settings-desc">按上方条数总结最近对话，并写入当前聊天的长期记忆</div>
+                    </div>
+                 </div>
+                 <button type="button" id="chat-settings-summarize-btn" class="chat-memory-summary-btn">立即总结</button>
+                 <div id="chat-settings-summary-status" class="settings-desc chat-memory-summary-status" role="status" aria-live="polite">尚未生成过聊天总结</div>
             </div>
 
             <!-- 挂载聊天 -->
@@ -4205,8 +4218,6 @@
 
 </body>
 </html>
-
-
 
 
 

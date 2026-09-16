@@ -13330,6 +13330,48 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
       ? (_0x4ab097[_0x419cbb(0x16b0)] = _0x651b3c)
       : (_0x4ab097[_0x419cbb(0x16b0)] = _0x419cbb(0x17fe));
   }
+  const _ephonePresetModelRestorers = new Map();
+  function _ephoneRestoreApiPresetModel(_selectId, _savedModel) {
+    const _select = document.getElementById(_selectId),
+      _model = String(_savedModel || "").trim(),
+      _previous = _ephonePresetModelRestorers.get(_selectId);
+    if (_previous) _previous.cancel();
+    if (!_select || !_model) return;
+    let _observer = null,
+      _timer = null,
+      _cancelled = false;
+    const _restore = () => {
+        if (_cancelled) return;
+        let _option = Array.from(_select.options).find(
+          (_item) => _item.value === _model,
+        );
+        if (!_option) {
+          _option = document.createElement("option");
+          _option.value = _model;
+          _option.textContent = _model;
+          _option.dataset.savedPresetModel = "true";
+          _select.appendChild(_option);
+        }
+        _select.value = _model;
+      },
+      _cancel = () => {
+        if (_cancelled) return;
+        _cancelled = true;
+        _observer?.disconnect();
+        if (_timer) clearTimeout(_timer);
+        _select.removeEventListener("change", _cancel);
+        if (_ephonePresetModelRestorers.get(_selectId)?.cancel === _cancel) {
+          _ephonePresetModelRestorers.delete(_selectId);
+        }
+      };
+    _restore();
+    _observer = new MutationObserver(() => queueMicrotask(_restore));
+    _observer.observe(_select, { childList: true });
+    _select.addEventListener("change", _cancel, { once: true });
+    _timer = setTimeout(_cancel, 15000);
+    _ephonePresetModelRestorers.set(_selectId, { cancel: _cancel });
+  }
+  window.ephoneRestoreApiPresetModel = _ephoneRestoreApiPresetModel;
   async function _0x1cf16a() {
     const _0x29ae36 = _0x3ce505,
       _0x5df602 = document[_0x29ae36(0x1023)](_0x29ae36(0x5ff)),
@@ -13400,6 +13442,11 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
       if (_0x1a822c !== null) _0x5ea3c1["apiConfig"]["githubToken"] = _0x1a822c;
       if (_0x3bc193 !== null)
         _0x5ea3c1[_0x29ae36(0x162b)][_0x29ae36(0x17af)] = _0x3bc193;
+      (_ephoneRestoreApiPresetModel("model-select", _0x1f44f5["model"]),
+        _ephoneRestoreApiPresetModel(
+          "secondary-model-select",
+          _0x1f44f5["secondaryModel"],
+        ));
       (await _0x24f906[_0x29ae36(0x162b)]["put"](_0x5ea3c1["apiConfig"]),
         _0x4bf560(_0x35deb4),
         document[_0x29ae36(0x1023)](_0x29ae36(0x18de))[_0x29ae36(0x34e)](),
@@ -13456,8 +13503,10 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
       if (!_0x1b647c) return;
       _0x268c76["id"] = _0x33b78d["id"];
     }
-    (await _0x24f906["apiPresets"][_0x5bc5e2(0x114d)](_0x268c76),
-      await _0x2dde7d(),
+    const _0xephoneSavedPresetId = await _0x24f906["apiPresets"][
+      _0x5bc5e2(0x114d)
+    ](_0x268c76);
+    (await _0x2dde7d(_0xephoneSavedPresetId),
       alert(_0x5bc5e2(0x389)));
   }
   async function _0x4869ef() {
@@ -30214,10 +30263,73 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
         _0x2ef710());
     }
   }
-  async function _0x513b84() {
+  async function _0x513b84(_ephoneManualSummaryCount = null) {
     const _0x170750 = _0x3ce505,
       _0x1debf0 = await _0x41c474(_0x170750(0x1630), _0x170750(0xe80));
-    _0x1debf0 && (await _0x495424(_0x5ea3c1[_0x170750(0x1aba)], !![]));
+    if (!_0x1debf0) return null;
+    return await _0x495424(
+      _0x5ea3c1[_0x170750(0x1aba)],
+      !![],
+      _ephoneManualSummaryCount,
+    );
+  }
+  function _ephoneUpdateChatSummaryStatus(_ephoneChat) {
+    const _ephoneStatus = document.getElementById("chat-settings-summary-status");
+    if (!_ephoneStatus || !_ephoneChat) return;
+    const _ephoneLastSummary = Number(_ephoneChat.lastMemorySummaryTimestamp);
+    if (!Number.isFinite(_ephoneLastSummary) || _ephoneLastSummary <= 0) {
+      _ephoneStatus.textContent = "尚未生成过聊天总结";
+      return;
+    }
+    const _ephoneLastMessage = [...(_ephoneChat.history || [])]
+        .reverse()
+        .find(
+          (_ephoneMessage) =>
+            Number(_ephoneMessage?.timestamp) === _ephoneLastSummary,
+        ),
+      _ephoneVirtualSummaryTime =
+        window.ephoneTimeMachine?.messageTime(
+          _ephoneLastMessage || { timestamp: _ephoneLastSummary },
+          _ephoneChat.id,
+        ) ?? _ephoneLastSummary;
+    const _ephoneFormattedSummaryTime =
+      window.ephoneTimeMachine?.formatDateTime(_ephoneVirtualSummaryTime, {
+        withWeekday: true,
+      }) || new Date(_ephoneVirtualSummaryTime).toLocaleString("zh-CN");
+    _ephoneStatus.textContent = `上次总结到：${_ephoneFormattedSummaryTime}`;
+  }
+  async function _ephoneSummarizeFromChatSettings() {
+    const _ephoneButton = document.getElementById("chat-settings-summarize-btn"),
+      _ephoneStatus = document.getElementById("chat-settings-summary-status"),
+      _ephoneChatId = _0x5ea3c1[_0x3ce505(0x1aba)],
+      _ephoneChat = _0x5ea3c1[_0x3ce505(0x1255)][_ephoneChatId];
+    if (!_ephoneButton || !_ephoneChat || _ephoneButton.disabled) return;
+    const _ephoneCountInput = document.getElementById("auto-memory-interval"),
+      _ephoneRequestedCount = Number.parseInt(_ephoneCountInput?.value, 10),
+      _ephoneSummaryCount = Number.isFinite(_ephoneRequestedCount)
+        ? Math.max(5, Math.min(500, _ephoneRequestedCount))
+        : 20,
+      _ephoneOriginalText = _ephoneButton.textContent;
+    _ephoneButton.disabled = true;
+    _ephoneButton.classList.add("is-running");
+    _ephoneButton.textContent = "正在总结…";
+    if (_ephoneStatus)
+      _ephoneStatus.textContent = `正在总结最近 ${_ephoneSummaryCount} 条对话…`;
+    try {
+      const _ephoneResult = await _0x513b84(_ephoneSummaryCount);
+      if (_ephoneResult === true) {
+        _ephoneUpdateChatSummaryStatus(_ephoneChat);
+        await _0x1e5953("总结完成", "最近对话已写入当前聊天的长期记忆。");
+      } else if (_ephoneResult === null) {
+        if (_ephoneStatus) _ephoneStatus.textContent = "已取消总结";
+      } else if (_ephoneStatus) {
+        _ephoneStatus.textContent = "未生成新的记忆，请检查消息数量或 API 设置";
+      }
+    } finally {
+      _ephoneButton.disabled = false;
+      _ephoneButton.classList.remove("is-running");
+      _ephoneButton.textContent = _ephoneOriginalText || "立即总结";
+    }
   }
   async function _0x2586fa(_0x2b944e) {
     const _0x1620c3 = _0x3ce505,
@@ -30923,11 +31035,20 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
         ));
     }
   }
-  async function _0x495424(_0x4f2180, _0x57b6ef = ![]) {
+  async function _0x495424(
+    _0x4f2180,
+    _0x57b6ef = ![],
+    _ephoneManualSummaryCount = null,
+  ) {
     const _0x5b9aea = _0x3ce505,
       _0x24ecb7 = _0x5ea3c1[_0x5b9aea(0x1255)][_0x4f2180];
-    if (!_0x24ecb7) return;
+    if (!_0x24ecb7) return ![];
     const _0x473957 = _0x24ecb7[_0x5b9aea(0x3e5)] || 0x0,
+      _ephoneSummaryCount =
+        Number.isFinite(Number(_ephoneManualSummaryCount)) &&
+        Number(_ephoneManualSummaryCount) >= 0x5
+          ? Math.floor(Number(_ephoneManualSummaryCount))
+          : _0x24ecb7[_0x5b9aea(0x17c5)][_0x5b9aea(0x59a)] || 0x14,
       _0x277a12 = _0x57b6ef
         ? _0x24ecb7["history"]
             [
@@ -30935,7 +31056,7 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
             ]((_0x51153c) => !_0x51153c[_0x5b9aea(0x7ca)] || (_0x51153c["role"] === _0x5b9aea(0xd77) && _0x51153c[_0x5b9aea(0xfd7)][_0x5b9aea(0x1507)](_0x5b9aea(0x19f8))))
             [
               _0x5b9aea(0x1655)
-            ](-(_0x24ecb7[_0x5b9aea(0x17c5)][_0x5b9aea(0x59a)] || 0x14))
+            ](-_ephoneSummaryCount)
         : _0x24ecb7[_0x5b9aea(0x8e6)][_0x5b9aea(0x1916)](
             (_0xdfda61) =>
               _0xdfda61["timestamp"] > _0x473957 &&
@@ -30947,7 +31068,7 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
           );
     if (_0x277a12[_0x5b9aea(0xa5d)] < 0x5) {
       if (_0x57b6ef) alert("最近的消息太少，无法进行有意义的总结。");
-      return;
+      return ![];
     }
     const _0x306f96 =
         _0x24ecb7[_0x5b9aea(0x17c5)][_0x5b9aea(0xc7f)] ||
@@ -31254,12 +31375,14 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
         document[_0x5b9aea(0x1023)](_0x5b9aea(0x5ed))[_0x5b9aea(0xd57)][
           "contains"
         ](_0x5b9aea(0xc26)) && _0x2ef710());
+      return !![];
     } catch (_0x529d04) {
       (console[_0x5b9aea(0x110f)](_0x5b9aea(0x251), _0x529d04),
         await _0x1e5953(
           _0x5b9aea(0x42d),
           "操作失败:\x20" + _0x529d04["message"],
         ));
+      return ![];
     }
   }
   function _0x5396e8() {
@@ -56143,6 +56266,7 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
           if (_0x2b2beb["id"] === _0x42db4) _0x2452df[_0x4afb38(0x1133)] = !![];
           _0x5b482e[_0x4afb38(0x3fe)](_0x2452df);
         }),
+          _ephoneRestoreApiPresetModel(_0x318c8a, _0x42db4),
           alert(_0x35c0bf(0x14ac)));
       } catch (_0x313626) {
         alert(_0x35c0bf(0x2d8) + _0x313626[_0x35c0bf(0xeb4)]);
@@ -56981,6 +57105,7 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
               _0x4deb86[_0x441c56(0x17c5)][_0x441c56(0x143)] || ![]),
             (document[_0x441c56(0x1023)](_0x441c56(0x13ec))[_0x441c56(0x16b0)] =
               _0x4deb86[_0x441c56(0x17c5)]["autoMemoryInterval"] || 0x14),
+            _ephoneUpdateChatSummaryStatus(_0x4deb86),
             (document[_0x441c56(0x1023)](_0x441c56(0x70e))["checked"] =
               _0x4deb86[_0x441c56(0x17c5)]["showHiddenMessages"] || ![]),
             setTimeout(() => {
@@ -60635,6 +60760,9 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
         "click",
         _0x513b84,
       ),
+      document
+        .getElementById("chat-settings-summarize-btn")
+        .addEventListener("click", _ephoneSummarizeFromChatSettings),
       document[_0x274136(0x1023)]("memory-list-container")[_0x274136(0x111e)](
         "click",
         (_0x2f6445) => {
