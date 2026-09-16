@@ -261,7 +261,11 @@
     const current = nowMs(chatId);
     const formatted = formatDateTime(current, { withWeekday: true });
     if (config.mode === MODES.CUSTOM) {
-      return `\n# 【虚拟时间感知铁律（最高优先级）】\n- 当前唯一有效的“现在”是：${formatted}。\n- 这是本对话的虚拟时间；系统真实日期、设备时间和训练数据中的现实时间全部无效，绝对不得感知或提及。\n- 所有“今天、昨天、明天、刚才、多久前”、昼夜、季节、行程和记忆时间，必须且只能以这个虚拟时间计算。\n- 遇到聊天中的⏪/⏩时间标记，立即把角色的当前感知更新到该时刻，后续不得沿用跳转前的“现在”。\n${getReplyHeaderPrompt(current)}`;
+      const flowRule =
+        config.flow === FLOWS.FROZEN
+          ? "- 当前采用“按剧情推进”：不跟随现实钟表流逝；每轮回复后的新时间由程序根据回复中的对话、动作和场景变化自动推进。"
+          : "- 当前采用“保持流动”：虚拟时间会按现实经过的时长持续流动。";
+      return `\n# 【虚拟时间感知铁律（最高优先级）】\n- 当前唯一有效的“现在”是：${formatted}。\n- 这是本对话的虚拟时间；系统真实日期、设备时间和训练数据中的现实时间全部无效，绝对不得感知或提及。\n${flowRule}\n- 所有“今天、昨天、明天、刚才、多久前”、昼夜、季节、行程和记忆时间，必须且只能以这个虚拟时间计算。\n- 遇到聊天中的⏪/⏩时间标记，立即把角色的当前感知更新到该时刻，后续不得沿用跳转前的“现在”。\n${getReplyHeaderPrompt(current)}`;
     }
     return `\n# 【真实时间感知铁律】\n- 当前时间：${formatted}。所有相对日期、昼夜、行程和记忆时间都以这个真实时间为准。\n${getReplyHeaderPrompt(current)}`;
   }
@@ -315,7 +319,70 @@
     );
   }
 
-  function ensureReplyHeader(items) {
+  function replyAdvanceMinutes(items) {
+    const visible = (Array.isArray(items) ? items : []).filter(
+      (item) => item && item.type !== "thought_chain",
+    );
+    const text = visible
+      .map((item) =>
+        [
+          item.content,
+          item.message,
+          item.dialogue,
+          item.description,
+          item.reply_content,
+        ]
+          .filter(Boolean)
+          .join(" "),
+      )
+      .join(" ");
+    let minutes = 1;
+    minutes += Math.min(4, Math.floor(Math.max(0, visible.length - 1) / 2));
+    minutes += Math.min(4, Math.floor(text.length / 120));
+    if (visible.some((item) => item.type === "narration" || item.type === "offline_text")) {
+      minutes += 2;
+    }
+    if (/(起身|坐下|开门|关门|拿起|放下|走到|收拾|换衣|洗漱|泡茶|做饭)/.test(text)) {
+      minutes += 2;
+    }
+    if (/(吃饭|午餐|晚餐|早餐|洗澡|做完|结束|写完|看完|会议)/.test(text)) {
+      minutes += 5;
+    }
+    if (/(出门|到达|赶到|开车|打车|地铁|公交|回家|去往|前往|路上)/.test(text)) {
+      minutes += 8;
+    }
+    if (/(过了一会|片刻后|稍后|不久后|转眼|场景|天色)/.test(text)) {
+      minutes += 4;
+    }
+    const explicitMinutes = [...text.matchAll(/(\d{1,2})\s*分钟/g)]
+      .map((match) => Number(match[1]))
+      .filter((value) => Number.isFinite(value) && value > 0);
+    if (explicitMinutes.length) minutes = Math.max(minutes, Math.max(...explicitMinutes));
+    let hash = 0;
+    for (let index = 0; index < text.length; index++) {
+      hash = (hash * 31 + text.charCodeAt(index)) >>> 0;
+    }
+    minutes += hash % 3;
+    return Math.max(1, Math.min(25, Math.round(minutes)));
+  }
+
+  function advanceFrozenForReply(items) {
+    const config = getConfig();
+    if (config.mode !== MODES.CUSTOM || config.flow !== FLOWS.FROZEN) return 0;
+    freezeActiveRecords(config);
+    const minutes = replyAdvanceMinutes(items);
+    config.anchorVirtualMs = virtualNow(config) + minutes * 60 * 1000;
+    config.anchorRealMs = Date.now();
+    configs[activeChatId] = normalizeConfig(config);
+    persistConfigs();
+    Promise.resolve(activeBinding?.applyConfig?.(configs[activeChatId])).catch(
+      (error) => console.warn("剧情时间保存失败：", error),
+    );
+    updateUi();
+    return minutes;
+  }
+
+  function ensureReplyHeader(items, options = {}) {
     if (!Array.isArray(items) || !activeChatId) return items;
     const chatTypes = new Set([
       "text",
@@ -331,6 +398,8 @@
     if (!items.some((item) => item && chatTypes.has(item.type || "text"))) {
       return items;
     }
+    const advancedMinutes =
+      options.advance === false ? 0 : advanceFrozenForReply(items);
     const headerPattern = /^\d{4}年\d{1,2}月\d{1,2}日，\d{1,2}点\d{1,2}分，星期[日一二三四五六]，地点[：:]/;
     const existingIndex = items.findIndex(
       (item) => item?.type === "narration" && headerPattern.test(String(item.content || "")),
@@ -347,6 +416,7 @@
       content: formatReplyHeader(nowMs(), location),
       isReplyHeader: true,
       vts: nowMs(),
+      autoAdvancedMinutes: advancedMinutes,
     };
     const thoughtCount = items.findIndex((item) => item?.type !== "thought_chain");
     items.splice(thoughtCount < 0 ? items.length : thoughtCount, 0, header);
@@ -401,9 +471,9 @@
           <input id="time-machine-datetime" type="datetime-local">
           <div class="time-machine-flow" role="radiogroup" aria-label="虚拟时间流速">
             <label><input type="radio" name="time-machine-flow" value="flow" checked><span><b>保持流动</b><small>现实过 10 分钟，虚拟时间也走 10 分钟</small></span></label>
-            <label><input type="radio" name="time-machine-flow" value="frozen"><span><b>完全静止</b><small>只有手动跳转时才改变</small></span></label>
+            <label><input type="radio" name="time-machine-flow" value="frozen"><span><b>按剧情推进</b><small>不跟现实时间；每次回复按内容前进几分钟</small></span></label>
           </div>
-          <p class="time-machine-hint">每次跳转都会留下可见的时间标记，也可以回到过去。</p>
+          <p class="time-machine-hint">手动跳转会留下可见的时间标记；按剧情推进时也会自动走时。</p>
         </div>
         <div class="time-machine-actions">
           <button type="button" id="time-machine-cancel">取消</button>

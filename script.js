@@ -8963,6 +8963,7 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
     _0xephoneSelectToHereArmed = ![],
     _0xephoneSendAsName = null,
     _0xephoneRerollInstruction = "",
+    _0xephoneIsRerolling = ![],
     _0xephoneGenerationController = null,
     _0xc5146b = null,
     _0x5ea87c = ![],
@@ -19723,7 +19724,9 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
           _0x25f1e5(0x1916)
         ]((_0x15fb5f) => !_0x15fb5f[_0x25f1e5(0x1563)])));
       const _0x899a3d = window.ephoneTimeMachine?.ensureReplyHeader
-        ? window.ephoneTimeMachine.ensureReplyHeader(_0x297b4d(_0x5eb79b))
+        ? window.ephoneTimeMachine.ensureReplyHeader(_0x297b4d(_0x5eb79b), {
+            advance: !_0xephoneIsRerolling,
+          })
         : _0x297b4d(_0x5eb79b);
       if (_0xephoneController.signal.aborted) {
         throw new DOMException("回复已停止", "AbortError");
@@ -35702,6 +35705,7 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
       typeof _0xephoneInstruction === "string"
         ? _0xephoneInstruction.trim()
         : "";
+    _0xephoneIsRerolling = !![];
     try {
       ((_0x292db5[_0x7474c6(0x8e6)] = _0x292db5[_0x7474c6(0x8e6)][
         _0x7474c6(0x1655)
@@ -35711,6 +35715,7 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
         await _0x456d1d());
     } finally {
       _0xephoneRerollInstruction = "";
+      _0xephoneIsRerolling = ![];
     }
   }
   async function _0x1ddd51() {
