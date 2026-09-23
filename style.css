@@ -9973,6 +9973,46 @@ body.minimal-chat-ui-active.chat-actions-expanded #chat-interface-screen #chat-m
     display: flex;
     justify-content: space-between;
     align-items: flex-start;
+    margin-bottom: 10px;
+}
+
+.chat-summary-cursor-row,
+.chat-summary-range-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-height: 38px;
+    margin: 7px 0;
+    color: #555;
+    font-size: 13px;
+}
+
+.chat-summary-range-row {
+    margin: 10px 0;
+}
+
+.chat-summary-range-input {
+    width: 68px !important;
+    min-width: 54px;
+    text-align: center;
+    padding: 6px 4px !important;
+}
+
+.chat-summary-cursor-save-btn {
+    margin-left: auto;
+    padding: 7px 10px;
+    border: none;
+    border-radius: 7px;
+    background: rgba(0, 122, 255, 0.08);
+    color: #007aff;
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+}
+
+.chat-summary-cursor-hint {
+    margin: 0 0 8px;
+    line-height: 1.35;
 }
 
 .chat-memory-summary-btn {
@@ -10019,7 +10059,34 @@ body.minimal-chat-ui-active.chat-actions-expanded #chat-interface-screen #chat-m
     line-height: 1.35;
 }
 
+.ephone-summary-range-label {
+    margin-top: 9px;
+    color: #8a8a8a;
+    font-size: 11px;
+}
+
+.ephone-delete-summary-segment-btn {
+    margin-top: 8px;
+    padding: 6px 9px;
+    border: 1px solid rgba(255, 59, 48, 0.2);
+    border-radius: 7px;
+    background: rgba(255, 59, 48, 0.06);
+    color: #ff3b30;
+    font-size: 12px;
+    cursor: pointer;
+}
+
 #phone-screen.dark-mode .chat-memory-summary-btn {
+    background: rgba(10, 132, 255, 0.16);
+    color: #5eb0ff;
+}
+
+#phone-screen.dark-mode .chat-summary-cursor-row,
+#phone-screen.dark-mode .chat-summary-range-row {
+    color: #d1d1d6;
+}
+
+#phone-screen.dark-mode .chat-summary-cursor-save-btn {
     background: rgba(10, 132, 255, 0.16);
     color: #5eb0ff;
 }

@@ -30176,6 +30176,20 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
             _0x42dfd9(0x70f),
           ) +
           "</div>\x0a\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20"),
+          _0x3ea577.ephoneSummaryId &&
+            (() => {
+              const _ephoneRange = document.createElement("div"),
+                _ephoneDeleteSegment = document.createElement("button");
+              _ephoneRange.className = "ephone-summary-range-label";
+              _ephoneRange.textContent = `总结范围：第 ${_0x3ea577.ephoneSummaryStartIndex || 1} 到第 ${_0x3ea577.ephoneSummaryEndIndex || 1} 条`;
+              _ephoneDeleteSegment.type = "button";
+              _ephoneDeleteSegment.className = "ephone-delete-summary-segment-btn";
+              _ephoneDeleteSegment.textContent = "删除这段聊天记录";
+              _ephoneDeleteSegment.dataset.summaryId = _0x3ea577.ephoneSummaryId;
+              _ephoneDeleteSegment.dataset.sourceChatId =
+                _0x3ea577.ephoneSourceChatId || "";
+              _4edd0e.append(_ephoneRange, _ephoneDeleteSegment);
+            })(),
           _0x5eb499[_0x42dfd9(0x3fe)](_0x4edd0e));
       }),
         _0x3ea535[_0x1c8a06(0x3fe)](_0x5eb499),
@@ -30250,12 +30264,254 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
       await _0x24f906[_0x3f1c73(0x1255)][_0x3f1c73(0x114d)](_0x4b1dee),
       _0x2ef710());
   }
+  async function _ephoneDeleteSummaryBundle(
+    _ephoneSourceChatId,
+    _ephoneSummaryId,
+    _ephoneDeleteMessages = false,
+  ) {
+    const _ephoneSourceId = String(_ephoneSourceChatId || ""),
+      _ephoneId = String(_ephoneSummaryId || ""),
+      _ephoneChats = Object.values(_0x5ea3c1.chats || {}),
+      _ephoneMatchingEntries = _ephoneChats.flatMap((_ephoneChat) =>
+        (_ephoneChat.longTermMemory || []).filter(
+          (_ephoneMemory) =>
+            String(_ephoneMemory.ephoneSummaryId || "") === _ephoneId,
+        ),
+      );
+    if (!_ephoneSourceId || !_ephoneId || _ephoneMatchingEntries.length === 0)
+      return ![];
+    const _ephoneSourceChat = _0x5ea3c1.chats[_ephoneSourceId],
+      _ephoneDirtyChats = new Set(),
+      _ephoneSnapshots = new Map(
+        _ephoneChats
+          .filter(
+            (_ephoneChat) =>
+              String(_ephoneChat.id) === _ephoneSourceId ||
+              (_ephoneChat.longTermMemory || []).some(
+                (_ephoneMemory) =>
+                  String(_ephoneMemory.ephoneSourceChatId || "") ===
+                  _ephoneSourceId,
+              ),
+          )
+          .map((_ephoneChat) => [
+            _ephoneChat,
+            {
+              history: _ephoneChat.history,
+              longTermMemory: _ephoneChat.longTermMemory?.map(
+                (_ephoneMemory) => ({ ..._ephoneMemory }),
+              ),
+              lastMemorySummaryIndex: _ephoneChat.lastMemorySummaryIndex,
+              lastMemorySummaryTimestamp:
+                _ephoneChat.lastMemorySummaryTimestamp,
+            },
+          ]),
+      );
+    if (_ephoneDeleteMessages && _ephoneSourceChat) {
+      const _ephoneSummaryRecord = _ephoneMatchingEntries[0],
+        _ephoneMessageIds = new Set(
+          (_ephoneSummaryRecord.ephoneSummaryMessageIds || []).map(String),
+        );
+      if (_ephoneMessageIds.size > 0) {
+        _ephoneSourceChat.history = (_ephoneSourceChat.history || []).filter(
+          (_ephoneMessage) =>
+            !_ephoneMessageIds.has(
+              String(_ephoneMessage.ephoneSummaryMessageId || ""),
+            ),
+        );
+      } else {
+        const _ephoneStart = Math.max(
+            0,
+            Number(_ephoneSummaryRecord.ephoneSummaryStartIndex || 1) - 1,
+          ),
+          _ephoneEnd = Math.min(
+            (_ephoneSourceChat.history || []).length,
+            Number(_ephoneSummaryRecord.ephoneSummaryEndIndex || _ephoneStart),
+          );
+        _ephoneSourceChat.history = [
+          ...(_ephoneSourceChat.history || []).slice(0, _ephoneStart),
+          ...(_ephoneSourceChat.history || []).slice(_ephoneEnd),
+        ];
+      }
+      _ephoneDirtyChats.add(_ephoneSourceChat);
+    }
+    for (const _ephoneChat of _ephoneChats) {
+      const _ephoneMemories = _ephoneChat.longTermMemory || [],
+        _ephoneKeptMemories = _ephoneMemories.filter(
+          (_ephoneMemory) =>
+            String(_ephoneMemory.ephoneSummaryId || "") !== _ephoneId,
+        );
+      if (_ephoneKeptMemories.length !== _ephoneMemories.length) {
+        _ephoneChat.longTermMemory = _ephoneKeptMemories;
+        _ephoneDirtyChats.add(_ephoneChat);
+      }
+    }
+    const _ephoneRemainingSummaryMap = new Map();
+    for (const _ephoneChat of _ephoneChats) {
+      for (const _ephoneMemory of _ephoneChat.longTermMemory || []) {
+        if (
+          String(_ephoneMemory.ephoneSourceChatId || "") === _ephoneSourceId &&
+          _ephoneMemory.ephoneSummaryId &&
+          !_ephoneRemainingSummaryMap.has(
+            String(_ephoneMemory.ephoneSummaryId),
+          )
+        ) {
+          _ephoneRemainingSummaryMap.set(
+            String(_ephoneMemory.ephoneSummaryId),
+            _ephoneMemory,
+          );
+        }
+      }
+    }
+    const _ephonePositions = new Map();
+    (_ephoneSourceChat?.history || []).forEach((_ephoneMessage, _ephoneIndex) => {
+      if (_ephoneMessage.ephoneSummaryMessageId)
+        _ephonePositions.set(
+          String(_ephoneMessage.ephoneSummaryMessageId),
+          _ephoneIndex + 1,
+        );
+    });
+    const _ephoneUpdatedSummaryRanges = new Map();
+    let _ephoneNextCursor = 0;
+    for (const [_ephoneRemainingId, _ephoneMemory] of _ephoneRemainingSummaryMap) {
+      const _ephoneRangePositions = (
+        _ephoneMemory.ephoneSummaryMessageIds || []
+      )
+        .map((_ephoneMessageId) =>
+          _ephonePositions.get(String(_ephoneMessageId)),
+        )
+        .filter(Number.isFinite);
+      const _ephoneStart = _ephoneRangePositions.length
+          ? Math.min(..._ephoneRangePositions)
+          : Number(_ephoneMemory.ephoneSummaryStartIndex || 1),
+        _ephoneEnd = _ephoneRangePositions.length
+          ? Math.max(..._ephoneRangePositions)
+          : Number(_ephoneMemory.ephoneSummaryEndIndex || 0);
+      _ephoneUpdatedSummaryRanges.set(_ephoneRemainingId, {
+        start: _ephoneStart,
+        end: _ephoneEnd,
+      });
+      _ephoneNextCursor = Math.max(_ephoneNextCursor, _ephoneEnd);
+    }
+    for (const _ephoneChat of _ephoneChats) {
+      let _ephoneChanged = ![];
+      for (const _ephoneMemory of _ephoneChat.longTermMemory || []) {
+        if (
+          String(_ephoneMemory.ephoneSourceChatId || "") !== _ephoneSourceId
+        )
+          continue;
+        const _ephoneRange = _ephoneUpdatedSummaryRanges.get(
+          String(_ephoneMemory.ephoneSummaryId || ""),
+        );
+        if (_ephoneRange) {
+          _ephoneMemory.ephoneSummaryStartIndex = _ephoneRange.start;
+          _ephoneMemory.ephoneSummaryEndIndex = _ephoneRange.end;
+          _ephoneChanged = !![];
+        }
+      }
+      if (_ephoneChanged) _ephoneDirtyChats.add(_ephoneChat);
+    }
+    if (_ephoneSourceChat) {
+      _ephoneSourceChat.lastMemorySummaryIndex = _ephoneNextCursor;
+      if (_ephoneNextCursor > 0) {
+        _ephoneSourceChat.lastMemorySummaryTimestamp =
+          _ephoneSourceChat.history[_ephoneNextCursor - 1]?.timestamp || 0;
+      } else delete _ephoneSourceChat.lastMemorySummaryTimestamp;
+      _ephoneDirtyChats.add(_ephoneSourceChat);
+    }
+    try {
+      if (typeof _0x24f906.transaction === "function") {
+        await _0x24f906.transaction("rw", _0x24f906.chats, async () => {
+          for (const _ephoneChat of _ephoneDirtyChats)
+            await _0x24f906.chats.put(_ephoneChat);
+        });
+      } else {
+        for (const _ephoneChat of _ephoneDirtyChats)
+          await _0x24f906.chats.put(_ephoneChat);
+      }
+    } catch (_ephoneDeleteError) {
+      for (const [_ephoneChat, _ephoneSnapshot] of _ephoneSnapshots) {
+        _ephoneChat.history = _ephoneSnapshot.history;
+        if (_ephoneSnapshot.longTermMemory)
+          _ephoneChat.longTermMemory = _ephoneSnapshot.longTermMemory;
+        else delete _ephoneChat.longTermMemory;
+        if (_ephoneSnapshot.lastMemorySummaryIndex === undefined)
+          delete _ephoneChat.lastMemorySummaryIndex;
+        else
+          _ephoneChat.lastMemorySummaryIndex =
+            _ephoneSnapshot.lastMemorySummaryIndex;
+        if (_ephoneSnapshot.lastMemorySummaryTimestamp === undefined)
+          delete _ephoneChat.lastMemorySummaryTimestamp;
+        else
+          _ephoneChat.lastMemorySummaryTimestamp =
+            _ephoneSnapshot.lastMemorySummaryTimestamp;
+      }
+      throw _ephoneDeleteError;
+    }
+    if (String(_0x5ea3c1.activeChatId) === _ephoneSourceId) {
+      _ephoneInitializeSummaryControls(_ephoneSourceChat);
+      await _0x57e676(_ephoneSourceId);
+    }
+    await _0x4bb316();
+    _0x2ef710();
+    return !![];
+  }
+  async function _ephoneDeleteSummaryChatSegment(
+    _ephoneSourceChatId,
+    _ephoneSummaryId,
+  ) {
+    const _ephoneConfirmed = await _0x41c474(
+      "删除这段聊天记录？",
+      "将同时删除该总结生成的长期记忆，以及写入对应角色的记忆。聊天记录会从原始聊天中移除。此操作无法恢复。",
+      { confirmButtonClass: "btn-danger" },
+    );
+    if (!_ephoneConfirmed) return;
+    try {
+      const _ephoneDeleted = await _ephoneDeleteSummaryBundle(
+        _ephoneSourceChatId,
+        _ephoneSummaryId,
+        !![],
+      );
+      if (_ephoneDeleted)
+        await _0x1e5953("已删除", "聊天记录和对应的总结记忆已同步删除。");
+    } catch (_ephoneDeleteError) {
+      await _0x1e5953(
+        "删除失败",
+        _ephoneDeleteError?.message || "删除过程中发生错误，数据已恢复。",
+      );
+    }
+  }
   async function _0x3db88b(_0xe62e95, _0x13f08f) {
     const _0x18adbb = _0x3ce505,
-      _0x567ec7 = await _0x41c474("确认删除", _0x18adbb(0x283), {
+      _ephoneOwnerChat = _0x5ea3c1.chats[_0xe62e95];
+    if (!_ephoneOwnerChat?.longTermMemory) return;
+    const _ephoneMemory = _ephoneOwnerChat.longTermMemory.find(
+        (_ephoneEntry) => _ephoneEntry.timestamp === _0x13f08f,
+      ),
+      _0x567ec7 = await _0x41c474(
+        "确认删除",
+        _ephoneMemory?.ephoneSummaryId
+          ? "删除这条总结记忆后，写入各角色长期记忆的同一条总结也会删除，并将总结游标退回到仍保留的最后一段。聊天记录会保留。"
+          : _0x18adbb(0x283),
+        {
         confirmButtonClass: _0x18adbb(0x1b1f),
-      });
+        },
+      );
     if (_0x567ec7) {
+      if (_ephoneMemory?.ephoneSummaryId) {
+        try {
+          await _ephoneDeleteSummaryBundle(
+            _ephoneMemory.ephoneSourceChatId || _0xe62e95,
+            _ephoneMemory.ephoneSummaryId,
+            ![],
+          );
+        } catch (_ephoneDeleteError) {
+          await _0x1e5953(
+            "删除失败",
+            _ephoneDeleteError?.message || "删除过程中发生错误，数据已恢复。",
+          );
+        }
+        return;
+      }
       const _0x5e9107 = _0x5ea3c1[_0x18adbb(0x1255)][_0xe62e95];
       if (!_0x5e9107 || !_0x5e9107[_0x18adbb(0x1027)]) return;
       ((_0x5e9107[_0x18adbb(0x1027)] = _0x5e9107[_0x18adbb(0x1027)][
@@ -30265,11 +30521,15 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
         _0x2ef710());
     }
   }
-  async function _0x513b84() {
+  async function _0x513b84(_ephoneRange = null) {
     const _0x170750 = _0x3ce505,
       _0x1debf0 = await _0x41c474(_0x170750(0x1630), _0x170750(0xe80));
     if (!_0x1debf0) return null;
-    return await _0x495424(_0x5ea3c1[_0x170750(0x1aba)], !![]);
+    return await _0x495424(
+      _0x5ea3c1[_0x170750(0x1aba)],
+      !![],
+      _ephoneRange,
+    );
   }
   function _ephoneIsSummaryMessage(_ephoneMessage) {
     const _ephoneDecoder = _0x3ce505;
@@ -30296,6 +30556,58 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
       if (_ephoneCursor <= _ephoneHistory.length) return _ephoneCursor;
     }
     return 0;
+  }
+  function _ephoneInitializeSummaryControls(_ephoneChat) {
+    if (!_ephoneChat) return;
+    const _ephoneHistoryCount = Array.isArray(_ephoneChat.history)
+        ? _ephoneChat.history.length
+        : 0,
+      _ephoneCursor = _ephoneGetSummaryCursor(_ephoneChat),
+      _ephoneCursorInput = document.getElementById("chat-summary-cursor-input"),
+      _ephoneRangeStart = document.getElementById("chat-summary-range-start"),
+      _ephoneRangeEnd = document.getElementById("chat-summary-range-end");
+    if (_ephoneCursorInput) {
+      _ephoneCursorInput.max = String(_ephoneHistoryCount);
+      _ephoneCursorInput.value = String(_ephoneCursor);
+    }
+    if (_ephoneRangeStart) {
+      _ephoneRangeStart.max = String(_ephoneHistoryCount);
+      _ephoneRangeStart.value = String(_ephoneCursor + 1);
+    }
+    if (_ephoneRangeEnd) {
+      _ephoneRangeEnd.max = String(_ephoneHistoryCount);
+      _ephoneRangeEnd.value = String(_ephoneHistoryCount);
+    }
+    _ephoneUpdateChatSummaryStatus(_ephoneChat);
+  }
+  async function _ephoneSaveSummaryCursor() {
+    const _ephoneChatId = _0x5ea3c1[_0x3ce505(0x1aba)],
+      _ephoneChat = _0x5ea3c1[_0x3ce505(0x1255)][_ephoneChatId],
+      _ephoneInput = document.getElementById("chat-summary-cursor-input");
+    if (!_ephoneChat || !_ephoneInput) return;
+    const _ephoneHistory = Array.isArray(_ephoneChat.history)
+        ? _ephoneChat.history
+        : [],
+      _ephoneRequestedCursor = Number.parseInt(_ephoneInput.value, 10);
+    if (
+      !Number.isFinite(_ephoneRequestedCursor) ||
+      _ephoneRequestedCursor < 0 ||
+      _ephoneRequestedCursor > _ephoneHistory.length
+    ) {
+      await _0x1e5953(
+        "游标无效",
+        `请输入 0 到 ${_ephoneHistory.length} 之间的消息条数。`,
+      );
+      return;
+    }
+    _ephoneChat.lastMemorySummaryIndex = Math.floor(_ephoneRequestedCursor);
+    if (_ephoneChat.lastMemorySummaryIndex > 0) {
+      _ephoneChat.lastMemorySummaryTimestamp =
+        _ephoneHistory[_ephoneChat.lastMemorySummaryIndex - 1]?.timestamp || 0;
+    } else delete _ephoneChat.lastMemorySummaryTimestamp;
+    await _0x24f906[_0x3ce505(0x1255)]["put"](_ephoneChat);
+    _ephoneInitializeSummaryControls(_ephoneChat);
+    await _0x1e5953("已保存", "之后的自动总结会从游标位置之后开始。");
   }
   function _ephoneUpdateChatSummaryStatus(_ephoneChat) {
     const _ephoneStatus = document.getElementById("chat-settings-summary-status");
@@ -30337,16 +30649,39 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
       _ephoneChat = _0x5ea3c1[_0x3ce505(0x1255)][_ephoneChatId];
     if (!_ephoneButton || !_ephoneChat || _ephoneButton.disabled) return;
     const _ephoneOriginalText = _ephoneButton.textContent;
+    const _ephoneHistoryCount = (_ephoneChat.history || []).length,
+      _ephoneStart = Number.parseInt(
+        document.getElementById("chat-summary-range-start")?.value,
+        10,
+      ),
+      _ephoneEnd = Number.parseInt(
+        document.getElementById("chat-summary-range-end")?.value,
+        10,
+      );
+    if (
+      !Number.isFinite(_ephoneStart) ||
+      !Number.isFinite(_ephoneEnd) ||
+      _ephoneStart < 1 ||
+      _ephoneEnd < _ephoneStart ||
+      _ephoneEnd > _ephoneHistoryCount
+    ) {
+      if (_ephoneStatus)
+        _ephoneStatus.textContent = `范围无效，请填写 1 到 ${_ephoneHistoryCount} 之间的条数`;
+      return;
+    }
     _ephoneButton.disabled = true;
     _ephoneButton.classList.add("is-running");
     _ephoneButton.textContent = "正在总结…";
     if (_ephoneStatus)
-      _ephoneStatus.textContent = "正在总结尚未总结的对话…";
+      _ephoneStatus.textContent = `正在总结第 ${_ephoneStart} 到第 ${_ephoneEnd} 条…`;
     try {
-      const _ephoneResult = await _0x513b84();
+      const _ephoneResult = await _0x513b84({
+        start: _ephoneStart,
+        end: _ephoneEnd,
+      });
       if (_ephoneResult === true) {
         _ephoneUpdateChatSummaryStatus(_ephoneChat);
-        await _0x1e5953("总结完成", "最近对话已写入当前聊天的长期记忆。");
+        await _0x1e5953("总结完成", "所选范围的对话已写入当前聊天的长期记忆。");
       } else if (_ephoneResult === null) {
         if (_ephoneStatus) _ephoneStatus.textContent = "已取消总结";
       } else if (_ephoneStatus) {
@@ -31063,6 +31398,7 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
   async function _0x495424(
     _0x4f2180,
     _0x57b6ef = ![],
+    _ephoneManualRange = null,
   ) {
     const _0x5b9aea = _0x3ce505,
       _0x24ecb7 = _0x5ea3c1[_0x5b9aea(0x1255)][_0x4f2180];
@@ -31071,17 +31407,38 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
         ? _0x24ecb7.history
         : [],
       _ephoneSummaryCursor = _ephoneGetSummaryCursor(_0x24ecb7),
-      _0x277a12 = _ephoneSummaryHistory
+      _ephoneRangeStart = _ephoneManualRange
+        ? Math.max(1, Math.floor(Number(_ephoneManualRange.start) || 1))
+        : _ephoneSummaryCursor + 1,
+      _ephoneRangeEnd = _ephoneManualRange
+        ? Math.min(
+            _ephoneSummaryHistory.length,
+            Math.floor(Number(_ephoneManualRange.end) || 0),
+          )
+        : _ephoneSummaryHistory.length,
+      _ephoneStartIndex = _ephoneRangeStart - 1,
+      _ephoneEndIndex = _ephoneRangeEnd,
+      _ephoneSelectedSummaryEntries = _ephoneSummaryHistory
         .map((_ephoneMessage, _ephoneIndex) => ({
           message: _ephoneMessage,
           index: _ephoneIndex,
         }))
         .filter(
           (_ephoneEntry) =>
-            _ephoneEntry.index >= _ephoneSummaryCursor &&
+            _ephoneEntry.index >= _ephoneStartIndex &&
+            _ephoneEntry.index < _ephoneEndIndex &&
             _ephoneIsSummaryMessage(_ephoneEntry.message),
-        )
-        .map((_ephoneEntry) => _ephoneEntry.message);
+        ),
+      _0x277a12 = _ephoneSelectedSummaryEntries.map(
+        (_ephoneEntry) => _ephoneEntry.message,
+      );
+    if (
+      _ephoneRangeStart > _ephoneRangeEnd ||
+      _ephoneRangeEnd > _ephoneSummaryHistory.length
+    ) {
+      if (_0x57b6ef) alert("总结范围无效，请重新设置起始和结束条数。");
+      return ![];
+    }
     if (_0x277a12.length === 0) {
       if (_0x57b6ef) alert("没有尚未总结的新消息。");
       return ![];
@@ -31332,6 +31689,25 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
         [_0x5b9aea(0x129e)](/```$/, "")
         [_0x5b9aea(0x1833)]();
       const _0x302f7c = JSON["parse"](_0x4450c7);
+      const _ephoneSummaryId =
+          `${String(_0x4f2180)}:${Date.now()}:${Math.random().toString(36).slice(2, 9)}`,
+        _ephoneSummaryMessageIds = _ephoneSummaryHistory
+          .slice(_ephoneStartIndex, _ephoneEndIndex)
+          .map((_ephoneMessage, _ephoneOffset) => {
+            const _ephoneIndex = _ephoneStartIndex + _ephoneOffset;
+            if (!_ephoneMessage.ephoneSummaryMessageId) {
+              _ephoneMessage.ephoneSummaryMessageId =
+                `${String(_0x4f2180)}:${_ephoneIndex}:${Date.now()}:${Math.random().toString(36).slice(2, 8)}`;
+            }
+            return _ephoneMessage.ephoneSummaryMessageId;
+          }),
+        _ephoneSummaryMemoryMetadata = {
+          ephoneSummaryId: _ephoneSummaryId,
+          ephoneSourceChatId: String(_0x4f2180),
+          ephoneSummaryStartIndex: _ephoneRangeStart,
+          ephoneSummaryEndIndex: _ephoneRangeEnd,
+          ephoneSummaryMessageIds: _ephoneSummaryMessageIds,
+        };
       if (_0x24ecb7[_0x5b9aea(0x126)]) {
         if (
           _0x302f7c[_0x5b9aea(0x724)] &&
@@ -31352,6 +31728,7 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
                     window.ephoneTimeMachine?.nowMs(_0x4f2180) ??
                     Date[_0x5b9aea(0x902)](),
                   source: _0x5b9aea(0x5f8) + _0x24ecb7[_0x5b9aea(0xeda)],
+                  ..._ephoneSummaryMemoryMetadata,
                 };
                 if (!_0x32336a["longTermMemory"])
                   _0x32336a[_0x5b9aea(0x1027)] = [];
@@ -31377,6 +31754,7 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
             timestamp: Date["now"](),
             vts: window.ephoneTimeMachine?.nowMs(_0x4f2180) ?? Date["now"](),
             source: "auto",
+            ..._ephoneSummaryMemoryMetadata,
           };
           (_0x24ecb7[_0x5b9aea(0x1027)][_0x5b9aea(0x3e6)](_0x5a160c),
             await _0x24f906[_0x5b9aea(0x1255)][_0x5b9aea(0x114d)](_0x24ecb7),
@@ -31385,12 +31763,17 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
             ));
         } else throw new Error("AI返回了空的或格式不正确的总结内容。");
       }
-      ((_0x24ecb7["lastMemorySummaryTimestamp"] =
-        _0x277a12[_0x277a12.length - 1][_0x5b9aea(0x18df)]),
-        (_0x24ecb7["lastMemorySummaryIndex"] =
-          _ephoneSummaryHistory.lastIndexOf(_0x277a12[_0x277a12.length - 1]) +
-          1),
+      ((_0x24ecb7["lastMemorySummaryIndex"] = Math.max(
+          _ephoneSummaryCursor,
+          _ephoneEndIndex,
+        )),
+        (_0x24ecb7["lastMemorySummaryTimestamp"] =
+          _ephoneSummaryHistory[
+            _0x24ecb7["lastMemorySummaryIndex"] - 1
+          ]?.[_0x5b9aea(0x18df)] ||
+          _0x277a12[_0x277a12.length - 1][_0x5b9aea(0x18df)]),
         await _0x24f906[_0x5b9aea(0x1255)][_0x5b9aea(0x114d)](_0x24ecb7),
+        _ephoneInitializeSummaryControls(_0x24ecb7),
         document[_0x5b9aea(0x1023)](_0x5b9aea(0x5ed))[_0x5b9aea(0xd57)][
           "contains"
         ](_0x5b9aea(0xc26)) && _0x2ef710());
@@ -57124,7 +57507,7 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
               _0x4deb86[_0x441c56(0x17c5)][_0x441c56(0x143)] || ![]),
             (document[_0x441c56(0x1023)](_0x441c56(0x13ec))[_0x441c56(0x16b0)] =
               _0x4deb86[_0x441c56(0x17c5)]["autoMemoryInterval"] || 0x14),
-            _ephoneUpdateChatSummaryStatus(_0x4deb86),
+            _ephoneInitializeSummaryControls(_0x4deb86),
             (document[_0x441c56(0x1023)](_0x441c56(0x70e))["checked"] =
               _0x4deb86[_0x441c56(0x17c5)]["showHiddenMessages"] || ![]),
             setTimeout(() => {
@@ -60782,11 +61165,24 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
       document
         .getElementById("chat-settings-summarize-btn")
         .addEventListener("click", _ephoneSummarizeFromChatSettings),
+      document
+        .getElementById("chat-summary-cursor-save-btn")
+        .addEventListener("click", _ephoneSaveSummaryCursor),
       document[_0x274136(0x1023)]("memory-list-container")[_0x274136(0x111e)](
         "click",
         (_0x2f6445) => {
           const _0x1cfc7c = _0x274136,
-            _0x33cee2 = _0x2f6445["target"][_0x1cfc7c(0xaac)](_0x1cfc7c(0x9ee));
+            _ephoneDeleteSegment = _0x2f6445.target.closest(
+              ".ephone-delete-summary-segment-btn",
+            );
+          if (_ephoneDeleteSegment) {
+            _ephoneDeleteSummaryChatSegment(
+              _ephoneDeleteSegment.dataset.sourceChatId,
+              _ephoneDeleteSegment.dataset.summaryId,
+            );
+            return;
+          }
+          const _0x33cee2 = _0x2f6445.target[_0x1cfc7c(0xaac)](_0x1cfc7c(0x9ee));
           if (_0x33cee2) {
             _0x4e7e11(
               _0x33cee2[_0x1cfc7c(0x151)][_0x1cfc7c(0xb5c)],

@@ -2211,10 +2211,24 @@
                  <div class="chat-memory-summary-heading">
                     <div>
                        <label>记忆总结</label>
-                       <div class="settings-desc">首次总结从第 1 条到当前末尾；之后只总结上次位置之后的新对话</div>
+                        <div class="settings-desc">可查看和调整总结游标，也可指定本次总结的消息范围</div>
                     </div>
                  </div>
-                 <button type="button" id="chat-settings-summarize-btn" class="chat-memory-summary-btn">立即总结</button>
+                 <div class="chat-summary-cursor-row">
+                    <label for="chat-summary-cursor-input">上次总结到第</label>
+                    <input type="number" id="chat-summary-cursor-input" min="0" class="settings-num-input chat-summary-range-input">
+                    <span>条</span>
+                    <button type="button" id="chat-summary-cursor-save-btn" class="chat-summary-cursor-save-btn">保存游标</button>
+                 </div>
+                 <div class="settings-desc chat-summary-cursor-hint">设为 0 会从第 1 条重新总结；保存游标不会删除已有总结。</div>
+                 <div class="chat-summary-range-row">
+                    <label for="chat-summary-range-start">本次总结范围</label>
+                    <input type="number" id="chat-summary-range-start" min="1" class="settings-num-input chat-summary-range-input" aria-label="总结起始消息条数">
+                    <span>到</span>
+                    <input type="number" id="chat-summary-range-end" min="1" class="settings-num-input chat-summary-range-input" aria-label="总结结束消息条数">
+                    <span>条</span>
+                 </div>
+                 <button type="button" id="chat-settings-summarize-btn" class="chat-memory-summary-btn">总结所选范围</button>
                  <div id="chat-settings-summary-status" class="settings-desc chat-memory-summary-status" role="status" aria-live="polite">尚未生成过聊天总结</div>
             </div>
 
