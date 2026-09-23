@@ -1802,7 +1802,7 @@ function _0x161a() {
     "\x0a\x20\x20\x20\x20\x20\x20\x20\x20<input\x20type=\x22checkbox\x22\x20class=\x22playlist-item-checkbox\x22\x20style=\x22display:\x20",
     "昨晚是平安夜",
     ",\x20内容:\x20\x22",
-    "反代地址\x20(不需要添加/v1噢~)",
+    "API地址\x20(可留空直连；自定义地址不需要添加/v1)",
     "role",
     "++id,\x20albumId",
     "orderBy",
@@ -4195,7 +4195,7 @@ function _0x161a() {
     "已成功收藏\x20",
     "错误：找不到该成员的个人档案。",
     "toLowerCase",
-    "请先在API设置中配置反代地址、密钥并选择模型。",
+    "请先在API设置中配置API地址、密钥并选择模型。",
     "medium",
     "Confirm",
     "char-wallet-back-btn",
@@ -4445,7 +4445,7 @@ function _0x161a() {
     "handleFundTradeConfirm",
     "chat-lock-content",
     "summarize-recent-btn-header",
-    "请先填写对应的反代地址和密钥",
+    "请先填写对应的API地址和密钥",
     "\x0a\x20\x20\x20\x20\x20\x20\x20\x20<p\x20style=\x22text-align:left;\x20font-size:\x2014px;\x20margin:\x200\x200\x2010px\x200;\x22>\x0a\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20已为您生成\x20",
     "TA的相册",
     "”的长期记忆少于2条，无需进行精炼。",
@@ -12038,7 +12038,7 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
         (await _0x24f906[_0x484365(0x358)][_0x484365(0x97c)](_0x413ee9)),
       (_0x5ea3c1[_0x484365(0x162b)] = _0x134b56 || {
         id: _0x484365(0x1c01),
-        proxyUrl: "",
+        proxyUrl: "https://api.openai.com",
         apiKey: "",
         model: "",
         secondaryProxyUrl: "",
@@ -12058,6 +12058,8 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
         githubToken: "",
         githubFilename: _0x484365(0xe72),
       }),
+      !_0x5ea3c1["apiConfig"]["proxyUrl"] &&
+        (_0x5ea3c1["apiConfig"]["proxyUrl"] = "https://api.openai.com"),
       localStorage[_0x484365(0x1b66)]("imgbb-enabled") !== null &&
         (_0x5ea3c1["apiConfig"][_0x484365(0xb90)] =
           localStorage[_0x484365(0x1b66)](_0x484365(0xc84)) === "true"),
@@ -13381,7 +13383,7 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
     if (_0x1f44f5) {
       _0x5ea3c1[_0x29ae36(0x162b)] = {
         id: _0x29ae36(0x1c01),
-        proxyUrl: _0x1f44f5[_0x29ae36(0x125f)],
+        proxyUrl: _0x1f44f5[_0x29ae36(0x125f)] || "https://api.openai.com",
         apiKey: _0x1f44f5[_0x29ae36(0x53a)],
         model: _0x1f44f5[_0x29ae36(0x67f)],
         secondaryProxyUrl: _0x1f44f5["secondaryProxyUrl"],
@@ -30263,19 +30265,48 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
         _0x2ef710());
     }
   }
-  async function _0x513b84(_ephoneManualSummaryCount = null) {
+  async function _0x513b84() {
     const _0x170750 = _0x3ce505,
       _0x1debf0 = await _0x41c474(_0x170750(0x1630), _0x170750(0xe80));
     if (!_0x1debf0) return null;
-    return await _0x495424(
-      _0x5ea3c1[_0x170750(0x1aba)],
-      !![],
-      _ephoneManualSummaryCount,
+    return await _0x495424(_0x5ea3c1[_0x170750(0x1aba)], !![]);
+  }
+  function _ephoneIsSummaryMessage(_ephoneMessage) {
+    const _ephoneDecoder = _0x3ce505;
+    return (
+      !_ephoneMessage[_ephoneDecoder(0x7ca)] ||
+      (_ephoneMessage.role === _ephoneDecoder(0xd77) &&
+        _ephoneMessage.content[_ephoneDecoder(0x1507)](
+          _ephoneDecoder(0x19f8),
+        ))
     );
+  }
+  function _ephoneGetSummaryCursor(_ephoneChat) {
+    // Store the number of history entries already covered; the next pass starts at this offset.
+    const _ephoneHistory = Array.isArray(_ephoneChat?.history)
+        ? _ephoneChat.history
+        : [],
+      _ephoneStoredCursor = _ephoneChat?.lastMemorySummaryIndex;
+    if (
+      _ephoneStoredCursor !== undefined &&
+      _ephoneStoredCursor !== null &&
+      Number.isFinite(Number(_ephoneStoredCursor))
+    ) {
+      const _ephoneCursor = Math.max(0, Math.floor(Number(_ephoneStoredCursor)));
+      if (_ephoneCursor <= _ephoneHistory.length) return _ephoneCursor;
+    }
+    return 0;
   }
   function _ephoneUpdateChatSummaryStatus(_ephoneChat) {
     const _ephoneStatus = document.getElementById("chat-settings-summary-status");
     if (!_ephoneStatus || !_ephoneChat) return;
+    if (
+      _ephoneChat.lastMemorySummaryIndex === undefined ||
+      _ephoneChat.lastMemorySummaryIndex === null
+    ) {
+      _ephoneStatus.textContent = "首次总结将从第 1 条消息开始";
+      return;
+    }
     const _ephoneLastSummary = Number(_ephoneChat.lastMemorySummaryTimestamp);
     if (!Number.isFinite(_ephoneLastSummary) || _ephoneLastSummary <= 0) {
       _ephoneStatus.textContent = "尚未生成过聊天总结";
@@ -30296,7 +30327,8 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
       window.ephoneTimeMachine?.formatDateTime(_ephoneVirtualSummaryTime, {
         withWeekday: true,
       }) || new Date(_ephoneVirtualSummaryTime).toLocaleString("zh-CN");
-    _ephoneStatus.textContent = `上次总结到：${_ephoneFormattedSummaryTime}`;
+    const _ephoneSummaryCursor = _ephoneGetSummaryCursor(_ephoneChat);
+    _ephoneStatus.textContent = `上次总结到第 ${_ephoneSummaryCursor} 条 · ${_ephoneFormattedSummaryTime}`;
   }
   async function _ephoneSummarizeFromChatSettings() {
     const _ephoneButton = document.getElementById("chat-settings-summarize-btn"),
@@ -30304,19 +30336,14 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
       _ephoneChatId = _0x5ea3c1[_0x3ce505(0x1aba)],
       _ephoneChat = _0x5ea3c1[_0x3ce505(0x1255)][_ephoneChatId];
     if (!_ephoneButton || !_ephoneChat || _ephoneButton.disabled) return;
-    const _ephoneCountInput = document.getElementById("auto-memory-interval"),
-      _ephoneRequestedCount = Number.parseInt(_ephoneCountInput?.value, 10),
-      _ephoneSummaryCount = Number.isFinite(_ephoneRequestedCount)
-        ? Math.max(5, Math.min(500, _ephoneRequestedCount))
-        : 20,
-      _ephoneOriginalText = _ephoneButton.textContent;
+    const _ephoneOriginalText = _ephoneButton.textContent;
     _ephoneButton.disabled = true;
     _ephoneButton.classList.add("is-running");
     _ephoneButton.textContent = "正在总结…";
     if (_ephoneStatus)
-      _ephoneStatus.textContent = `正在总结最近 ${_ephoneSummaryCount} 条对话…`;
+      _ephoneStatus.textContent = "正在总结尚未总结的对话…";
     try {
-      const _ephoneResult = await _0x513b84(_ephoneSummaryCount);
+      const _ephoneResult = await _0x513b84();
       if (_ephoneResult === true) {
         _ephoneUpdateChatSummaryStatus(_ephoneChat);
         await _0x1e5953("总结完成", "最近对话已写入当前聊天的长期记忆。");
@@ -30335,12 +30362,10 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
     const _0x1620c3 = _0x3ce505,
       _0x302a5a = _0x5ea3c1[_0x1620c3(0x1255)][_0x2b944e];
     if (!_0x302a5a || !_0x302a5a[_0x1620c3(0x17c5)][_0x1620c3(0x143)]) return;
-    const _0x60ab1d = _0x302a5a[_0x1620c3(0x3e5)] || 0x0,
-      _0xc65ad9 = _0x302a5a[_0x1620c3(0x8e6)]["filter"](
-        (_0x753d3e) =>
-          _0x753d3e[_0x1620c3(0x18df)] > _0x60ab1d &&
-          !_0x753d3e[_0x1620c3(0x7ca)],
-      );
+    const _0xephoneCursor = _ephoneGetSummaryCursor(_0x302a5a),
+      _0xc65ad9 = _0x302a5a[_0x1620c3(0x8e6)]
+        .slice(_0xephoneCursor)
+        .filter(_ephoneIsSummaryMessage);
     _0xc65ad9["length"] >= _0x302a5a[_0x1620c3(0x17c5)][_0x1620c3(0x59a)] &&
       (console[_0x1620c3(0x13f0)](
         _0x1620c3(0x18ad) +
@@ -31038,36 +31063,27 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
   async function _0x495424(
     _0x4f2180,
     _0x57b6ef = ![],
-    _ephoneManualSummaryCount = null,
   ) {
     const _0x5b9aea = _0x3ce505,
       _0x24ecb7 = _0x5ea3c1[_0x5b9aea(0x1255)][_0x4f2180];
     if (!_0x24ecb7) return ![];
-    const _0x473957 = _0x24ecb7[_0x5b9aea(0x3e5)] || 0x0,
-      _ephoneSummaryCount =
-        Number.isFinite(Number(_ephoneManualSummaryCount)) &&
-        Number(_ephoneManualSummaryCount) >= 0x5
-          ? Math.floor(Number(_ephoneManualSummaryCount))
-          : _0x24ecb7[_0x5b9aea(0x17c5)][_0x5b9aea(0x59a)] || 0x14,
-      _0x277a12 = _0x57b6ef
-        ? _0x24ecb7["history"]
-            [
-              _0x5b9aea(0x1916)
-            ]((_0x51153c) => !_0x51153c[_0x5b9aea(0x7ca)] || (_0x51153c["role"] === _0x5b9aea(0xd77) && _0x51153c[_0x5b9aea(0xfd7)][_0x5b9aea(0x1507)](_0x5b9aea(0x19f8))))
-            [
-              _0x5b9aea(0x1655)
-            ](-_ephoneSummaryCount)
-        : _0x24ecb7[_0x5b9aea(0x8e6)][_0x5b9aea(0x1916)](
-            (_0xdfda61) =>
-              _0xdfda61["timestamp"] > _0x473957 &&
-              (!_0xdfda61["isHidden"] ||
-                (_0xdfda61[_0x5b9aea(0x4b6)] === _0x5b9aea(0xd77) &&
-                  _0xdfda61[_0x5b9aea(0xfd7)][_0x5b9aea(0x1507)](
-                    _0x5b9aea(0x19f8),
-                  ))),
-          );
-    if (_0x277a12[_0x5b9aea(0xa5d)] < 0x5) {
-      if (_0x57b6ef) alert("最近的消息太少，无法进行有意义的总结。");
+    const _ephoneSummaryHistory = Array.isArray(_0x24ecb7.history)
+        ? _0x24ecb7.history
+        : [],
+      _ephoneSummaryCursor = _ephoneGetSummaryCursor(_0x24ecb7),
+      _0x277a12 = _ephoneSummaryHistory
+        .map((_ephoneMessage, _ephoneIndex) => ({
+          message: _ephoneMessage,
+          index: _ephoneIndex,
+        }))
+        .filter(
+          (_ephoneEntry) =>
+            _ephoneEntry.index >= _ephoneSummaryCursor &&
+            _ephoneIsSummaryMessage(_ephoneEntry.message),
+        )
+        .map((_ephoneEntry) => _ephoneEntry.message);
+    if (_0x277a12.length === 0) {
+      if (_0x57b6ef) alert("没有尚未总结的新消息。");
       return ![];
     }
     const _0x306f96 =
@@ -31370,7 +31386,10 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
         } else throw new Error("AI返回了空的或格式不正确的总结内容。");
       }
       ((_0x24ecb7["lastMemorySummaryTimestamp"] =
-        _0x277a12["slice"](-0x1)[0x0][_0x5b9aea(0x18df)]),
+        _0x277a12[_0x277a12.length - 1][_0x5b9aea(0x18df)]),
+        (_0x24ecb7["lastMemorySummaryIndex"] =
+          _ephoneSummaryHistory.lastIndexOf(_0x277a12[_0x277a12.length - 1]) +
+          1),
         await _0x24f906[_0x5b9aea(0x1255)][_0x5b9aea(0x114d)](_0x24ecb7),
         document[_0x5b9aea(0x1023)](_0x5b9aea(0x5ed))[_0x5b9aea(0xd57)][
           "contains"
@@ -56015,7 +56034,7 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
           ((_0x5ea3c1[_0x31a9f5(0x162b)][_0x31a9f5(0x125f)] =
             document["getElementById"]("proxy-url")[_0x31a9f5(0x16b0)][
               _0x31a9f5(0x1833)
-            ]()),
+            ]() || "https://api.openai.com"),
             (_0x5ea3c1[_0x31a9f5(0x162b)][_0x31a9f5(0x53a)] =
               document[_0x31a9f5(0x1023)]("api-key")[_0x31a9f5(0x16b0)][
                 "trim"

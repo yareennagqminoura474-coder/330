@@ -676,9 +676,9 @@
 
             <!-- 2. 输入框部分 -->
             <div class="settings-item">
-                <label>反代地址</label>
+                <label>API 地址（可选）</label>
                 <div class="settings-right">
-                    <input type="text" id="proxy-url" placeholder="https://api.openai.com">
+                    <input type="text" id="proxy-url" placeholder="留空直连 https://api.openai.com">
                 </div>
             </div>
             <div class="settings-item">
@@ -700,7 +700,7 @@
         <div class="settings-header" data-lang-key="apiSecondarySettings">副 API (长记忆总结)</div>
         <div class="settings-section">
             <div class="settings-item">
-                <label>反代地址</label>
+                <label>副 API 地址（可选）</label>
                 <div class="settings-right">
                     <input type="text" id="secondary-proxy-url" placeholder="留空使用主API">
                 </div>
@@ -2211,7 +2211,7 @@
                  <div class="chat-memory-summary-heading">
                     <div>
                        <label>记忆总结</label>
-                       <div class="settings-desc">按上方条数总结最近对话，并写入当前聊天的长期记忆</div>
+                       <div class="settings-desc">首次总结从第 1 条到当前末尾；之后只总结上次位置之后的新对话</div>
                     </div>
                  </div>
                  <button type="button" id="chat-settings-summarize-btn" class="chat-memory-summary-btn">立即总结</button>
@@ -4218,7 +4218,6 @@
 
 </body>
 </html>
-
 
 
 
