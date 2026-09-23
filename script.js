@@ -7706,6 +7706,21 @@ let activeMessageTimestamp = null,
   editingNpcId = null,
   pendingBackupData = null;
 const GEMINI_API_URL = _0xca61b6(0xbdc);
+function _ephoneNormalizeApiBaseUrl(_ephoneUrl) {
+  let _ephoneBase = String(_ephoneUrl || "").trim();
+  if (!_ephoneBase) return "";
+  _ephoneBase = _ephoneBase.replace(/\/+$/, "");
+  if (
+    /^https?:\/\/generativelanguage\.googleapis\.com(?:\/v1beta(?:\/models)?)?$/i.test(
+      _ephoneBase,
+    )
+  )
+    return GEMINI_API_URL;
+  return _ephoneBase
+    .replace(/\/(?:v1\/)?(?:chat\/completions|models)$/i, "")
+    .replace(/\/v1$/i, "")
+    .replace(/\/+$/, "");
+}
 function findBestStickerMatch(_0x942096, _0x270e1f) {
   const _0x2a468d = _0xca61b6;
   if (!_0x942096 || !_0x270e1f || _0x270e1f["length"] === 0x0) return null;
@@ -12060,6 +12075,12 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
       }),
       !_0x5ea3c1["apiConfig"]["proxyUrl"] &&
         (_0x5ea3c1["apiConfig"]["proxyUrl"] = "https://api.openai.com"),
+      (_0x5ea3c1["apiConfig"]["proxyUrl"] =
+        _ephoneNormalizeApiBaseUrl(_0x5ea3c1["apiConfig"]["proxyUrl"])),
+      (_0x5ea3c1["apiConfig"]["secondaryProxyUrl"] =
+        _ephoneNormalizeApiBaseUrl(
+          _0x5ea3c1["apiConfig"]["secondaryProxyUrl"],
+        )),
       localStorage[_0x484365(0x1b66)]("imgbb-enabled") !== null &&
         (_0x5ea3c1["apiConfig"][_0x484365(0xb90)] =
           localStorage[_0x484365(0x1b66)](_0x484365(0xc84)) === "true"),
@@ -13311,10 +13332,12 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
     let _0x651b3c = null;
     for (const _0xe923be of _0xfa9e0) {
       if (
-        _0xe923be[_0x419cbb(0x125f)] === _0x40b6a9["proxyUrl"] &&
+        _ephoneNormalizeApiBaseUrl(_0xe923be[_0x419cbb(0x125f)]) ===
+          _ephoneNormalizeApiBaseUrl(_0x40b6a9["proxyUrl"]) &&
         _0xe923be[_0x419cbb(0x53a)] === _0x40b6a9[_0x419cbb(0x53a)] &&
         _0xe923be[_0x419cbb(0x67f)] === _0x40b6a9[_0x419cbb(0x67f)] &&
-        _0xe923be[_0x419cbb(0x1333)] === _0x40b6a9["secondaryProxyUrl"] &&
+        _ephoneNormalizeApiBaseUrl(_0xe923be[_0x419cbb(0x1333)]) ===
+          _ephoneNormalizeApiBaseUrl(_0x40b6a9["secondaryProxyUrl"]) &&
         _0xe923be["secondaryApiKey"] === _0x40b6a9[_0x419cbb(0xd79)] &&
         _0xe923be[_0x419cbb(0x3c5)] === _0x40b6a9[_0x419cbb(0x3c5)] &&
         (_0xe923be[_0x419cbb(0x1105)] || "") ===
@@ -13383,10 +13406,14 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
     if (_0x1f44f5) {
       _0x5ea3c1[_0x29ae36(0x162b)] = {
         id: _0x29ae36(0x1c01),
-        proxyUrl: _0x1f44f5[_0x29ae36(0x125f)] || "https://api.openai.com",
+        proxyUrl: _ephoneNormalizeApiBaseUrl(
+          _0x1f44f5[_0x29ae36(0x125f)] || "https://api.openai.com",
+        ),
         apiKey: _0x1f44f5[_0x29ae36(0x53a)],
         model: _0x1f44f5[_0x29ae36(0x67f)],
-        secondaryProxyUrl: _0x1f44f5["secondaryProxyUrl"],
+        secondaryProxyUrl: _ephoneNormalizeApiBaseUrl(
+          _0x1f44f5["secondaryProxyUrl"],
+        ),
         secondaryApiKey: _0x1f44f5[_0x29ae36(0xd79)],
         secondaryModel: _0x1f44f5[_0x29ae36(0x3c5)],
         minimaxGroupId: _0x1f44f5["minimaxGroupId"],
@@ -13465,16 +13492,20 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
     if (!_0x216b19 || !_0x216b19[_0x5bc5e2(0x1833)]()) return;
     const _0x268c76 = {
         name: _0x216b19["trim"](),
-        proxyUrl: document[_0x5bc5e2(0x1023)](_0x5bc5e2(0x1a2))[
-          _0x5bc5e2(0x16b0)
-        ][_0x5bc5e2(0x1833)](),
+        proxyUrl: _ephoneNormalizeApiBaseUrl(
+          document[_0x5bc5e2(0x1023)](_0x5bc5e2(0x1a2))[
+            _0x5bc5e2(0x16b0)
+          ][_0x5bc5e2(0x1833)](),
+        ),
         apiKey: document[_0x5bc5e2(0x1023)](_0x5bc5e2(0xf8a))[
           _0x5bc5e2(0x16b0)
         ][_0x5bc5e2(0x1833)](),
         model: document[_0x5bc5e2(0x1023)](_0x5bc5e2(0xa2f))[_0x5bc5e2(0x16b0)],
-        secondaryProxyUrl: document["getElementById"]("secondary-proxy-url")[
-          _0x5bc5e2(0x16b0)
-        ][_0x5bc5e2(0x1833)](),
+        secondaryProxyUrl: _ephoneNormalizeApiBaseUrl(
+          document["getElementById"]("secondary-proxy-url")[
+            _0x5bc5e2(0x16b0)
+          ][_0x5bc5e2(0x1833)](),
+        ),
         secondaryApiKey: document["getElementById"](_0x5bc5e2(0x317))[
           _0x5bc5e2(0x16b0)
         ][_0x5bc5e2(0x1833)](),
@@ -56392,32 +56423,13 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
       document[_0x274136(0x1023)](_0x274136(0x1247))[_0x274136(0x111e)](
         _0x274136(0x34e),
         async () => {
-          const _0x31a9f5 = _0x274136,
-            _0x4ea124 = document[_0x31a9f5(0x1023)](_0x31a9f5(0x1a2))["value"][
-              _0x31a9f5(0x1833)
-            ](),
-            _0x5473d6 = document[_0x31a9f5(0x1023)](_0x31a9f5(0x14a6))[
-              _0x31a9f5(0x16b0)
-            ][_0x31a9f5(0x1833)](),
-            _0x5a1f77 = [
-              _0x31a9f5(0xecd),
-              _0x31a9f5(0x130c),
-              _0x31a9f5(0x11d2),
-            ];
-          if (
-            _0x5a1f77[_0x31a9f5(0x4bf)](
-              (_0x10fabc) =>
-                _0x4ea124[_0x31a9f5(0x1507)](_0x10fabc) ||
-                _0x5473d6[_0x31a9f5(0x1507)](_0x10fabc),
-            )
-          ) {
-            await _0x1e5953("禁止操作", _0x31a9f5(0x13f1));
-            return;
-          }
+          const _0x31a9f5 = _0x274136;
           ((_0x5ea3c1[_0x31a9f5(0x162b)][_0x31a9f5(0x125f)] =
-            document["getElementById"]("proxy-url")[_0x31a9f5(0x16b0)][
-              _0x31a9f5(0x1833)
-            ]() || "https://api.openai.com"),
+            _ephoneNormalizeApiBaseUrl(
+              document["getElementById"]("proxy-url")[_0x31a9f5(0x16b0)][
+                _0x31a9f5(0x1833)
+              ]() || "https://api.openai.com",
+            )),
             (_0x5ea3c1[_0x31a9f5(0x162b)][_0x31a9f5(0x53a)] =
               document[_0x31a9f5(0x1023)]("api-key")[_0x31a9f5(0x16b0)][
                 "trim"
@@ -56454,9 +56466,12 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
               _0x31a9f5(0x1b25),
               _0x5ea3c1[_0x31a9f5(0x162b)][_0x31a9f5(0xe40)],
             ),
-            (_0x5ea3c1["apiConfig"][_0x31a9f5(0x1333)] = document[
-              _0x31a9f5(0x1023)
-            ]("secondary-proxy-url")[_0x31a9f5(0x16b0)]["trim"]()),
+            (_0x5ea3c1["apiConfig"][_0x31a9f5(0x1333)] =
+              _ephoneNormalizeApiBaseUrl(
+                document[_0x31a9f5(0x1023)]("secondary-proxy-url")[
+                  _0x31a9f5(0x16b0)
+                ]["trim"](),
+              )),
             (_0x5ea3c1["apiConfig"][_0x31a9f5(0xd79)] = document[
               _0x31a9f5(0x1023)
             ](_0x31a9f5(0x317))[_0x31a9f5(0x16b0)][_0x31a9f5(0x1833)]()),
@@ -56625,35 +56640,62 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
       const _0x35c0bf = _0x274136,
         _0x412c5d =
           document[_0x35c0bf(0x1023)](_0x3bc716)["value"][_0x35c0bf(0x1833)](),
+        _ephoneNormalizedUrl = _ephoneNormalizeApiBaseUrl(_0x412c5d),
         _0x4cb343 =
           document[_0x35c0bf(0x1023)](_0x2d35e1)[_0x35c0bf(0x16b0)][
             _0x35c0bf(0x1833)
-          ](),
-        _0x4eb148 = [_0x35c0bf(0xecd), _0x35c0bf(0x11d2)];
-      if (_0x4eb148["some"]((_0x116e5c) => _0x412c5d["includes"](_0x116e5c))) {
-        alert(_0x35c0bf(0x1465));
-        return;
-      }
+          ]();
       if (!_0x412c5d || !_0x4cb343) return alert(_0x35c0bf(0xf08));
       try {
-        let _0x56776b = _0x412c5d === GEMINI_API_URL;
+        let _0x56776b = _ephoneNormalizedUrl === GEMINI_API_URL;
+        document[_0x35c0bf(0x1023)](_0x3bc716)["value"] =
+          _ephoneNormalizedUrl;
         const _0x45b28c = await fetch(
           _0x56776b
             ? GEMINI_API_URL + _0x35c0bf(0x1a85) + getRandomValue(_0x4cb343)
-            : _0x412c5d + "/v1/models",
+            : _ephoneNormalizedUrl + "/v1/models",
           _0x56776b
             ? undefined
             : { headers: { Authorization: "Bearer\x20" + _0x4cb343 } },
         );
-        if (!_0x45b28c["ok"]) throw new Error(_0x35c0bf(0x84e));
-        const _0x1f4233 = await _0x45b28c[_0x35c0bf(0x711)]();
-        let _0x4dd41b = _0x56776b
-          ? _0x1f4233[_0x35c0bf(0x16f7)][_0x35c0bf(0xbc5)]((_0x23594f) => ({
-              id:
-                _0x23594f[_0x35c0bf(0xeda)][_0x35c0bf(0xe78)]("/")[0x1] ||
-                _0x23594f[_0x35c0bf(0xeda)],
-            }))
-          : _0x1f4233[_0x35c0bf(0x739)];
+        if (!_0x45b28c["ok"]) {
+          const _ephoneErrorBody = await _0x45b28c.text().catch(() => ""),
+            _ephoneErrorDetail = _ephoneErrorBody.trim().slice(0, 500);
+          throw new Error(
+            `HTTP ${_0x45b28c.status}${_0x45b28c.statusText ? " " + _0x45b28c.statusText : ""}${_ephoneErrorDetail ? ": " + _ephoneErrorDetail : ""}`,
+          );
+        }
+        const _0x1f4233 = await _0x45b28c[_0x35c0bf(0x711)](),
+          _ephoneRawModels = _0x56776b
+            ? _0x1f4233.models
+            : Array.isArray(_0x1f4233)
+              ? _0x1f4233
+              : Array.isArray(_0x1f4233?.data)
+                ? _0x1f4233.data
+                : Array.isArray(_0x1f4233?.models)
+                  ? _0x1f4233.models
+                  : Array.isArray(_0x1f4233?.model_list)
+                    ? _0x1f4233.model_list
+                    : null;
+        if (!Array.isArray(_ephoneRawModels))
+          throw new Error(
+            "接口返回中没有可识别的模型列表（支持 data、models 或数组格式）",
+          );
+        let _0x4dd41b = _ephoneRawModels
+          .map((_ephoneModel) => {
+            const _ephoneModelId =
+              typeof _ephoneModel === "string"
+                ? _ephoneModel
+                : _ephoneModel?.id ||
+                  _ephoneModel?.name ||
+                  _ephoneModel?.model;
+            return _ephoneModelId
+              ? { id: String(_ephoneModelId).replace(/^models\//, "") }
+              : null;
+          })
+          .filter((_ephoneModel) => _ephoneModel?.id);
+        if (_0x4dd41b.length === 0)
+          throw new Error("接口成功响应，但没有返回可用模型");
         const _0x5b482e = document[_0x35c0bf(0x1023)](_0x318c8a);
         _0x5b482e[_0x35c0bf(0x1bf6)] = "";
         const _0x42db4 =
@@ -56671,7 +56713,15 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
           _ephoneRestoreApiPresetModel(_0x318c8a, _0x42db4),
           alert(_0x35c0bf(0x14ac)));
       } catch (_0x313626) {
-        alert(_0x35c0bf(0x2d8) + _0x313626[_0x35c0bf(0xeb4)]);
+        const _ephoneFetchError = String(
+            _0x313626?.message || _0x313626 || "未知错误",
+          ),
+          _ephoneNetworkHint = /failed to fetch|load failed|networkerror|fetch failed/i.test(
+            _ephoneFetchError,
+          )
+            ? "\n浏览器无法读取 API 响应，通常是网络不可达或服务端未允许跨域（CORS）。请检查 API 地址和网络；不要将 API Key 填入不可信的公共代理。"
+            : "";
+        alert(_0x35c0bf(0x2d8) + _ephoneFetchError + _ephoneNetworkHint);
       }
     }
     (document[_0x274136(0x1023)](_0x274136(0x18de))["addEventListener"](
