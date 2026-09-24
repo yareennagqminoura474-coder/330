@@ -7751,12 +7751,14 @@ async function _ephoneApiFetch(_ephoneUrl, _ephoneOptions = {}) {
   const _ephoneCapacitor = window.Capacitor;
   const _ephoneNativeHttp =
     window.CapacitorHttp || _ephoneCapacitor?.Plugins?.CapacitorHttp;
+  let _ephoneTransport = "browser fetch";
   try {
     if (
       _ephoneCapacitor?.isNativePlatform?.() &&
       typeof _ephoneNativeHttp?.request === "function" &&
       !_ephoneOptions.stream
     ) {
+      _ephoneTransport = "CapacitorHttp";
       let _ephoneData = _ephoneOptions.body;
       if (typeof _ephoneData === "string") {
         try {
@@ -7843,12 +7845,23 @@ async function _ephoneApiFetch(_ephoneUrl, _ephoneOptions = {}) {
         return String(_ephoneUrl || "").slice(0, 120);
       }
     })();
+    const _ephonePath = (() => {
+      try {
+        return new URL(_ephoneUrl).pathname;
+      } catch {
+        return "unknown";
+      }
+    })();
+    const _ephonePayloadChars =
+      typeof _ephoneOptions.body === "string"
+        ? `, payload_chars=${_ephoneOptions.body.length}`
+        : "";
     const _ephoneMessage = String(
       _ephoneError?.message || _ephoneError || "unknown error",
     );
     const _ephoneOnline = navigator.onLine ? "online" : "offline";
     const _ephoneWrappedError = new Error(
-      `API ${_ephoneMethod} network error: ${_ephoneMessage} (host=${_ephoneHost}, browser=${_ephoneOnline}). If this is a browser request, the browser may be blocking it because of CORS, DNS/TLS, or network policy; a failed fetch alone cannot distinguish those causes.`,
+      `API ${_ephoneMethod} network error: ${_ephoneMessage} (host=${_ephoneHost}, path=${_ephonePath}, transport=${_ephoneTransport}, browser=${_ephoneOnline}${_ephonePayloadChars}). A failed request before receiving an HTTP response can be caused by CORS, DNS/TLS, network policy, or connection failure.`,
     );
     _ephoneWrappedError.cause = _ephoneError;
     throw _ephoneWrappedError;

@@ -1,13 +1,13 @@
 // Service Worker 文件 (sw.js) - 强力保活版
 
 // 缓存版本号
-const CACHE_VERSION = "v1.7.42"; // 版本号+1
+const CACHE_VERSION = "v1.7.43"; // 版本号+1
 const CACHE_NAME = `ephone-cache-${CACHE_VERSION}`;
 
 const URLS_TO_CACHE = [
   "./index.html",
   "./style.css",
-  "./script.js?v=1.7.42",
+  "./script.js?v=1.7.43",
   "./narration-mode.js",
   "./time-machine.js",
   "https://unpkg.com/dexie/dist/dexie.js",
