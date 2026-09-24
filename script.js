@@ -19927,7 +19927,29 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
             });
       } catch (_0x3a545a) {
         if (_0x3a545a?.name === "AbortError") throw _0x3a545a;
-        throw new Error("网络请求失败:\x20" + _0x3a545a["message"]);
+        const _ephoneNetworkDetail = String(
+            _0x3a545a?.message || _0x3a545a || "未知错误",
+          ),
+          _ephoneApiHost = (() => {
+            try {
+              return new URL(_0x275228).host;
+            } catch {
+              return "unknown";
+            }
+          })(),
+          _ephoneOnlineState =
+            typeof navigator === "undefined"
+              ? "unknown"
+              : navigator.onLine
+                ? "online"
+                : "offline";
+        throw new Error(
+          "网络请求失败:\x20" +
+            _ephoneNetworkDetail +
+            (_ephoneNetworkDetail.includes("host=")
+              ? ""
+              : ` (host=${_ephoneApiHost}, browser=${_ephoneOnlineState})`),
+        );
       }
       if (!_0x114828["ok"]) {
         let _0x3ebff3 =
