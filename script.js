@@ -7721,6 +7721,139 @@ function _ephoneNormalizeApiBaseUrl(_ephoneUrl) {
     .replace(/\/v1$/i, "")
     .replace(/\/+$/, "");
 }
+function _ephoneBuildApiEndpoint(_ephoneUrl, _ephoneEndpoint) {
+  let _ephoneRaw = String(_ephoneUrl || "").trim();
+  if (!_ephoneRaw) return "";
+  const _ephoneHash = _ephoneRaw.indexOf("#");
+  if (_ephoneHash >= 0) _ephoneRaw = _ephoneRaw.slice(0, _ephoneHash);
+  const _ephoneQueryIndex = _ephoneRaw.indexOf("?");
+  const _ephoneQuery =
+    _ephoneQueryIndex >= 0 ? _ephoneRaw.slice(_ephoneQueryIndex) : "";
+  let _ephonePath =
+    _ephoneQueryIndex >= 0
+      ? _ephoneRaw.slice(0, _ephoneQueryIndex)
+      : _ephoneRaw;
+  _ephonePath = _ephonePath
+    .trim()
+    .replace(/\/+$/, "")
+    .replace(/\/(?:chat\/completions|models)$/i, "")
+    .replace(/\/v1$/i, "");
+  const _ephoneNormalized = _ephoneNormalizeApiBaseUrl(_ephonePath);
+  if (!_ephoneNormalized) return "";
+  const _ephoneRoute = String(_ephoneEndpoint || "").replace(/^\/+/, "");
+  const _ephoneVersionedBase = /\/v\d+(?:beta)?$/i.test(_ephoneNormalized)
+    ? _ephoneNormalized
+    : _ephoneNormalized + "/v1";
+  return _ephoneVersionedBase + "/" + _ephoneRoute + _ephoneQuery;
+}
+async function _ephoneApiFetch(_ephoneUrl, _ephoneOptions = {}) {
+  const _ephoneMethod = String(_ephoneOptions.method || "GET").toUpperCase();
+  const _ephoneCapacitor = window.Capacitor;
+  const _ephoneNativeHttp =
+    window.CapacitorHttp || _ephoneCapacitor?.Plugins?.CapacitorHttp;
+  try {
+    if (
+      _ephoneCapacitor?.isNativePlatform?.() &&
+      typeof _ephoneNativeHttp?.request === "function" &&
+      !_ephoneOptions.stream
+    ) {
+      let _ephoneData = _ephoneOptions.body;
+      if (typeof _ephoneData === "string") {
+        try {
+          _ephoneData = JSON.parse(_ephoneData);
+        } catch {}
+      }
+      const _ephoneNativeRequest = _ephoneNativeHttp.request({
+        url: _ephoneUrl,
+        method: _ephoneMethod,
+        headers: _ephoneOptions.headers || {},
+        ...(typeof _ephoneData === "undefined" ? {} : { data: _ephoneData }),
+        responseType: "json",
+      });
+      const _ephoneSignal = _ephoneOptions.signal;
+      let _ephoneResponse;
+      if (_ephoneSignal) {
+        if (_ephoneSignal.aborted)
+          throw Object.assign(new Error("Request aborted"), {
+            name: "AbortError",
+          });
+        _ephoneResponse = await new Promise((resolve, reject) => {
+          const _ephoneAbort = () =>
+            reject(
+              Object.assign(new Error("Request aborted"), {
+                name: "AbortError",
+              }),
+            );
+          _ephoneSignal.addEventListener("abort", _ephoneAbort, {
+            once: true,
+          });
+          _ephoneNativeRequest
+            .then(resolve, reject)
+            .finally(() =>
+              _ephoneSignal.removeEventListener("abort", _ephoneAbort),
+            );
+        });
+      } else {
+        _ephoneResponse = await _ephoneNativeRequest;
+      }
+      const _ephoneResponseData = _ephoneResponse?.data;
+      const _ephoneHeaders = _ephoneResponse?.headers || {};
+      const _ephoneGetHeader = (_ephoneName) => {
+        const _ephoneKey = Object.keys(_ephoneHeaders).find(
+          (_ephoneHeader) =>
+            _ephoneHeader.toLowerCase() === _ephoneName.toLowerCase(),
+        );
+        return _ephoneKey ? String(_ephoneHeaders[_ephoneKey]) : null;
+      };
+      const _ephoneAsText = () =>
+        typeof _ephoneResponseData === "string"
+          ? _ephoneResponseData
+          : JSON.stringify(_ephoneResponseData ?? null);
+      const _ephoneAdapter = {
+        ok:
+          Number(_ephoneResponse?.status) >= 200 &&
+          Number(_ephoneResponse?.status) < 300,
+        status: Number(_ephoneResponse?.status) || 0,
+        statusText: String(_ephoneResponse?.statusText || ""),
+        headers: { get: _ephoneGetHeader },
+        async json() {
+          if (typeof _ephoneResponseData === "string") {
+            try {
+              return JSON.parse(_ephoneResponseData);
+            } catch {}
+          }
+          return _ephoneResponseData;
+        },
+        async text() {
+          return _ephoneAsText();
+        },
+        clone() {
+          return _ephoneAdapter;
+        },
+      };
+      return _ephoneAdapter;
+    }
+    return await fetch(_ephoneUrl, _ephoneOptions);
+  } catch (_ephoneError) {
+    if (_ephoneError?.name === "AbortError") throw _ephoneError;
+    const _ephoneHost = (() => {
+      try {
+        return new URL(_ephoneUrl).host;
+      } catch {
+        return String(_ephoneUrl || "").slice(0, 120);
+      }
+    })();
+    const _ephoneMessage = String(
+      _ephoneError?.message || _ephoneError || "unknown error",
+    );
+    const _ephoneOnline = navigator.onLine ? "online" : "offline";
+    const _ephoneWrappedError = new Error(
+      `API ${_ephoneMethod} network error: ${_ephoneMessage} (host=${_ephoneHost}, browser=${_ephoneOnline}). If this is a browser request, the browser may be blocking it because of CORS, DNS/TLS, or network policy; a failed fetch alone cannot distinguish those causes.`,
+    );
+    _ephoneWrappedError.cause = _ephoneError;
+    throw _ephoneWrappedError;
+  }
+}
 function findBestStickerMatch(_0x942096, _0x270e1f) {
   const _0x2a468d = _0xca61b6;
   if (!_0x942096 || !_0x270e1f || _0x270e1f["length"] === 0x0) return null;
@@ -9276,7 +9409,9 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
         ],
         max_tokens: 0x32,
       };
-      _0x28de7b = await fetch(_0xf35a75 + _0xa0dee9(0x1905), {
+      _0x28de7b = await _ephoneApiFetch(
+        _ephoneBuildApiEndpoint(_0xf35a75, "chat/completions"),
+        {
         method: _0xa0dee9(0x7d0),
         headers: {
           "Content-Type": _0xa0dee9(0x1206),
@@ -17035,7 +17170,9 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
         let _0x29aa1f = _0x20e281(_0x45d813, _0x570fe9, _0x404106, _0x235416);
         _0x13b518 = await fetch(_0x29aa1f[_0xd07074(0x863)], _0x29aa1f["data"]);
       } else
-        _0x13b518 = await fetch(_0x4dfdb5 + _0xd07074(0x1905), {
+        _0x13b518 = await _ephoneApiFetch(
+          _ephoneBuildApiEndpoint(_0x4dfdb5, "chat/completions"),
+          {
           method: "POST",
           headers: {
             "Content-Type": _0xd07074(0x1206),
@@ -17313,7 +17450,9 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
                 _0x2da6b5[_0x25f1e5(0x863)],
                 _0x2da6b5[_0x25f1e5(0x739)],
               )
-            : await fetch(_0x275228 + _0x25f1e5(0x1905), {
+            : await _ephoneApiFetch(
+                _ephoneBuildApiEndpoint(_0x275228, "chat/completions"),
+                {
                 method: _0x25f1e5(0x7d0),
                 headers: {
                   "Content-Type": _0x25f1e5(0x1206),
@@ -17461,7 +17600,9 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
                 _0x2a2a96[_0x25f1e5(0x863)],
                 _0x2a2a96[_0x25f1e5(0x739)],
               )
-            : await fetch(_0x275228 + "/v1/chat/completions", {
+            : await _ephoneApiFetch(
+                _ephoneBuildApiEndpoint(_0x275228, "chat/completions"),
+                {
                 method: _0x25f1e5(0x7d0),
                 headers: {
                   "Content-Type": "application/json",
@@ -19764,7 +19905,9 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
         if (_0x25b2a9?.data) _0x25b2a9.data.signal = _0xephoneController.signal;
         _0x114828 = _0x401894
           ? await fetch(_0x25b2a9[_0x25f1e5(0x863)], _0x25b2a9["data"])
-          : await fetch(_0x275228 + _0x25f1e5(0x1905), {
+          : await _ephoneApiFetch(
+              _ephoneBuildApiEndpoint(_0x275228, "chat/completions"),
+              {
               method: "POST",
               signal: _0xephoneController.signal,
               headers: {
@@ -24083,7 +24226,9 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
         _0x357ea7 = _0x20e281(_0x15e930, _0x64f45, _0x1cbaa3, _0x2c9398);
       const _0x2078b2 = _0x103c87
         ? await fetch(_0x357ea7["url"], _0x357ea7["data"])
-        : await fetch(_0x1cefdd + _0x33c8b8(0x1905), {
+        : await _ephoneApiFetch(
+            _ephoneBuildApiEndpoint(_0x1cefdd, "chat/completions"),
+            {
             method: _0x33c8b8(0x7d0),
             headers: {
               "Content-Type": _0x33c8b8(0x1206),
@@ -24760,7 +24905,9 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
         _0x284c6d = _0x20e281(_0x4c54f8, _0x1faced, _0x1c0db6, _0x1818b6);
       const _0x221aef = _0x3621fc
         ? await fetch(_0x284c6d[_0x416b4d(0x863)], _0x284c6d[_0x416b4d(0x739)])
-        : await fetch(_0x21b7d9 + _0x416b4d(0x1905), {
+        : await _ephoneApiFetch(
+            _ephoneBuildApiEndpoint(_0x21b7d9, "chat/completions"),
+            {
             method: _0x416b4d(0x7d0),
             headers: {
               "Content-Type": "application/json",
@@ -25680,7 +25827,9 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
         _0x3d7b06 = _0x20e281(_0x552a0b, _0x4819ae, _0x495467, _0x52dd89);
       const _0x4747e1 = _0x4163da
         ? await fetch(_0x3d7b06["url"], _0x3d7b06[_0x5f56f6(0x739)])
-        : await fetch(_0x35af60 + _0x5f56f6(0x1905), {
+        : await _ephoneApiFetch(
+            _ephoneBuildApiEndpoint(_0x35af60, "chat/completions"),
+            {
             method: _0x5f56f6(0x7d0),
             headers: {
               "Content-Type": _0x5f56f6(0x1206),
@@ -28036,7 +28185,9 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
         _0x174f2b = _0x20e281(_0x1b24ae, _0x5ce1a6, _0x48a65b, _0x30d78d);
       const _0x862327 = _0x397086
         ? await fetch(_0x174f2b[_0x30571f(0x863)], _0x174f2b[_0x30571f(0x739)])
-        : await fetch(_0x57cec5 + _0x30571f(0x1905), {
+        : await _ephoneApiFetch(
+            _ephoneBuildApiEndpoint(_0x57cec5, "chat/completions"),
+            {
             method: _0x30571f(0x7d0),
             headers: {
               "Content-Type": _0x30571f(0x1206),
@@ -28673,7 +28824,9 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
         _0x31d3c3 = _0x20e281(_0x2f61c2, _0x127ec3, _0x75f222, _0x412052);
       const _0x2dee6d = _0x6cb350
         ? await fetch(_0x31d3c3[_0x5d8a7b(0x863)], _0x31d3c3[_0x5d8a7b(0x739)])
-        : await fetch(_0x3a7588 + _0x5d8a7b(0x1905), {
+        : await _ephoneApiFetch(
+            _ephoneBuildApiEndpoint(_0x3a7588, "chat/completions"),
+            {
             method: _0x5d8a7b(0x7d0),
             headers: {
               "Content-Type": _0x5d8a7b(0x1206),
@@ -30888,7 +31041,9 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
         ]);
       const _0x37b3ac = _0x38af5c
         ? await fetch(_0xb36444[_0x3511e2(0x863)], _0xb36444[_0x3511e2(0x739)])
-        : await fetch(_0x35cde9 + "/v1/chat/completions", {
+        : await _ephoneApiFetch(
+            _ephoneBuildApiEndpoint(_0x35cde9, "chat/completions"),
+            {
             method: _0x3511e2(0x7d0),
             headers: {
               "Content-Type": _0x3511e2(0x1206),
@@ -31354,7 +31509,9 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
         ]);
       const _0x2b1fc5 = _0x19eec3
         ? await fetch(_0x5a23eb["url"], _0x5a23eb[_0x47ad0a(0x739)])
-        : await fetch(_0x550638 + _0x47ad0a(0x1905), {
+        : await _ephoneApiFetch(
+            _ephoneBuildApiEndpoint(_0x550638, "chat/completions"),
+            {
             method: "POST",
             headers: {
               "Content-Type": _0x47ad0a(0x1206),
@@ -31695,7 +31852,9 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
         ]);
       const _0x4f8dde = _0x5c6d13
         ? await fetch(_0x4ec18a["url"], _0x4ec18a["data"])
-        : await fetch(_0x1bd7d4 + _0x5b9aea(0x1905), {
+        : await _ephoneApiFetch(
+            _ephoneBuildApiEndpoint(_0x1bd7d4, "chat/completions"),
+            {
             method: _0x5b9aea(0x7d0),
             headers: {
               "Content-Type": _0x5b9aea(0x1206),
@@ -36514,7 +36673,9 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
         _0x10443e = _0x20e281(_0x599322, _0x379c8c, _0x38bd6d, _0x1feb17);
       const _0x33ffbc = _0x5ee993
         ? await fetch(_0x10443e[_0x5e36a5(0x863)], _0x10443e[_0x5e36a5(0x739)])
-        : await fetch(_0xb4e835 + _0x5e36a5(0x1905), {
+        : await _ephoneApiFetch(
+            _ephoneBuildApiEndpoint(_0xb4e835, "chat/completions"),
+            {
             method: _0x5e36a5(0x7d0),
             headers: {
               "Content-Type": "application/json",
@@ -38854,7 +39015,9 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
         _0x3b5746 = _0x20e281(_0x2eaed1, _0x4794bd, _0x2ac20c, _0x199dde);
       const _0x275f4b = _0x57c71e
         ? await fetch(_0x3b5746[_0x55472b(0x863)], _0x3b5746[_0x55472b(0x739)])
-        : await fetch(_0x307cbf + _0x55472b(0x1905), {
+        : await _ephoneApiFetch(
+            _ephoneBuildApiEndpoint(_0x307cbf, "chat/completions"),
+            {
             method: _0x55472b(0x7d0),
             headers: {
               "Content-Type": "application/json",
@@ -38988,7 +39151,9 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
         _0x3ac17e = _0x20e281(_0x94affb, _0x169394, _0x164952, _0x615a4f);
       const _0x4e0cd8 = _0x4dcfd6
         ? await fetch(_0x3ac17e[_0x361ce9(0x863)], _0x3ac17e["data"])
-        : await fetch(_0x1dac61 + _0x361ce9(0x1905), {
+        : await _ephoneApiFetch(
+            _ephoneBuildApiEndpoint(_0x1dac61, "chat/completions"),
+            {
             method: _0x361ce9(0x7d0),
             headers: {
               "Content-Type": "application/json",
@@ -39440,7 +39605,9 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
         _0x58b32a = _0x20e281(_0xe4cda1, _0x7fe09f, _0x581d5c, _0x208349);
       const _0x42740a = _0x1b025d
         ? await fetch(_0x58b32a["url"], _0x58b32a[_0x339091(0x739)])
-        : await fetch(_0x2c2aa7 + _0x339091(0x1905), {
+        : await _ephoneApiFetch(
+            _ephoneBuildApiEndpoint(_0x2c2aa7, "chat/completions"),
+            {
             method: _0x339091(0x7d0),
             headers: {
               "Content-Type": _0x339091(0x1206),
@@ -39631,7 +39798,9 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
         _0x24e2e5 = _0x20e281(_0x1d8182, _0x2431b1, _0x5ae470, _0x19246c);
       const _0x41e621 = _0x4420dc
         ? await fetch(_0x24e2e5["url"], _0x24e2e5[_0x2baa95(0x739)])
-        : await fetch(_0x295bed + "/v1/chat/completions", {
+        : await _ephoneApiFetch(
+            _ephoneBuildApiEndpoint(_0x295bed, "chat/completions"),
+            {
             method: _0x2baa95(0x7d0),
             headers: {
               "Content-Type": _0x2baa95(0x1206),
@@ -40104,7 +40273,9 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
         _0x3e212d = _0x20e281(_0x2dc3b5, _0xc62cdc, _0x3812da, _0x241fb9);
       const _0x4c1d8b = _0x585142
         ? await fetch(_0x3e212d[_0x4b8623(0x863)], _0x3e212d[_0x4b8623(0x739)])
-        : await fetch(_0x28cc22 + _0x4b8623(0x1905), {
+        : await _ephoneApiFetch(
+            _ephoneBuildApiEndpoint(_0x28cc22, "chat/completions"),
+            {
             method: _0x4b8623(0x7d0),
             headers: {
               "Content-Type": _0x4b8623(0x1206),
@@ -40324,7 +40495,9 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
         _0x432d4e = _0x20e281(_0x27671e, _0x3a4b77, _0x78b473, _0x14f0f3);
       const _0x1c5383 = _0x1f1fbd
         ? await fetch(_0x432d4e["url"], _0x432d4e["data"])
-        : await fetch(_0x1a5cb6 + _0x570d21(0x1905), {
+        : await _ephoneApiFetch(
+            _ephoneBuildApiEndpoint(_0x1a5cb6, "chat/completions"),
+            {
             method: "POST",
             headers: {
               "Content-Type": _0x570d21(0x1206),
@@ -40599,7 +40772,9 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
         _0x1b2a1a = _0x20e281(_0x5ab3c4, _0x2d74c0, _0x36e680, _0x1e693d);
       const _0x3a6abb = _0x45d705
         ? await fetch(_0x1b2a1a[_0x39c7c6(0x863)], _0x1b2a1a[_0x39c7c6(0x739)])
-        : await fetch(_0x26b0ca + _0x39c7c6(0x1905), {
+        : await _ephoneApiFetch(
+            _ephoneBuildApiEndpoint(_0x26b0ca, "chat/completions"),
+            {
             method: "POST",
             headers: {
               "Content-Type": _0x39c7c6(0x1206),
@@ -40824,7 +40999,9 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
         _0x59d799 = _0x20e281(_0x4baebe, _0x596f7b, _0x2ccef7, _0x27b20f);
       const _0x441141 = _0x43064a
         ? await fetch(_0x59d799[_0x554829(0x863)], _0x59d799[_0x554829(0x739)])
-        : await fetch(_0x381adb + _0x554829(0x1905), {
+        : await _ephoneApiFetch(
+            _ephoneBuildApiEndpoint(_0x381adb, "chat/completions"),
+            {
             method: _0x554829(0x7d0),
             headers: {
               "Content-Type": _0x554829(0x1206),
@@ -41000,7 +41177,9 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
         _0x59615e = _0x20e281(_0x11891e, _0x1e860c, _0xd3fc5d, _0x52cd29);
       const _0x55f650 = _0x347921
         ? await fetch(_0x59615e["url"], _0x59615e[_0x1aa7ab(0x739)])
-        : await fetch(_0x34319a + _0x1aa7ab(0x1905), {
+        : await _ephoneApiFetch(
+            _ephoneBuildApiEndpoint(_0x34319a, "chat/completions"),
+            {
             method: _0x1aa7ab(0x7d0),
             headers: {
               "Content-Type": _0x1aa7ab(0x1206),
@@ -41205,7 +41384,9 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
         _0x54f235 = _0x20e281(_0x4ecac1, _0xd65227, _0x37b99a, _0x46e79b);
       const _0x565e79 = _0xf7a296
         ? await fetch(_0x54f235[_0x5a12b0(0x863)], _0x54f235[_0x5a12b0(0x739)])
-        : await fetch(_0x5c488c + _0x5a12b0(0x1905), {
+        : await _ephoneApiFetch(
+            _ephoneBuildApiEndpoint(_0x5c488c, "chat/completions"),
+            {
             method: _0x5a12b0(0x7d0),
             headers: {
               "Content-Type": _0x5a12b0(0x1206),
@@ -41371,7 +41552,9 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
         _0x588acc = _0x20e281(_0xf03538, _0x295dcc, _0x6073a5, _0xb1be01);
       const _0x1af684 = _0x1b6804
         ? await fetch(_0x588acc["url"], _0x588acc["data"])
-        : await fetch(_0x529596 + _0x144912(0x1905), {
+        : await _ephoneApiFetch(
+            _ephoneBuildApiEndpoint(_0x529596, "chat/completions"),
+            {
             method: _0x144912(0x7d0),
             headers: {
               "Content-Type": _0x144912(0x1206),
@@ -41626,7 +41809,9 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
         _0x11b8fd = _0x20e281(_0x4b5174, _0x327d6d, _0x59efc2, _0x35d16f);
       const _0x4c9196 = _0x18512e
         ? await fetch(_0x11b8fd[_0x2a5efb(0x863)], _0x11b8fd[_0x2a5efb(0x739)])
-        : await fetch(_0x2b0a26 + "/v1/chat/completions", {
+        : await _ephoneApiFetch(
+            _ephoneBuildApiEndpoint(_0x2b0a26, "chat/completions"),
+            {
             method: _0x2a5efb(0x7d0),
             headers: {
               "Content-Type": _0x2a5efb(0x1206),
@@ -42222,7 +42407,9 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
         _0x3bc005 = _0x20e281(_0x522e1e, _0x373f05, _0x4546d8, _0x5e834a);
       const _0x40cd05 = _0x1ad090
         ? await fetch(_0x3bc005[_0x3b9612(0x863)], _0x3bc005[_0x3b9612(0x739)])
-        : await fetch(_0xd3ba4c + "/v1/chat/completions", {
+        : await _ephoneApiFetch(
+            _ephoneBuildApiEndpoint(_0xd3ba4c, "chat/completions"),
+            {
             method: "POST",
             headers: {
               "Content-Type": "application/json",
@@ -42571,7 +42758,9 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
         _0x4dbe40 = _0x20e281(_0x13e52, _0x52f3ee, _0x49aa85, _0x5f6320);
       const _0xaf9609 = _0x2e059a
         ? await fetch(_0x4dbe40["url"], _0x4dbe40[_0x3175d5(0x739)])
-        : await fetch(_0x535219 + _0x3175d5(0x1905), {
+        : await _ephoneApiFetch(
+            _ephoneBuildApiEndpoint(_0x535219, "chat/completions"),
+            {
             method: _0x3175d5(0x7d0),
             headers: {
               "Content-Type": _0x3175d5(0x1206),
@@ -45421,7 +45610,9 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
         _0x73304b = _0x20e281(_0x39fc8a, _0x49e6a3, _0x1acab1, _0x6153cc);
       const _0xae1e33 = _0x180275
         ? await fetch(_0x73304b[_0x1084bf(0x863)], _0x73304b["data"])
-        : await fetch(_0x3ff0bf + _0x1084bf(0x1905), {
+        : await _ephoneApiFetch(
+            _ephoneBuildApiEndpoint(_0x3ff0bf, "chat/completions"),
+            {
             method: _0x1084bf(0x7d0),
             headers: {
               "Content-Type": _0x1084bf(0x1206),
@@ -46181,7 +46372,9 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
         _0x4db3a8 = _0x20e281(_0x5f5d81, _0x43fb50, _0x3c86d0, _0x427b2d);
       const _0x765ccb = _0x503a82
         ? await fetch(_0x4db3a8[_0xbc0c93(0x863)], _0x4db3a8[_0xbc0c93(0x739)])
-        : await fetch(_0x4dc81a + _0xbc0c93(0x1905), {
+        : await _ephoneApiFetch(
+            _ephoneBuildApiEndpoint(_0x4dc81a, "chat/completions"),
+            {
             method: _0xbc0c93(0x7d0),
             headers: {
               "Content-Type": _0xbc0c93(0x1206),
@@ -46263,7 +46456,9 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
         _0x23495c = _0x20e281(_0x3da933, _0x31a42d, _0x192189, _0x1e17ba);
       const _0x40c938 = _0x16a41f
         ? await fetch(_0x23495c[_0x1853eb(0x863)], _0x23495c["data"])
-        : await fetch(_0x3e82fb + _0x1853eb(0x1905), {
+        : await _ephoneApiFetch(
+            _ephoneBuildApiEndpoint(_0x3e82fb, "chat/completions"),
+            {
             method: _0x1853eb(0x7d0),
             headers: {
               "Content-Type": _0x1853eb(0x1206),
@@ -46453,7 +46648,9 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
         _0x1299bb = _0x20e281(_0x63fadf, _0x34633e, _0x133bf6, _0x1c2c9f);
       const _0x52f099 = _0x277209
         ? await fetch(_0x1299bb["url"], _0x1299bb[_0x538418(0x739)])
-        : await fetch(_0x2f4567 + _0x538418(0x1905), {
+        : await _ephoneApiFetch(
+            _ephoneBuildApiEndpoint(_0x2f4567, "chat/completions"),
+            {
             method: _0x538418(0x7d0),
             headers: {
               "Content-Type": _0x538418(0x1206),
@@ -46584,7 +46781,9 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
         _0x1f4c4c = _0x20e281(_0x24e01a, _0x137e02, _0x5e7df2, _0xd80599);
       const _0x472447 = _0x37475f
         ? await fetch(_0x1f4c4c["url"], _0x1f4c4c[_0x5d3b6e(0x739)])
-        : await fetch(_0x20bb37 + _0x5d3b6e(0x1905), {
+        : await _ephoneApiFetch(
+            _ephoneBuildApiEndpoint(_0x20bb37, "chat/completions"),
+            {
             method: "POST",
             headers: {
               "Content-Type": "application/json",
@@ -48333,7 +48532,9 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
         _0x378548 = _0x20e281(_0x22a579, _0x2e9a91, _0xd3bf87, _0x3c7f8a);
       const _0x8c56b4 = _0xfe4284
         ? await fetch(_0x378548[_0x564a07(0x863)], _0x378548[_0x564a07(0x739)])
-        : await fetch(_0x4d345d + _0x564a07(0x1905), {
+        : await _ephoneApiFetch(
+            _ephoneBuildApiEndpoint(_0x4d345d, "chat/completions"),
+            {
             method: _0x564a07(0x7d0),
             headers: {
               "Content-Type": _0x564a07(0x1206),
@@ -52421,7 +52622,9 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
         ]);
       const _0x23a8e9 = _0x3688ff
         ? await fetch(_0x18cc40[_0x285698(0x863)], _0x18cc40["data"])
-        : await fetch(_0x4c8789 + _0x285698(0x1905), {
+        : await _ephoneApiFetch(
+            _ephoneBuildApiEndpoint(_0x4c8789, "chat/completions"),
+            {
             method: _0x285698(0x7d0),
             headers: {
               "Content-Type": _0x285698(0x1206),
@@ -54218,7 +54421,9 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
           _0x435a77[_0x5f2354(0x739)],
         );
       } else
-        _0x333eae = await fetch(_0x4243b4 + _0x5f2354(0x1905), {
+        _0x333eae = await _ephoneApiFetch(
+          _ephoneBuildApiEndpoint(_0x4243b4, "chat/completions"),
+          {
           method: _0x5f2354(0x7d0),
           headers: {
             "Content-Type": "application/json",
@@ -54867,7 +55072,9 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
         ]);
       const _0x19b205 = _0x35b4cf
         ? await fetch(_0x5a6c0a[_0x4384ec(0x863)], _0x5a6c0a["data"])
-        : await fetch(_0x2464f3 + _0x4384ec(0x1905), {
+        : await _ephoneApiFetch(
+            _ephoneBuildApiEndpoint(_0x2464f3, "chat/completions"),
+            {
             method: _0x4384ec(0x7d0),
             headers: {
               "Content-Type": _0x4384ec(0x1206),
@@ -55059,7 +55266,9 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
           ]);
         const _0x1d2160 = _0x2b5ce9
           ? await fetch(_0x51b03d["url"], _0x51b03d[_0x5a7e02(0x739)])
-          : await fetch(_0x49e329 + _0x5a7e02(0x1905), {
+          : await _ephoneApiFetch(
+              _ephoneBuildApiEndpoint(_0x49e329, "chat/completions"),
+              {
               method: _0x5a7e02(0x7d0),
               headers: {
                 "Content-Type": _0x5a7e02(0x1206),
@@ -56650,10 +56859,10 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
         let _0x56776b = _ephoneNormalizedUrl === GEMINI_API_URL;
         document[_0x35c0bf(0x1023)](_0x3bc716)["value"] =
           _ephoneNormalizedUrl;
-        const _0x45b28c = await fetch(
+        const _0x45b28c = await _ephoneApiFetch(
           _0x56776b
             ? GEMINI_API_URL + _0x35c0bf(0x1a85) + getRandomValue(_0x4cb343)
-            : _ephoneNormalizedUrl + "/v1/models",
+            : _ephoneBuildApiEndpoint(_ephoneNormalizedUrl, "models"),
           _0x56776b
             ? undefined
             : { headers: { Authorization: "Bearer\x20" + _0x4cb343 } },
