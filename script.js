@@ -10015,8 +10015,14 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
     }
   }
   function _0x360ed5(_0x7ec2ec) {
-    const _0x205142 = _0x3ce505;
-    ((_0x24f906 = new Dexie(_0x205142(0x1be2))),
+    const _0x205142 = _0x3ce505,
+      _0xspaceBaseName = _0x205142(0x1be2),
+      _0xspaceId = window.EPHONE_SPACE_ID || "default";
+    ((_0x24f906 = new Dexie(
+      _0xspaceId === "default"
+        ? _0xspaceBaseName
+        : `${_0xspaceBaseName}__space_${_0xspaceId}`,
+    )),
       _0x24f906[_0x205142(0x1318)](0x31)
         [_0x205142(0x146d)]({
           doubanPosts: _0x205142(0x220),
