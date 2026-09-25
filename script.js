@@ -10018,6 +10018,7 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
     const _0x205142 = _0x3ce505,
       _0xspaceBaseName = _0x205142(0x1be2),
       _0xspaceId = window.EPHONE_SPACE_ID || "default";
+    window.EPHONE_DB_BASE_NAME = _0xspaceBaseName;
     ((_0x24f906 = new Dexie(
       _0xspaceId === "default"
         ? _0xspaceBaseName
@@ -10137,6 +10138,7 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
         "favorites-view": document[_0x424c35(0x1023)](_0x424c35(0x1770)),
         "memories-view": document["getElementById"]("memories-view"),
         "npc-list-view": document["getElementById"]("npc-list-view"),
+        "me-view": document["getElementById"]("me-view"),
       },
       _0x413151 = document["getElementById"](_0x424c35(0x172f)),
       _0x3a2216 = document[_0x424c35(0x1023)]("chat-list-bottom-nav");
@@ -10157,11 +10159,16 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
         _0x2a390c["dataset"][_0x3ed83e(0x9e9)] === _0x45a35b,
       );
     });
-    _0x45a35b === "messages-view"
-      ? ((_0x413151[_0x424c35(0x791)][_0x424c35(0xab9)] = _0x424c35(0x12c8)),
-        (_0x3a2216[_0x424c35(0x791)][_0x424c35(0xab9)] = _0x424c35(0x12c8)))
-      : ((_0x413151["style"][_0x424c35(0xab9)] = _0x424c35(0x1099)),
-        (_0x3a2216["style"][_0x424c35(0xab9)] = "none"));
+    _0x413151.style.display = _0x45a35b === "messages-view" ? "flex" : "none";
+    _0x3a2216.style.display = [
+      "messages-view",
+      "qzone-screen",
+      "memories-view",
+      "npc-list-view",
+      "me-view",
+    ].includes(_0x45a35b)
+      ? "flex"
+      : "none";
     _0x45a35b !== _0x424c35(0x160e) &&
       (_0x33ca88[_0x424c35(0x9bb)]((_0x432b59) => clearInterval(_0x432b59)),
       (_0x33ca88 = []));
@@ -14528,6 +14535,13 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
                 ),
                   _0x4bb316());
               }
+              break;
+            case "move":
+              if (window.EPhoneSpaces && !_0x541344.isGroup)
+                await window.EPhoneSpaces.moveChat(
+                  _0x541344.id,
+                  _0x541344.name || _0x541344.originalName || "角色",
+                );
               break;
             default:
               break;
@@ -30007,6 +30021,7 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
       const _0x4a970f = _0x14a8,
         _0x400332 = document[_0x4a970f(0x1023)](_0x4a970f(0x11f2)),
         _0x4d4806 = document[_0x4a970f(0x1023)]("chat-list-action-pin"),
+        _0xmoveButton = document["getElementById"]("chat-list-action-move"),
         _0x241463 = document[_0x4a970f(0x1023)](_0x4a970f(0x1a5f)),
         _0x3859e6 = document["getElementById"](_0x4a970f(0x506));
       _0x4d4806[_0x4a970f(0x71a)] = _0x4d24fc[_0x4a970f(0x109c)]
@@ -30019,6 +30034,13 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
           (_0x400332["classList"][_0x1a6665(0x1aa6)](_0x1a6665(0x2fb)),
             _0x989e56(_0x1a6665(0xb68)));
         }));
+      if (_0xmoveButton) {
+        _0xmoveButton.style.display = _0x4d24fc.isGroup ? "none" : "";
+        _0xmoveButton.onclick = () => {
+          _0x400332.classList.remove("visible");
+          _0x989e56("move");
+        };
+      }
       const _0x19a362 = _0x241463[_0x4a970f(0x186d)](!![]);
       (_0x241463[_0x4a970f(0x1110)][_0x4a970f(0x676)](_0x19a362, _0x241463),
         (_0x19a362[_0x4a970f(0x5d3)] = () => {
@@ -58756,6 +58778,14 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
           _0x5ef2d4(_0x2db95d[_0x4bd73c(0x151)][_0x4bd73c(0x9e9)]),
         );
       }),
+      document.getElementById("me-favorites-button")?.addEventListener(
+        "click",
+        () => _0x5ef2d4("favorites-view"),
+      ),
+      document.getElementById("favorites-back-btn")?.addEventListener(
+        "click",
+        () => setTimeout(() => _0x5ef2d4("me-view"), 0),
+      ),
       document["getElementById"](_0x274136(0xef5))[_0x274136(0x111e)](
         _0x274136(0x34e),
         () => _0x5ef2d4(_0x274136(0xe5d)),
