@@ -10019,11 +10019,12 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
       _0xspaceBaseName = _0x205142(0x1be2),
       _0xspaceId = window.EPHONE_SPACE_ID || "default";
     window.EPHONE_DB_BASE_NAME = _0xspaceBaseName;
-    ((_0x24f906 = new Dexie(
+    const _0xpersonaDb = new Dexie(
       _0xspaceId === "default"
         ? _0xspaceBaseName
         : `${_0xspaceBaseName}__space_${_0xspaceId}`,
-    )),
+    );
+    ((_0x24f906 = _0xpersonaDb),
       _0x24f906[_0x205142(0x1318)](0x31)
         [_0x205142(0x146d)]({
           doubanPosts: _0x205142(0x220),
@@ -10096,6 +10097,35 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
               });
             });
         }),
+      window.EPhoneSpaces?.bindDatabases &&
+        (_0xspaceId === "default"
+          ? (_0x24f906 = window.EPhoneSpaces.bindDatabases(
+              _0xpersonaDb,
+              _0xpersonaDb,
+              _0xspaceId,
+            ))
+          : (() => {
+              const _0xspaceStores = Object.fromEntries(
+                _0xpersonaDb.tables.map((_0xtable) => [
+                  _0xtable.name,
+                  [
+                    _0xtable.schema.primKey.src,
+                    ..._0xtable.schema.indexes
+                      .map((_0xindex) => _0xindex.src)
+                      .filter(Boolean),
+                  ].join(", "),
+                ]),
+              );
+              const _0xsharedDb = new Dexie(_0xspaceBaseName);
+              _0xsharedDb
+                .version(_0xpersonaDb.verno)
+                .stores(_0xspaceStores);
+              _0x24f906 = window.EPhoneSpaces.bindDatabases(
+                _0xpersonaDb,
+                _0xsharedDb,
+                _0xspaceId,
+              );
+            })()),
       (window["db"] = _0x24f906),
       console[_0x205142(0x13f0)](
         _0x205142(0xbbf) + _0x7ec2ec + _0x205142(0x153b),
@@ -14537,7 +14567,7 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
               }
               break;
             case "move":
-              if (window.EPhoneSpaces && !_0x541344.isGroup)
+              if (window.EPhoneSpaces)
                 await window.EPhoneSpaces.moveChat(
                   _0x541344.id,
                   _0x541344.name || _0x541344.originalName || "角色",
@@ -30035,7 +30065,7 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
             _0x989e56(_0x1a6665(0xb68)));
         }));
       if (_0xmoveButton) {
-        _0xmoveButton.style.display = _0x4d24fc.isGroup ? "none" : "";
+        _0xmoveButton.style.display = "";
         _0xmoveButton.onclick = () => {
           _0x400332.classList.remove("visible");
           _0x989e56("move");
@@ -56038,6 +56068,23 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
       (window[_0x274136(0x166a)] = _0x4bb316),
       (window[_0x274136(0x12f6)] = _0x4bf560),
       (window[_0x274136(0x11f4)] = _0x1aa49f),
+      (window.refreshPersonaSpaceData = async (_0xspaceRefresh = {}) => {
+        const _0xactiveChatId = _0x5ea3c1.activeChatId;
+        if (
+          _0xspaceRefresh.spaceChanged ||
+          (_0xspaceRefresh.movedChatId &&
+            _0xspaceRefresh.movedChatId === _0xactiveChatId)
+        ) {
+          _0x5ea3c1.activeChatId = null;
+          _0x5ef2d4("messages-view");
+        }
+        await _0x3367c4();
+        await _0x4bb316();
+        await _0x1f4e90();
+        const _0xspaceLabel = document.getElementById("me-space-name");
+        if (_0xspaceLabel)
+          _0xspaceLabel.textContent = window.EPHONE_SPACE_NAME || "默认空间";
+      }),
       (window["renderWorldBookScreenProxy"] = _0x5dd041),
       await _0x3367c4(),
       await _0x4b0d91(),
