@@ -90,67 +90,6 @@
     position: relative; /* 新增：创建堆叠上下文 */
     z-index: 1;         /* 新增：确保它在标题span之上 */
 }
-.persona-space-button {
-    max-width: 104px;
-    min-width: 68px;
-    padding: 6px 9px;
-    border: 1px solid rgba(0, 123, 255, 0.28);
-    border-radius: 14px;
-    background: rgba(0, 123, 255, 0.08);
-    color: var(--accent-color);
-    font: inherit;
-    font-size: 12px;
-    line-height: 1.15;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    cursor: pointer;
-}
-#ephone-persona-spaces-modal {
-    position: fixed;
-    inset: 0;
-    z-index: 1000000;
-    display: none;
-    align-items: center;
-    justify-content: center;
-    padding: 18px;
-    padding-top: calc(18px + env(safe-area-inset-top));
-    padding-bottom: calc(18px + env(safe-area-inset-bottom));
-    box-sizing: border-box;
-    background: rgba(20, 24, 32, 0.48);
-    backdrop-filter: blur(5px);
-    -webkit-backdrop-filter: blur(5px);
-}
-#ephone-persona-spaces-modal.visible { display: flex; }
-.ephone-spaces-card {
-    width: min(100%, 440px);
-    max-height: 82vh;
-    overflow: auto;
-    padding: 20px;
-    box-sizing: border-box;
-    border-radius: 20px;
-    background: var(--secondary-bg, #fff);
-    color: var(--text-primary, #1f1f1f);
-    box-shadow: 0 18px 60px rgba(0, 0, 0, 0.22);
-}
-.ephone-spaces-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
-.ephone-spaces-header h2 { margin: 0 0 6px; font-size: 21px; }
-.ephone-spaces-header p { margin: 0; color: var(--text-secondary, #777); font-size: 13px; line-height: 1.5; }
-.ephone-spaces-close { border: 0; background: transparent; color: var(--text-secondary, #777); font-size: 27px; line-height: 1; cursor: pointer; }
-.ephone-spaces-list { display: flex; flex-direction: column; gap: 8px; margin: 18px 0; }
-.ephone-space-option { display: flex; width: 100%; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 14px; border: 1px solid var(--border-color, #e0e0e0); border-radius: 12px; background: transparent; color: inherit; text-align: left; font: inherit; cursor: pointer; }
-.ephone-space-option.current, .ephone-space-option.selected { border-color: var(--accent-color); background: rgba(0, 123, 255, 0.07); }
-.ephone-space-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.ephone-space-state { flex: none; color: var(--accent-color); font-size: 12px; }
-.ephone-spaces-create { padding-top: 14px; border-top: 1px solid var(--border-color, #e0e0e0); }
-.ephone-spaces-create label { display: block; margin-bottom: 8px; font-size: 13px; font-weight: 600; }
-.ephone-spaces-create-row { display: flex; gap: 8px; }
-.ephone-spaces-create-row input { min-width: 0; flex: 1; padding: 10px 12px; border: 1px solid var(--border-color, #e0e0e0); border-radius: 10px; background: transparent; color: inherit; font: inherit; }
-.ephone-spaces-create-button, .ephone-spaces-done { padding: 9px 15px; border: 0; border-radius: 10px; background: var(--accent-color); color: #fff; font: inherit; cursor: pointer; }
-.ephone-spaces-footer { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: 17px; color: var(--text-secondary, #777); font-size: 12px; }
-.ephone-spaces-footer-actions { display: flex; flex: none; gap: 8px; }
-.ephone-spaces-move-button { padding: 9px 13px; border: 0; border-radius: 10px; background: var(--accent-color); color: #fff; font: inherit; cursor: pointer; }
-.ephone-spaces-move-button:disabled { opacity: 0.45; cursor: not-allowed; }
         .header .back-btn, .header .action-btn { font-size: 24px; cursor: pointer; width: 30px; text-align: center; color: var(--accent-color); display: flex; align-items: center; justify-content: center; }
         .header .action-btn {
             font-size: 16px; 
@@ -649,40 +588,16 @@
         .nav-item {
             flex: 1;
             text-align: center;
-            padding: 7px 0 6px;
-            min-height: 49px;
-            box-sizing: border-box;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            justify-content: center;
-            gap: 3px;
-            font-size: 11px;
+            padding: 12px 0;
+            font-size: 14px;
             color: var(--text-secondary);
             cursor: pointer;
             transition: color 0.2s;
         }
-        .nav-item .nav-icon { display: block; width: 22px; height: 22px; }
-        .nav-item .nav-icon svg { display: block; width: 100%; height: 100%; }
         .nav-item.active {
             color: var(--accent-color);
             font-weight: 600;
         }
-        #me-view { background: var(--main-bg, #f5f6f8); }
-        #me-view > .me-header { flex: none; justify-content: flex-start; padding-left: 20px; font-size: 20px; font-weight: 650; }
-        .me-content { flex: 1; min-height: 0; overflow-y: auto; padding: 18px 16px calc(84px + env(safe-area-inset-bottom)); }
-        .me-space-card { display: flex; align-items: center; gap: 13px; padding: 17px 15px; border-radius: 18px; background: var(--secondary-bg, #fff); box-shadow: 0 3px 16px rgba(30, 40, 60, 0.06); }
-        .me-space-avatar { width: 48px; height: 48px; flex: none; display: grid; place-items: center; border-radius: 15px; background: linear-gradient(145deg, #e8f2ff, #d4e6ff); color: var(--accent-color); font-size: 20px; font-weight: 700; }
-        .me-space-copy { display: flex; flex: 1; min-width: 0; flex-direction: column; gap: 4px; }
-        .me-eyebrow { color: var(--text-secondary); font-size: 12px; }
-        #me-space-name { overflow: hidden; color: var(--text-primary); font-size: 16px; text-overflow: ellipsis; white-space: nowrap; }
-        .me-space-description { color: var(--text-secondary); font-size: 11px; line-height: 1.45; }
-        .me-space-switch { flex: none; padding: 7px 12px; border: 0; border-radius: 16px; background: rgba(0, 123, 255, 0.1); color: var(--accent-color); font: inherit; font-size: 13px; cursor: pointer; }
-        .me-section-title { margin: 24px 5px 9px; color: var(--text-secondary); font-size: 13px; }
-        .me-menu-row { width: 100%; display: flex; align-items: center; gap: 12px; padding: 15px; border: 0; border-radius: 15px; background: var(--secondary-bg, #fff); color: var(--text-primary); text-align: left; font: inherit; cursor: pointer; }
-        .me-menu-icon { width: 32px; height: 32px; display: grid; place-items: center; border-radius: 10px; background: #fff4dc; color: #e8a126; font-size: 23px; }
-        .me-menu-label { flex: 1; font-size: 15px; }
-        .me-menu-arrow { color: var(--text-secondary); font-size: 24px; line-height: 1; }
         #qzone-screen {
             background-color: #f0f2f5;
         }
@@ -807,12 +722,10 @@
         #qzone-screen.active .qzone-header {
             display: flex;
         }
-        #chat-list-screen.in-qzone-view > .header {
+        #chat-list-screen.in-qzone-view > .header,
+        #chat-list-screen.in-qzone-view > #chat-list-bottom-nav {
             display: none;
         }
-        #chat-list-screen.in-qzone-view > #chat-list-bottom-nav { display: flex; }
-        .qzone-content { padding-bottom: calc(70px + env(safe-area-inset-bottom)); }
-        #memories-list, #npc-list { padding-bottom: calc(70px + env(safe-area-inset-bottom)) !important; }
         .chat-list-item:first-child,
         .chat-group-container:first-child {
             margin-top: 10px; 
@@ -2495,28 +2408,16 @@
             font-size: 13px;
             font-weight: 600;
         }
-        .time-machine-datetime-row {
-            display: flex;
-            align-items: center;
-            gap: 8px;
-            margin-bottom: 12px;
-        }
         #time-machine-datetime {
             box-sizing: border-box;
-            flex: 1;
-            min-width: 0;
+            width: 100%;
+            margin-bottom: 12px;
             padding: 9px 10px;
             border: 1px solid rgba(120, 120, 128, 0.3);
             border-radius: 9px;
             background: transparent;
             color: inherit;
             font: inherit;
-        }
-        #time-machine-selected-weekday {
-            flex: none;
-            min-width: 42px;
-            font-size: 13px;
-            color: var(--text-secondary);
         }
         .time-machine-flow {
             display: grid;
@@ -3136,11 +3037,6 @@
             background-color: rgba(25, 25, 25, 0.9);
             border-top-color: rgba(255, 255, 255, 0.15);
         }
-        #phone-screen.dark-mode #me-view { background: #111113; }
-        #phone-screen.dark-mode .me-space-card,
-        #phone-screen.dark-mode .me-menu-row { background: #1c1c1e; }
-        #phone-screen.dark-mode .me-space-avatar { background: rgba(10, 132, 255, 0.2); }
-        #phone-screen.dark-mode .me-menu-icon { background: rgba(232, 161, 38, 0.16); }
         #phone-screen.dark-mode .nav-item.active {
             color: #ffffff;
         }
@@ -7356,8 +7252,6 @@ input, textarea, select {
     display: flex;
     gap: 12px; 
     align-items: center;
-    justify-content: center;
-    flex-wrap: wrap;
 }
 #chat-lock-content .lock-action-btn.secondary {
     background-color: transparent; 
@@ -7370,117 +7264,6 @@ input, textarea, select {
     width: 20px;  
     height: 20px; 
     stroke: currentColor; 
-}
-#chat-lock-overlay.spectator-mode {
-    padding: 8px 8px calc(8px + env(safe-area-inset-bottom));
-    text-align: left;
-}
-#chat-lock-content.spectator-mode {
-    width: 100%;
-    max-width: 100%;
-    align-items: stretch;
-    gap: 0;
-}
-.ephone-spectator-controls {
-    width: 100%;
-    min-width: 0;
-    display: flex;
-    flex-direction: column;
-    gap: 5px;
-}
-.ephone-spectator-tools,
-.ephone-spectator-compose {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-}
-.ephone-spectator-tools {
-    min-width: 0;
-    height: 40px;
-    padding: 0 4px;
-    overflow-x: auto;
-    flex-wrap: nowrap;
-    scrollbar-width: none;
-    -webkit-overflow-scrolling: touch;
-}
-.ephone-spectator-tools::-webkit-scrollbar {
-    display: none;
-}
-#chat-lock-content.spectator-mode .ephone-spectator-tools .lock-action-btn {
-    flex: 0 0 auto;
-    height: 38px;
-    min-width: 38px;
-    padding: 0 11px;
-    border: 1px solid var(--border-color);
-    border-radius: 19px;
-    background: var(--secondary-bg);
-    color: var(--text-primary);
-    font-size: 13px;
-    white-space: nowrap;
-}
-#chat-lock-content.spectator-mode .ephone-spectator-tools .lock-action-btn.active {
-    border-color: var(--accent-color);
-    color: var(--accent-color);
-}
-#chat-lock-content.spectator-mode .ephone-spectator-tools #spectator-reroll-btn,
-#chat-lock-content.spectator-mode .ephone-spectator-tools #spectator-edit-btn {
-    width: 38px;
-    padding: 0;
-}
-.ephone-spectator-tools svg {
-    width: 20px;
-    height: 20px;
-    stroke: currentColor;
-}
-.ephone-spectator-compose textarea {
-    flex: 1;
-    min-width: 0;
-    height: 40px;
-    min-height: 40px;
-    max-height: 40px;
-    resize: none;
-    overflow-y: auto;
-    box-sizing: border-box;
-    padding: 10px 15px;
-    border: 0;
-    border-radius: 20px;
-    background: var(--secondary-bg);
-    color: var(--text-primary);
-    font-size: 16px;
-    font-family: inherit;
-}
-#chat-lock-content.spectator-mode .ephone-spectator-compose .lock-action-btn {
-    flex: none;
-    height: 40px;
-    padding: 0 15px;
-    border: 0;
-    border-radius: 20px;
-}
-#chat-lock-content.spectator-mode .ephone-spectator-compose #spectator-propel-btn {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    width: 40px;
-    padding: 0;
-    border: 1px solid var(--accent-color);
-    background: var(--secondary-bg);
-    color: var(--accent-color);
-    font-size: 20px;
-}
-.ephone-spectator-compose #spectator-propel-btn svg {
-    width: 22px;
-    height: 22px;
-    stroke: currentColor;
-}
-.ephone-spectator-compose .lock-action-btn:disabled {
-    opacity: 0.5;
-    cursor: wait;
-}
-#regenerate-btn:disabled,
-#reroll-with-note-btn:disabled,
-#spectator-reroll-btn:disabled {
-    opacity: 0.4;
-    cursor: not-allowed;
 }
 .music-player-window {
     position: relative;

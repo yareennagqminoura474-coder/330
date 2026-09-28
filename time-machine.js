@@ -384,15 +384,6 @@
 
   function latestReplyContext(history) {
     if (!Array.isArray(history)) return [];
-    const recentContext = history
-      .filter(
-        (item) =>
-          item &&
-          !item.isHidden &&
-          item.type !== "time_marker" &&
-          (item.role === "user" || item.role === "assistant"),
-      )
-      .slice(-3);
     const latestUserMessage = [...history]
       .reverse()
       .find(
@@ -402,7 +393,16 @@
           !item.isHidden &&
           item.type !== "time_marker",
       );
-    if (!latestUserMessage) return recentContext;
+    if (!latestUserMessage) return [];
+    const recentContext = history
+      .filter(
+        (item) =>
+          item &&
+          !item.isHidden &&
+          item.type !== "time_marker" &&
+          (item.role === "user" || item.role === "assistant"),
+      )
+      .slice(-3);
     return recentContext.includes(latestUserMessage)
       ? recentContext
       : [latestUserMessage];
@@ -534,10 +534,7 @@
         </div>
         <div id="time-machine-custom-options">
           <label class="time-machine-label" for="time-machine-datetime">跳转到时间</label>
-          <div class="time-machine-datetime-row">
-            <input id="time-machine-datetime" type="datetime-local">
-            <span id="time-machine-selected-weekday" aria-live="polite"></span>
-          </div>
+          <input id="time-machine-datetime" type="datetime-local">
           <div class="time-machine-flow" role="radiogroup" aria-label="虚拟时间流速">
             <label><input type="radio" name="time-machine-flow" value="flow" checked><span><b>保持流动</b><small>现实过 10 分钟，虚拟时间也走 10 分钟</small></span></label>
             <label><input type="radio" name="time-machine-flow" value="frozen"><span><b>按剧情推进</b><small>不跟现实时间；每次回复按内容前进几分钟</small></span></label>
@@ -550,9 +547,6 @@
         </div>
       </div>`;
     document.body.appendChild(modal);
-
-    modal.querySelector("#time-machine-datetime").addEventListener("input", updateSelectedWeekday);
-    modal.querySelector("#time-machine-datetime").addEventListener("change", updateSelectedWeekday);
 
     button.addEventListener("click", openModal);
     modal.addEventListener("click", (event) => {
@@ -610,24 +604,12 @@
     selectDraftMode(config.mode);
     modal.querySelector("#time-machine-datetime").value =
       toDateTimeLocal(nowMs());
-    updateSelectedWeekday();
     const flowInput = modal.querySelector(
       `input[name="time-machine-flow"][value="${config.flow}"]`,
     );
     if (flowInput) flowInput.checked = true;
     modal.classList.add("open");
     modal.setAttribute("aria-hidden", "false");
-  }
-
-  function updateSelectedWeekday() {
-    const modal = document.getElementById("time-machine-modal");
-    const value = modal?.querySelector("#time-machine-datetime")?.value;
-    const label = modal?.querySelector("#time-machine-selected-weekday");
-    if (!label) return;
-    const date = value ? new Date(value) : null;
-    label.textContent = date && Number.isFinite(date.getTime())
-      ? `星期${["日", "一", "二", "三", "四", "五", "六"][date.getDay()]}`
-      : "";
   }
 
   function closeModal() {
