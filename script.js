@@ -17391,6 +17391,54 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
         _0x326f3d[_0xd07074(0x17c5)]["linkedMemoryChatIds"] &&
         _0x326f3d[_0xd07074(0x17c5)][_0xd07074(0x1691)]["length"] > 0x0
       ) {
+        const _0x643b61 = _0x326f3d.settings.linkedMemoryChatIds.filter(
+          (_0x4900cf) => _0x4900cf !== _0x4203ee,
+        );
+        const _0x21145c = _0x643b61.map((_0x4900cf) => {
+          const _0x63f021 = _0x5ea3c1[_0xd07074(0x1255)][_0x4900cf];
+          if (!_0x63f021) return null;
+          const _0x179a4a = _0x63f021.history.at(-1);
+          return {
+            chat: _0x63f021,
+            latestTimestamp: _0x179a4a ? _0x179a4a[_0xd07074(0x18df)] : 0,
+          };
+        }).filter(Boolean);
+        _0x21145c.sort(
+          (_0x26362f, _0x40bd78) =>
+            _0x40bd78.latestTimestamp - _0x26362f.latestTimestamp,
+        );
+        if (_0x21145c.length > 0) {
+          _0x50a753 += _0xd07074(0x19e4);
+          for (const _0x595ee6 of _0x21145c) {
+            const _0x4d7ec5 = _0x595ee6.chat;
+            const _0x2781f6 = _0x4d7ec5.isGroup ? "[群聊]" : "[私聊]";
+            const _0x32ff49 = _0x595ee6.latestTimestamp > 0
+              ? _0xd07074(0x160f) + _0x4a3960(_0x595ee6.latestTimestamp) + ")"
+              : "";
+            _0x50a753 +=
+              _0xd07074(0xc30) + _0x2781f6 + "“" + _0x4d7ec5.name +
+              "”的参考记忆" + _0x32ff49 + _0xd07074(0x5fe);
+            const _0x37d9c7 = _0x4d7ec5.history.slice(-_0x15f574).filter(
+              (_0x3b7263) =>
+                !String(_0x3b7263.content).includes("已被用户删除"),
+            );
+            if (_0x37d9c7.length === 0) {
+              _0x50a753 += "(暂无有效聊天记录)\n";
+              continue;
+            }
+            for (const _0x3b7263 of _0x37d9c7) {
+              const _0x27c994 = _0x3b7263.role === "user"
+                ? _0x4d7ec5.settings.myNickname || "我"
+                : _0x3b7263.senderName || _0x4d7ec5.name;
+              let _0x5a67a2 = String(_0x3b7263.content);
+              if (_0x3b7263.type === _0xd07074(0xe19) || _0x3b7263.type === "user_photo")
+                _0x5a67a2 = _0xd07074(0x2db) + _0x3b7263.content + "]";
+              else if (_0x3b7263.type === _0xd07074(0x18ee))
+                _0x5a67a2 = "[发送了一条语音，内容是：" + _0x3b7263.content + "]";
+              _0x50a753 += _0x27c994 + ": " + _0x5a67a2 + "\n";
+            }
+          }
+        }
       }
       const _0x34a92d = _0x326f3d[_0xd07074(0x60c)]
           [
