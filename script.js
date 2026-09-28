@@ -14595,6 +14595,66 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
       );
     }
   }
+  function _ephoneGetRerollBatch(chat, kind) {
+    if (!chat || !Array.isArray(chat.history)) return null;
+    const visible = chat.history.filter((message) => message && !message.isHidden);
+    const saved = chat.ephoneLastReplyBatch;
+    if (saved && saved.kind !== kind) return null;
+    let timestamps = Array.isArray(saved?.timestamps) ? saved.timestamps : null;
+    if (saved && !timestamps?.length) return null;
+    if (!saved) {
+      timestamps = [];
+      for (let index = visible.length - 1; index >= 0; index--) {
+        const message = visible[index];
+        if (message.role !== "assistant" || message.sentAsCharacter || message.type === "time_marker") break;
+        timestamps.unshift(message.timestamp);
+      }
+    }
+    if (!timestamps.length) return null;
+    const timestampSet = new Set(timestamps.map(String));
+    const batchIndexes = visible.flatMap((message, index) =>
+      timestampSet.has(String(message.timestamp)) ? [index] : [],
+    );
+    if (batchIndexes.length !== timestampSet.size || batchIndexes.at(-1) !== visible.length - 1)
+      return null;
+    const first = batchIndexes[0];
+    for (let index = first; index < visible.length; index++) {
+      const message = visible[index];
+      if (!timestampSet.has(String(message.timestamp)) ||
+          message.role !== "assistant" || message.sentAsCharacter)
+        return null;
+    }
+    return timestamps;
+  }
+  function _ephoneRememberReplyBatch(chat, kind) {
+    if (!chat || !Array.isArray(chat.history)) return;
+    const historyTimestamps = new Set(chat.history
+      .filter((message) => message && !message.isHidden &&
+        message.role === "assistant" && !message.sentAsCharacter)
+      .map((message) => String(message.timestamp)));
+    const timestamps = [...new Set(lastResponseTimestamps)].filter((timestamp) =>
+      historyTimestamps.has(String(timestamp)),
+    );
+    if (timestamps.length) chat.ephoneLastReplyBatch = { kind, timestamps };
+    _ephoneSyncRerollButtons(chat);
+  }
+  function _ephoneSyncRerollButtons(chat) {
+    if (!chat || String(_0x5ea3c1.activeChatId) !== String(chat.id)) return;
+    const kind = chat.isSpectatorGroup ? "spectator" : "standard";
+    const allowed = Boolean(_ephoneGetRerollBatch(chat, kind));
+    const ids = chat.isSpectatorGroup
+      ? ["spectator-reroll-btn"]
+      : ["regenerate-btn", "reroll-with-note-btn"];
+    for (const id of ids) {
+      const button = document.getElementById(id);
+      if (!button) continue;
+      if (!button.dataset.rerollTitle) button.dataset.rerollTitle = button.title;
+      button.disabled = !allowed;
+      button.title = allowed
+        ? button.dataset.rerollTitle
+        : "后面已有新消息，不能再重抽上一轮回复";
+    }
+  }
   function _ephoneBuildSpectatorControls(chat) {
     const host = document.getElementById("chat-lock-content");
     if (!host) return;
@@ -14620,8 +14680,12 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
     }
     const propelButton = toolbar.querySelector("#spectator-propel-btn");
     if (propelButton) {
-      propelButton.textContent = "推进";
+      const compose = controls.querySelector(".ephone-spectator-compose");
+      compose.insertBefore(propelButton, compose.querySelector('[data-spectator-action="send"]'));
+      propelButton.innerHTML = document.getElementById("propel-btn")?.innerHTML || "▶";
+      propelButton.dataset.idleHtml = propelButton.innerHTML;
       propelButton.title = "推进剧情";
+      propelButton.setAttribute("aria-label", "推进剧情");
     }
     const identityButton = controls.querySelector('[data-spectator-action="identity"]');
     const narrationButton = controls.querySelector('[data-spectator-action="narration"]');
@@ -14878,6 +14942,7 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
         ((_0x45b28a[_0x2ad8a8(0x791)][_0x2ad8a8(0xab9)] = _0x2ad8a8(0x1099)),
           (_0x4679ba[_0x2ad8a8(0x791)][_0x2ad8a8(0x1a1c)] = _0x2ad8a8(0x2fb)));
     }
+    _ephoneSyncRerollButtons(_0xc04a0d);
     _0x4cac0d["innerHTML"] = "";
     const _0x1e4355 = _0xc04a0d[_0x2ad8a8(0x8e6)];
     _0x1fc256 = 0x0;
@@ -17145,6 +17210,7 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
           _0x5613cd[_0x2cd873][_0x3a11f9(0x1aa6)]();
       }
     }
+    _ephoneSyncRerollButtons(_0x759d78);
   }
   async function _0x7baf0e(_0x5e3a89) {
     const _0x48e04c = _0x3ce505;
@@ -17239,7 +17305,7 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
     });
     _0x23a16d &&
       ((_0x23a16d[_0xd07074(0x1794)] = !![]),
-      (_0x23a16d["textContent"] = "思考中..."));
+      (_0x23a16d["textContent"] = "…"));
     _0xff8a5b(_0x4203ee, !![]);
     try {
       const {
@@ -17507,6 +17573,7 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
             setTimeout(_0x387de8, Math["random"]() * 0x4b0 + 0x320),
           ));
       }
+      _ephoneRememberReplyBatch(_0x326f3d, "spectator");
       (await _0x24f906[_0xd07074(0x1255)]["put"](_0x326f3d), _0x4bb316());
     } catch (_0x4ee649) {
       if (!_ephoneSpectatorTimeCommitted && _ephoneSpectatorTimePreparation)
@@ -17525,7 +17592,7 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
       });
       (_0x23a16d &&
         ((_0x23a16d[_0xd07074(0x1794)] = ![]),
-        (_0x23a16d[_0xd07074(0x71a)] = "推进")),
+        (_0x23a16d.innerHTML = _0x23a16d.dataset.idleHtml || "▶")),
         _0xff8a5b(_0x4203ee, ![]));
     }
   }
@@ -20210,7 +20277,7 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
       const _0x4144e7 = await _0x114828[_0x25f1e5(0x711)](),
         _0x5eb79b = getGeminiResponseText(_0x4144e7);
       ((lastRawAiResponse = _0x5eb79b),
-        (lastResponseTimestamps = []),
+        (lastResponseTimestamps = _0xephoneContinue ? lastResponseTimestamps : []),
         (_0x5b16cb[_0x25f1e5(0x8e6)] = _0x5b16cb[_0x25f1e5(0x8e6)][
           _0x25f1e5(0x1916)
         ]((_0x15fb5f) => !_0x15fb5f[_0x25f1e5(0x1563)])));
@@ -22740,6 +22807,7 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
         await _0x456d1d("__ephone_continue__");
         return;
       }
+      _ephoneRememberReplyBatch(_0x5b16cb, "standard");
       await _0x24f906[_0x25f1e5(0x1255)][_0x25f1e5(0x114d)](_0x5b16cb);
       const _0x136ca8 = _0x899a3d["some"](
         (_0x35b41e) =>
@@ -36519,20 +36587,20 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
     const _0x226bb4 = _0x3ce505,
       _0x9b1c40 = _0x5ea3c1[_0x226bb4(0x1255)][_0x5ea3c1[_0x226bb4(0x1aba)]];
     if (_0xephoneSpectatorGenerating) return;
-    if (
-      !_0x9b1c40 ||
-      !lastResponseTimestamps ||
-      lastResponseTimestamps[_0x226bb4(0xa5d)] === 0x0
-    ) {
-      alert(_0x226bb4(0x1663));
+    const timestamps = _ephoneGetRerollBatch(_0x9b1c40, "spectator");
+    if (!timestamps) {
+      alert("这一轮回复后已有新消息，不能再重抽。");
       return;
     }
+    const timestampSet = new Set(timestamps.map(String));
     ((_0x9b1c40[_0x226bb4(0x8e6)] = _0x9b1c40[_0x226bb4(0x8e6)][
       _0x226bb4(0x1916)
     ](
       (_0x224e25) =>
-        !lastResponseTimestamps["includes"](_0x224e25["timestamp"]),
+        !timestampSet.has(String(_0x224e25["timestamp"])),
     )),
+      (_0x9b1c40.ephoneLastReplyBatch = { kind: "spectator", timestamps: [] }),
+      (lastResponseTimestamps = []),
       await _0x24f906[_0x226bb4(0x1255)]["put"](_0x9b1c40),
       await _0x57e676(_0x5ea3c1["activeChatId"]),
       _0x135d5c({ reroll: true }));
@@ -36681,20 +36749,10 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
     const _0x7474c6 = _0x3ce505,
       _0x292db5 = _0x5ea3c1[_0x7474c6(0x1255)][_0x5ea3c1["activeChatId"]];
     if (!_0x292db5) return;
-    const _0x28965b = _0x292db5["history"][_0x7474c6(0xd28)](
-      (_0x6ad760) =>
-        _0x6ad760[_0x7474c6(0x4b6)] === _0x7474c6(0x16b1) &&
-        !_0x6ad760[_0x7474c6(0x7ca)],
-    );
-    if (_0x28965b === -0x1) {
-      alert("没有可供重新生成回复的用户消息。");
-      return;
-    }
-    const _0x307307 = _0x292db5[_0x7474c6(0x8e6)][_0x7474c6(0xd28)](
-      (_0x2e138c) => _0x2e138c["role"] === _0x7474c6(0xca8),
-    );
-    if (_0x307307 < _0x28965b) {
-      alert(_0x7474c6(0x6b2));
+    if (_0xephoneGenerationController) return;
+    const timestamps = _ephoneGetRerollBatch(_0x292db5, "standard");
+    if (!timestamps) {
+      alert("这一轮回复后已有新消息，不能再重抽。");
       return;
     }
     _0xephoneRerollInstruction =
@@ -36703,9 +36761,12 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
         : "";
     _0xephoneIsRerolling = !![];
     try {
+      const timestampSet = new Set(timestamps.map(String));
       ((_0x292db5[_0x7474c6(0x8e6)] = _0x292db5[_0x7474c6(0x8e6)][
-        _0x7474c6(0x1655)
-      ](0x0, _0x28965b + 0x1)),
+        _0x7474c6(0x1916)
+      ]((message) => !timestampSet.has(String(message.timestamp)))),
+        (_0x292db5.ephoneLastReplyBatch = { kind: "standard", timestamps: [] }),
+        (lastResponseTimestamps = []),
         await _0x24f906[_0x7474c6(0x1255)][_0x7474c6(0x114d)](_0x292db5),
         await _0x57e676(_0x5ea3c1["activeChatId"]),
         await _0x456d1d());
@@ -62160,6 +62221,11 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
       document.getElementById("reroll-with-note-btn").addEventListener(
         "click",
         async () => {
+          const chat = _0x5ea3c1.chats[_0x5ea3c1.activeChatId];
+          if (!_ephoneGetRerollBatch(chat, "standard")) {
+            alert("这一轮回复后已有新消息，不能再重抽。");
+            return;
+          }
           const _0xephoneNote = await _0x1b625f(
             "附说明重 Roll",
             "写下这次重抽希望角色如何调整；留空则取消：",

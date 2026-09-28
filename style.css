@@ -2495,16 +2495,28 @@
             font-size: 13px;
             font-weight: 600;
         }
+        .time-machine-datetime-row {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-bottom: 12px;
+        }
         #time-machine-datetime {
             box-sizing: border-box;
-            width: 100%;
-            margin-bottom: 12px;
+            flex: 1;
+            min-width: 0;
             padding: 9px 10px;
             border: 1px solid rgba(120, 120, 128, 0.3);
             border-radius: 9px;
             background: transparent;
             color: inherit;
             font: inherit;
+        }
+        #time-machine-selected-weekday {
+            flex: none;
+            min-width: 42px;
+            font-size: 13px;
+            color: var(--text-secondary);
         }
         .time-machine-flow {
             display: grid;
@@ -7406,8 +7418,7 @@ input, textarea, select {
     font-size: 13px;
     white-space: nowrap;
 }
-#chat-lock-content.spectator-mode .ephone-spectator-tools .lock-action-btn.active,
-#chat-lock-content.spectator-mode .ephone-spectator-tools #spectator-propel-btn {
+#chat-lock-content.spectator-mode .ephone-spectator-tools .lock-action-btn.active {
     border-color: var(--accent-color);
     color: var(--accent-color);
 }
@@ -7445,9 +7456,31 @@ input, textarea, select {
     border: 0;
     border-radius: 20px;
 }
+#chat-lock-content.spectator-mode .ephone-spectator-compose #spectator-propel-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 40px;
+    padding: 0;
+    border: 1px solid var(--accent-color);
+    background: var(--secondary-bg);
+    color: var(--accent-color);
+    font-size: 20px;
+}
+.ephone-spectator-compose #spectator-propel-btn svg {
+    width: 22px;
+    height: 22px;
+    stroke: currentColor;
+}
 .ephone-spectator-compose .lock-action-btn:disabled {
     opacity: 0.5;
     cursor: wait;
+}
+#regenerate-btn:disabled,
+#reroll-with-note-btn:disabled,
+#spectator-reroll-btn:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
 }
 .music-player-window {
     position: relative;
