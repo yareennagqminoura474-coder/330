@@ -14602,15 +14602,29 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
     controls.className = "ephone-spectator-controls";
     controls.innerHTML = `
       <div class="ephone-spectator-tools">
-        <button type="button" class="lock-action-btn secondary" data-spectator-action="time">时间跳转</button>
+        <button type="button" class="lock-action-btn secondary" data-spectator-action="time">时间</button>
+        <button type="button" class="lock-action-btn secondary" data-spectator-action="narration">旁白</button>
         <button type="button" class="lock-action-btn secondary" data-spectator-action="identity"></button>
       </div>
       <div class="ephone-spectator-compose">
-        <textarea rows="1" aria-label="围观模式输入内容" placeholder="选择角色身份或旁白后输入…"></textarea>
+        <textarea rows="1" aria-label="围观模式输入内容" placeholder="输入消息…"></textarea>
         <button type="button" class="lock-action-btn" data-spectator-action="send">发送</button>
       </div>`;
+    host.querySelector(".lock-text")?.remove();
     host.appendChild(controls);
+    const toolbar = controls.querySelector(".ephone-spectator-tools");
+    const actionRow = host.querySelector(".spectator-actions-container");
+    if (actionRow) {
+      [...actionRow.children].forEach((button) => toolbar.appendChild(button));
+      actionRow.remove();
+    }
+    const propelButton = toolbar.querySelector("#spectator-propel-btn");
+    if (propelButton) {
+      propelButton.textContent = "推进";
+      propelButton.title = "推进剧情";
+    }
     const identityButton = controls.querySelector('[data-spectator-action="identity"]');
+    const narrationButton = controls.querySelector('[data-spectator-action="narration"]');
     const input = controls.querySelector("textarea");
     const sendButton = controls.querySelector('[data-spectator-action="send"]');
     const memberNames = [...new Set((chat.members || [])
@@ -14622,12 +14636,12 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
       !memberNames.includes(_0xephoneSpectatorIdentity)
     ) _0xephoneSpectatorIdentity = null;
     const updateIdentity = () => {
-      identityButton.textContent = _0xephoneSpectatorIdentity === "__narration__"
-        ? "旁白身份 ▾"
-        : _0xephoneSpectatorIdentity
-          ? `以 ${_0xephoneSpectatorIdentity} 发言 ▾`
-          : "选择身份 ▾";
-      identityButton.classList.toggle("active", Boolean(_0xephoneSpectatorIdentity));
+      const isNarration = _0xephoneSpectatorIdentity === "__narration__";
+      identityButton.textContent = !isNarration && _0xephoneSpectatorIdentity
+        ? `角色：${_0xephoneSpectatorIdentity} ▾`
+        : "角色 ▾";
+      identityButton.classList.toggle("active", Boolean(_0xephoneSpectatorIdentity) && !isNarration);
+      narrationButton.classList.toggle("active", isNarration);
       input.placeholder = _0xephoneSpectatorIdentity === "__narration__"
         ? "输入旁白、动作或场景…"
         : _0xephoneSpectatorIdentity
@@ -14638,9 +14652,13 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
     controls.querySelector('[data-spectator-action="time"]').addEventListener("click", () => {
       document.getElementById("time-mode-btn")?.click();
     });
+    narrationButton.addEventListener("click", () => {
+      _0xephoneSpectatorIdentity = "__narration__";
+      updateIdentity();
+      input.focus();
+    });
     identityButton.addEventListener("click", async () => {
       const choice = await _0x1f9d16("选择发送身份", [
-        { text: "旁白（动作、心理、场景）", value: "__narration__" },
         ...memberNames.map((name) => ({ text: `以 ${name} 的身份说话`, value: name })),
       ]);
       if (!choice || _0x5ea3c1.activeChatId !== chat.id) return;
@@ -14733,6 +14751,7 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
       _0x4679ba = document["getElementById"](_0x2ad8a8(0x184b)),
       _0x45b28a = document[_0x2ad8a8(0x1023)](_0x2ad8a8(0xea6)),
       _0x1d9c93 = document[_0x2ad8a8(0x1023)](_0x2ad8a8(0xf06));
+    _0x45b28a.classList.toggle("spectator-mode", Boolean(_0xc04a0d.isSpectatorGroup));
     _0x1d9c93.classList.toggle("spectator-mode", Boolean(_0xc04a0d.isSpectatorGroup));
     _0x4cac0d[_0x2ad8a8(0x151)][_0x2ad8a8(0x10c7)] =
       _0xc04a0d[_0x2ad8a8(0x17c5)][_0x2ad8a8(0x10c7)] || _0x2ad8a8(0x295);
@@ -17506,7 +17525,7 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
       });
       (_0x23a16d &&
         ((_0x23a16d[_0xd07074(0x1794)] = ![]),
-        (_0x23a16d[_0xd07074(0x71a)] = _0xd07074(0x1da))),
+        (_0x23a16d[_0xd07074(0x71a)] = "推进")),
         _0xff8a5b(_0x4203ee, ![]));
     }
   }
@@ -63342,8 +63361,9 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
         "click",
         (_0x26d1ff) => {
           const _0x89657a = _0x274136;
-          if (_0x26d1ff["target"]["id"] === _0x89657a(0xf10)) _0x208e92();
-          else _0x26d1ff["target"]["id"] === "spectator-edit-btn" && _0xe3e52();
+          const button = _0x26d1ff.target.closest("#spectator-reroll-btn, #spectator-edit-btn");
+          if (button?.id === _0x89657a(0xf10)) _0x208e92();
+          else if (button?.id === "spectator-edit-btn") _0xe3e52();
         },
       ),
       _0x100ddd(document[_0x274136(0x1023)](_0x274136(0xe49)), () => {

@@ -7359,42 +7359,91 @@ input, textarea, select {
     height: 20px; 
     stroke: currentColor; 
 }
+#chat-lock-overlay.spectator-mode {
+    padding: 8px 8px calc(8px + env(safe-area-inset-bottom));
+    text-align: left;
+}
 #chat-lock-content.spectator-mode {
-    width: min(100%, 520px);
+    width: 100%;
+    max-width: 100%;
+    align-items: stretch;
+    gap: 0;
 }
 .ephone-spectator-controls {
     width: 100%;
-    display: grid;
-    gap: 10px;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
 }
 .ephone-spectator-tools,
 .ephone-spectator-compose {
     display: flex;
     align-items: center;
-    justify-content: center;
     gap: 8px;
 }
-.ephone-spectator-tools .lock-action-btn {
-    flex: 1;
+.ephone-spectator-tools {
     min-width: 0;
+    height: 40px;
+    padding: 0 4px;
+    overflow-x: auto;
+    flex-wrap: nowrap;
+    scrollbar-width: none;
+    -webkit-overflow-scrolling: touch;
+}
+.ephone-spectator-tools::-webkit-scrollbar {
+    display: none;
+}
+#chat-lock-content.spectator-mode .ephone-spectator-tools .lock-action-btn {
+    flex: 0 0 auto;
+    height: 38px;
+    min-width: 38px;
+    padding: 0 11px;
+    border: 1px solid var(--border-color);
+    border-radius: 19px;
+    background: var(--secondary-bg);
+    color: var(--text-primary);
+    font-size: 13px;
     white-space: nowrap;
+}
+#chat-lock-content.spectator-mode .ephone-spectator-tools .lock-action-btn.active,
+#chat-lock-content.spectator-mode .ephone-spectator-tools #spectator-propel-btn {
+    border-color: var(--accent-color);
+    color: var(--accent-color);
+}
+#chat-lock-content.spectator-mode .ephone-spectator-tools #spectator-reroll-btn,
+#chat-lock-content.spectator-mode .ephone-spectator-tools #spectator-edit-btn {
+    width: 38px;
+    padding: 0;
+}
+.ephone-spectator-tools svg {
+    width: 20px;
+    height: 20px;
+    stroke: currentColor;
 }
 .ephone-spectator-compose textarea {
     flex: 1;
     min-width: 0;
+    height: 40px;
     min-height: 40px;
-    max-height: 120px;
-    resize: vertical;
+    max-height: 40px;
+    resize: none;
+    overflow-y: auto;
     box-sizing: border-box;
-    padding: 10px 12px;
-    border: 1px solid var(--border-color);
-    border-radius: 16px;
-    background: var(--secondary-bg, #fff);
-    color: var(--text-primary, #111);
-    font: inherit;
+    padding: 10px 15px;
+    border: 0;
+    border-radius: 20px;
+    background: var(--secondary-bg);
+    color: var(--text-primary);
+    font-size: 16px;
+    font-family: inherit;
 }
-.ephone-spectator-compose .lock-action-btn {
+#chat-lock-content.spectator-mode .ephone-spectator-compose .lock-action-btn {
     flex: none;
+    height: 40px;
+    padding: 0 15px;
+    border: 0;
+    border-radius: 20px;
 }
 .ephone-spectator-compose .lock-action-btn:disabled {
     opacity: 0.5;
