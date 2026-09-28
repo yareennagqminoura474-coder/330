@@ -384,16 +384,6 @@
 
   function latestReplyContext(history) {
     if (!Array.isArray(history)) return [];
-    const latestUserMessage = [...history]
-      .reverse()
-      .find(
-        (item) =>
-          item &&
-          item.role === "user" &&
-          !item.isHidden &&
-          item.type !== "time_marker",
-      );
-    if (!latestUserMessage) return [];
     const recentContext = history
       .filter(
         (item) =>
@@ -403,6 +393,16 @@
           (item.role === "user" || item.role === "assistant"),
       )
       .slice(-3);
+    const latestUserMessage = [...history]
+      .reverse()
+      .find(
+        (item) =>
+          item &&
+          item.role === "user" &&
+          !item.isHidden &&
+          item.type !== "time_marker",
+      );
+    if (!latestUserMessage) return recentContext;
     return recentContext.includes(latestUserMessage)
       ? recentContext
       : [latestUserMessage];

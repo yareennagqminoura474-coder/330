@@ -7344,6 +7344,8 @@ input, textarea, select {
     display: flex;
     gap: 12px; 
     align-items: center;
+    justify-content: center;
+    flex-wrap: wrap;
 }
 #chat-lock-content .lock-action-btn.secondary {
     background-color: transparent; 
@@ -7356,6 +7358,47 @@ input, textarea, select {
     width: 20px;  
     height: 20px; 
     stroke: currentColor; 
+}
+#chat-lock-content.spectator-mode {
+    width: min(100%, 520px);
+}
+.ephone-spectator-controls {
+    width: 100%;
+    display: grid;
+    gap: 10px;
+}
+.ephone-spectator-tools,
+.ephone-spectator-compose {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+}
+.ephone-spectator-tools .lock-action-btn {
+    flex: 1;
+    min-width: 0;
+    white-space: nowrap;
+}
+.ephone-spectator-compose textarea {
+    flex: 1;
+    min-width: 0;
+    min-height: 40px;
+    max-height: 120px;
+    resize: vertical;
+    box-sizing: border-box;
+    padding: 10px 12px;
+    border: 1px solid var(--border-color);
+    border-radius: 16px;
+    background: var(--secondary-bg, #fff);
+    color: var(--text-primary, #111);
+    font: inherit;
+}
+.ephone-spectator-compose .lock-action-btn {
+    flex: none;
+}
+.ephone-spectator-compose .lock-action-btn:disabled {
+    opacity: 0.5;
+    cursor: wait;
 }
 .music-player-window {
     position: relative;

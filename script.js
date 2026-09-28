@@ -9123,6 +9123,8 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
     _0x36a004 = new Set(),
     _0xephoneSelectToHereArmed = ![],
     _0xephoneSendAsName = null,
+    _0xephoneSpectatorIdentity = null,
+    _0xephoneSpectatorGenerating = ![],
     _0xephoneRerollInstruction = "",
     _0xephoneIsRerolling = ![],
     _0xephoneGenerationController = null,
@@ -14593,6 +14595,106 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
       );
     }
   }
+  function _ephoneBuildSpectatorControls(chat) {
+    const host = document.getElementById("chat-lock-content");
+    if (!host) return;
+    const controls = document.createElement("div");
+    controls.className = "ephone-spectator-controls";
+    controls.innerHTML = `
+      <div class="ephone-spectator-tools">
+        <button type="button" class="lock-action-btn secondary" data-spectator-action="time">时间跳转</button>
+        <button type="button" class="lock-action-btn secondary" data-spectator-action="identity"></button>
+      </div>
+      <div class="ephone-spectator-compose">
+        <textarea rows="1" aria-label="围观模式输入内容" placeholder="选择角色身份或旁白后输入…"></textarea>
+        <button type="button" class="lock-action-btn" data-spectator-action="send">发送</button>
+      </div>`;
+    host.appendChild(controls);
+    const identityButton = controls.querySelector('[data-spectator-action="identity"]');
+    const input = controls.querySelector("textarea");
+    const sendButton = controls.querySelector('[data-spectator-action="send"]');
+    const memberNames = [...new Set((chat.members || [])
+      .map((member) => member.originalName || member.name || member.groupNickname)
+      .filter(Boolean))];
+    if (
+      _0xephoneSpectatorIdentity &&
+      _0xephoneSpectatorIdentity !== "__narration__" &&
+      !memberNames.includes(_0xephoneSpectatorIdentity)
+    ) _0xephoneSpectatorIdentity = null;
+    const updateIdentity = () => {
+      identityButton.textContent = _0xephoneSpectatorIdentity === "__narration__"
+        ? "旁白身份 ▾"
+        : _0xephoneSpectatorIdentity
+          ? `以 ${_0xephoneSpectatorIdentity} 发言 ▾`
+          : "选择身份 ▾";
+      identityButton.classList.toggle("active", Boolean(_0xephoneSpectatorIdentity));
+      input.placeholder = _0xephoneSpectatorIdentity === "__narration__"
+        ? "输入旁白、动作或场景…"
+        : _0xephoneSpectatorIdentity
+          ? `以 ${_0xephoneSpectatorIdentity} 的身份说话…`
+          : "先选择角色身份或旁白…";
+    };
+    updateIdentity();
+    controls.querySelector('[data-spectator-action="time"]').addEventListener("click", () => {
+      document.getElementById("time-mode-btn")?.click();
+    });
+    identityButton.addEventListener("click", async () => {
+      const choice = await _0x1f9d16("选择发送身份", [
+        { text: "旁白（动作、心理、场景）", value: "__narration__" },
+        ...memberNames.map((name) => ({ text: `以 ${name} 的身份说话`, value: name })),
+      ]);
+      if (!choice || _0x5ea3c1.activeChatId !== chat.id) return;
+      _0xephoneSpectatorIdentity = choice;
+      updateIdentity();
+      input.focus();
+    });
+    const send = async () => {
+      if (sendButton.disabled || _0xephoneSpectatorGenerating) return;
+      const content = input.value.trim();
+      if (!content || !chat || _0x5ea3c1.activeChatId !== chat.id) return;
+      if (!_0xephoneSpectatorIdentity) {
+        identityButton.click();
+        return;
+      }
+      sendButton.disabled = true;
+      const isNarration = _0xephoneSpectatorIdentity === "__narration__";
+      const message = {
+        role: isNarration ? "user" : "assistant",
+        senderName: isNarration ? "旁白" : _0xephoneSpectatorIdentity,
+        type: isNarration ? "narration" : "text",
+        content,
+        timestamp: Date.now(),
+        vts: window.ephoneTimeMachine?.nowMs(chat.id),
+        sentAsCharacter: !isNarration,
+      };
+      let persisted = false;
+      try {
+        chat.history.push(message);
+        await _0x24f906.chats.put(chat);
+        persisted = true;
+        input.value = "";
+        await _0xbb356a(message, chat);
+        await _0x4bb316();
+        input.focus();
+      } catch (error) {
+        if (!persisted) chat.history = chat.history.filter((item) => item !== message);
+        console.error("围观模式发送失败", error);
+        await _0x1e5953(
+          persisted ? "消息已保存" : "发送失败",
+          persisted ? "消息已保存，请重新打开聊天查看。" : error?.message || "请稍后重试。",
+        );
+      } finally {
+        sendButton.disabled = false;
+      }
+    };
+    sendButton.addEventListener("click", send);
+    input.addEventListener("keydown", (event) => {
+      if (event.key === "Enter" && !event.shiftKey) {
+        event.preventDefault();
+        void send();
+      }
+    });
+  }
   async function _0x57e676(_0x37236d) {
     const _0x2ad8a8 = _0x3ce505;
     (_0x50e90a(), _0x232053());
@@ -14600,6 +14702,7 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
     if (!_0xc04a0d) return;
     if (window.ephoneActiveChatForSendAs !== String(_0xc04a0d.id || _0x37236d)) {
       _0xephoneSendAsName = null;
+      _0xephoneSpectatorIdentity = null;
       window.ephoneActiveChatForSendAs = String(_0xc04a0d.id || _0x37236d);
       _0xephoneUpdateSendAsButton();
     }
@@ -14630,6 +14733,7 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
       _0x4679ba = document["getElementById"](_0x2ad8a8(0x184b)),
       _0x45b28a = document[_0x2ad8a8(0x1023)](_0x2ad8a8(0xea6)),
       _0x1d9c93 = document[_0x2ad8a8(0x1023)](_0x2ad8a8(0xf06));
+    _0x1d9c93.classList.toggle("spectator-mode", Boolean(_0xc04a0d.isSpectatorGroup));
     _0x4cac0d[_0x2ad8a8(0x151)][_0x2ad8a8(0x10c7)] =
       _0xc04a0d[_0x2ad8a8(0x17c5)][_0x2ad8a8(0x10c7)] || _0x2ad8a8(0x295);
     const _0x5c0e16 = _0xc04a0d[_0x2ad8a8(0x17c5)][_0x2ad8a8(0xbab)] || 0xd;
@@ -14682,7 +14786,8 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
         (_0x1d9c93[_0x2ad8a8(0x1bf6)] =
           "\x0a\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20<span\x20class=\x22lock-text\x22>正在围观AI们的群聊...</span>\x0a\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20<div\x20class=\x22spectator-actions-container\x22>\x0a\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20<button\x20id=\x22spectator-reroll-btn\x22\x20class=\x22lock-action-btn\x20secondary\x22\x20title=\x22重新生成上一轮对话\x22>\x0a\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20<svg\x20viewBox=\x220\x200\x2024\x2024\x22\x20fill=\x22none\x22\x20stroke=\x22currentColor\x22\x20stroke-width=\x222\x22\x20stroke-linecap=\x22round\x22\x20stroke-linejoin=\x22round\x22>\x0a\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20<path\x20d=\x22M20\x2011A8.1\x208.1\x200\x200\x200\x204.5\x209M4\x205v4h4\x22></path>\x0a\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20<path\x20d=\x22M4\x2013a8.1\x208.1\x200\x200\x200\x2015.5\x202m.5\x204v-4h-4\x22></path>\x0a\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20</svg>\x0a\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20</button>\x0a\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20<button\x20id=\x22spectator-propel-btn\x22\x20class=\x22lock-action-btn\x22>🎬\x20推进剧情</button>\x0a\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20<button\x20id=\x22spectator-edit-btn\x22\x20class=\x22lock-action-btn\x20secondary\x22\x20title=\x22导演剪辑室：编辑AI上一轮的响应\x22>\x0a\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20<svg\x20viewBox=\x220\x200\x2024\x2024\x22\x20fill=\x22none\x22\x20stroke=\x22currentColor\x22\x20stroke-width=\x222\x22\x20stroke-linecap=\x22round\x22\x20stroke-linejoin=\x22round\x22>\x0a\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20<path\x20d=\x22M20.24\x2012.24a6\x206\x200\x200\x200-8.49-8.49L5\x2010.5V19h8.5z\x22></path>\x0a\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20<line\x20x1=\x2216\x22\x20y1=\x228\x22\x20x2=\x222\x22\x20y2=\x2222\x22></line>\x0a\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20<line\x20x1=\x2217.5\x22\x20y1=\x2215\x22\x20x2=\x229\x22\x20y2=\x2215\x22></line>\x0a\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20</svg>\x0a\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20</button>\x0a\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20</div>\x0a\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20"),
         (document["getElementById"]("spectator-propel-btn")[_0x2ad8a8(0x5d3)] =
-          _0x135d5c));
+          _0x135d5c),
+        _ephoneBuildSpectatorControls(_0xc04a0d));
     else {
       ((_0x4679ba[_0x2ad8a8(0x791)][_0x2ad8a8(0xab9)] = _0x2ad8a8(0x12c8)),
         (_0x45b28a[_0x2ad8a8(0x791)][_0x2ad8a8(0xab9)] = "none"),
@@ -17099,13 +17204,20 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
     );
     _0xc46048(_0x5caf10);
   }
-  async function _0x135d5c() {
+  async function _0x135d5c(_ephoneSpectatorOptions = {}) {
     const _0xd07074 = _0x3ce505;
-    if (!_0x5ea3c1[_0xd07074(0x1aba)]) return;
+    if (!_0x5ea3c1[_0xd07074(0x1aba)] || _0xephoneSpectatorGenerating) return;
+    _0xephoneSpectatorGenerating = true;
     const _0x4203ee = _0x5ea3c1["activeChatId"],
       _0x326f3d = _0x5ea3c1[_0xd07074(0x1255)][_0x4203ee];
+    let _ephoneSpectatorTimePreparation = null;
+    let _ephoneSpectatorTimeCommitted = false;
     ((lastRawAiResponse = ""), (lastResponseTimestamps = []));
     const _0x23a16d = document[_0xd07074(0x1023)]("spectator-propel-btn");
+    const _ephoneSpectatorControls = document.querySelector(".ephone-spectator-controls");
+    _ephoneSpectatorControls?.querySelectorAll("button, textarea").forEach((element) => {
+      element.disabled = true;
+    });
     _0x23a16d &&
       ((_0x23a16d[_0xd07074(0x1794)] = !![]),
       (_0x23a16d["textContent"] = "思考中..."));
@@ -17118,6 +17230,10 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
       } = _0x5ea3c1[_0xd07074(0x162b)];
       if (!_0x4dfdb5 || !_0x570fe9 || !_0x45d813)
         throw new Error(_0xd07074(0x9f6));
+      _ephoneSpectatorTimePreparation =
+        window.ephoneTimeMachine?.prepareReplyTime?.(_0x326f3d.history, {
+          advance: !_ephoneSpectatorOptions.reroll,
+        }) || null;
       const _0x53db97 =
           parseInt(_0x326f3d[_0xd07074(0x17c5)][_0xd07074(0x2a2)]) || 0xa,
         _0x1b5d7d = _0x326f3d[_0xd07074(0x8e6)][_0xd07074(0x1655)](-_0x53db97),
@@ -17219,7 +17335,10 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
           _0x34a92d +
           _0xd07074(0x7f9) +
           _0x5a6651 +
-          _0xd07074(0x288),
+          _0xd07074(0x288) +
+          (window.ephoneTimeMachine?.getPromptRule(_0x4203ee) || "") +
+          "\n# 围观模式的旁白与台词\n" +
+          "第一个可见 JSON 对象必须是 narration 时间地点旁白。角色真正说出口或打出的内容用 text；动作、心理、神态、环境、场景和时间一律用 narration。每位发言角色的动作按情境穿插旁白。旁白对象格式为 {\"type\":\"narration\",\"name\":\"角色名或旁白\",\"content\":\"内容\"}。不要把动作放进 text，也不要以旁白代替角色说话。\n",
         _0x235416 = _0x3fcfdf[_0xd07074(0xbc5)]((_0x46891e) => ({
           role: "user",
           content:
@@ -17264,20 +17383,36 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
       const _0x3351c4 = await _0x13b518[_0xd07074(0x711)](),
         _0x112a1d = getGeminiResponseText(_0x3351c4);
       lastRawAiResponse = _0x112a1d;
-      const _0x56fb86 = _0x297b4d(_0x112a1d);
+      const _0x56fb86 = window.ephoneTimeMachine?.ensureReplyHeader
+        ? window.ephoneTimeMachine.ensureReplyHeader(_0x297b4d(_0x112a1d), {
+            advancedMinutes: _ephoneSpectatorTimePreparation?.minutes || 0,
+          })
+        : _0x297b4d(_0x112a1d);
+      _ephoneSpectatorTimeCommitted = true;
       let _0x47fd25 = Date["now"]();
       for (const _0x5cafc4 of _0x56fb86) {
-        if (!_0x5cafc4 || !_0x5cafc4[_0xd07074(0x1140)] || !_0x5cafc4["name"])
+        if (!_0x5cafc4 || !_0x5cafc4[_0xd07074(0x1140)])
           continue;
+        if (_0x5cafc4.type === "thought_chain") continue;
+        if (!_0x5cafc4.name && _0x5cafc4.type !== "narration") continue;
         let _0x14c18c = null;
         const _0xedf656 = _0x47fd25++;
         lastResponseTimestamps[_0xd07074(0x3e6)](_0xedf656);
         const _0x45a46e = {
           role: _0xd07074(0xca8),
-          senderName: _0x5cafc4[_0xd07074(0xeda)],
+          senderName: _0x5cafc4[_0xd07074(0xeda)] || "旁白",
           timestamp: _0xedf656,
+          vts: window.ephoneTimeMachine?.nowMs(_0x4203ee),
         };
         switch (_0x5cafc4[_0xd07074(0x1140)]) {
+          case "narration":
+            _0x14c18c = {
+              ..._0x45a46e,
+              type: "narration",
+              content: _0x5cafc4.content || _0x5cafc4.message || "",
+              isReplyHeader: Boolean(_0x5cafc4.isReplyHeader),
+            };
+            break;
           case _0xd07074(0x352):
             _0x14c18c = { ..._0x45a46e, content: _0x5cafc4[_0xd07074(0xfd7)] };
             break;
@@ -17355,12 +17490,20 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
       }
       (await _0x24f906[_0xd07074(0x1255)]["put"](_0x326f3d), _0x4bb316());
     } catch (_0x4ee649) {
+      if (!_ephoneSpectatorTimeCommitted && _ephoneSpectatorTimePreparation)
+        await window.ephoneTimeMachine?.rollbackPreparedReplyTime?.(
+          _ephoneSpectatorTimePreparation,
+        );
       (console[_0xd07074(0x110f)](_0xd07074(0x136a), _0x4ee649),
         await _0x1e5953(
           _0xd07074(0x1a72),
           _0xd07074(0x15a0) + _0x4ee649[_0xd07074(0xeb4)],
         ));
     } finally {
+      _0xephoneSpectatorGenerating = false;
+      _ephoneSpectatorControls?.querySelectorAll("button, textarea").forEach((element) => {
+        element.disabled = false;
+      });
       (_0x23a16d &&
         ((_0x23a16d[_0xd07074(0x1794)] = ![]),
         (_0x23a16d[_0xd07074(0x71a)] = _0xd07074(0x1da))),
@@ -36356,6 +36499,7 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
   async function _0x208e92() {
     const _0x226bb4 = _0x3ce505,
       _0x9b1c40 = _0x5ea3c1[_0x226bb4(0x1255)][_0x5ea3c1[_0x226bb4(0x1aba)]];
+    if (_0xephoneSpectatorGenerating) return;
     if (
       !_0x9b1c40 ||
       !lastResponseTimestamps ||
@@ -36372,7 +36516,7 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
     )),
       await _0x24f906[_0x226bb4(0x1255)]["put"](_0x9b1c40),
       await _0x57e676(_0x5ea3c1["activeChatId"]),
-      _0x135d5c());
+      _0x135d5c({ reroll: true }));
   }
   async function _0x11d240(_0x47e7c2, _0x5a0b34) {
     const _0x47c134 = _0x3ce505;
