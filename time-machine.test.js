@@ -46,7 +46,18 @@ vm.runInNewContext(fs.readFileSync("time-machine.js", "utf8"), {
   assert.match(reply[2].content, /2027年2月30日，星期一/);
   assert.match(clock.getPromptRule(), /星期必须按该日期的日历计算/);
 
+  const marchFifth = new Date(2026, 2, 5, 12).getTime();
+  assert.equal(clock.normalizeWeekdayText("2026年3月5日，星期五", marchFifth), "2026年3月5日，星期四");
+  assert.equal(clock.normalizeWeekdayText("3月5号，星期五", marchFifth), "3月5号，星期四");
+  assert.equal(clock.normalizeWeekdayText("今天星期五，明天星期四", marchFifth), "今天星期四，明天星期五");
+  await clock.jumpTo(marchFifth, clock.FLOWS.FROZEN);
+  const marchReply = clock.ensureReplyHeader([
+    { type: "narration", content: "2026年3月5日，星期五，教室里很安静。" },
+  ]);
+  assert.match(marchReply[0].content, /2026年3月5日，12点00分，星期四/);
+  assert.match(marchReply[1].content, /2026年3月5日，星期四/);
+
   clock.prepareReplyTime([{ role: "user", type: "text", content: "继续" }]);
-  assert.match(clock.formatReplyHeader(clock.nowMs(), "学校"), /2027年1月8日，\d{2}点\d{2}分，星期五/);
+  assert.match(clock.formatReplyHeader(clock.nowMs(), "学校"), /2026年3月5日，\d{2}点\d{2}分，星期四/);
   console.log("Time machine weekday tests passed");
 })().catch((error) => { console.error(error); process.exitCode = 1; });

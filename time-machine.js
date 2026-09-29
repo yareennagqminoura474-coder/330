@@ -284,10 +284,17 @@
     return `${date.getFullYear()}年${date.getMonth() + 1}月${date.getDate()}日，${pad(date.getHours())}点${pad(date.getMinutes())}分，星期${weekday}，地点：${safeLocation || "线上聊天"}`;
   }
 
-  function normalizeWeekdayMentions(text) {
-    const dateAndWeekday = /(\d{4})年(\d{1,2})月(\d{1,2})日([^\n。年月日]{0,40}?)(星期|周)([日天一二三四五六])/g;
-    return text.replace(dateAndWeekday, (match, yearText, monthText, dayText, middle, prefix) => {
-      const year = Number(yearText);
+  function normalizeWeekdayMentions(text, referenceMs = nowMs()) {
+    if (typeof text !== "string") return text;
+    const referenceDate = new Date(Number.isFinite(referenceMs) ? referenceMs : nowMs());
+    const dateAndWeekday = /(?:(\d{4})年)?(\d{1,2})月(\d{1,2})(日|号)([^\n。年月日号]{0,80}?)(星期|周)([日天一二三四五六])/g;
+    let corrected = text.replace(dateAndWeekday, (match, yearText, monthText, dayText, daySuffix, middle, prefix, _statedWeekday, offset, source) => {
+      let year = yearText ? Number(yearText) : referenceDate.getFullYear();
+      if (!yearText) {
+        const preceding = source.slice(Math.max(0, offset - 2), offset);
+        if (preceding === "去年") year -= 1;
+        if (preceding === "明年") year += 1;
+      }
       const month = Number(monthText);
       const day = Number(dayText);
       const date = new Date(year, month - 1, day, 12);
@@ -297,8 +304,16 @@
         date.getDate() !== day
       ) return match;
       const weekday = ["日", "一", "二", "三", "四", "五", "六"][date.getDay()];
-      return `${yearText}年${monthText}月${dayText}日${middle}${prefix}${weekday}`;
+      return `${yearText ? `${yearText}年` : ""}${monthText}月${dayText}${daySuffix}${middle}${prefix}${weekday}`;
     });
+    const relativeDays = { 前天: -2, 昨天: -1, 今天: 0, 明天: 1, 后天: 2 };
+    corrected = corrected.replace(/(前天|昨天|今天|明天|后天)([^\n。，；!?！？]{0,16}?)(星期|周)([日天一二三四五六])/g, (match, dayName, middle, prefix) => {
+      const date = new Date(referenceDate);
+      date.setDate(date.getDate() + relativeDays[dayName]);
+      const weekday = ["日", "一", "二", "三", "四", "五", "六"][date.getDay()];
+      return `${dayName}${middle}${prefix}${weekday}`;
+    });
+    return corrected;
   }
 
   function inferLocation(items) {
@@ -481,9 +496,10 @@
     if (!items.some((item) => item && chatTypes.has(item.type || "text"))) {
       return items;
     }
+    const replyTimeMs = nowMs();
     for (const item of items) {
       if (item && typeof item.content === "string") {
-        item.content = normalizeWeekdayMentions(item.content);
+        item.content = normalizeWeekdayMentions(item.content, replyTimeMs);
       }
     }
     const advancedMinutes = Number.isFinite(Number(options.advancedMinutes))
@@ -499,7 +515,6 @@
       if (match?.[1] && !match[1].includes("<")) location = match[1].trim();
       items.splice(existingIndex, 1);
     }
-    const replyTimeMs = nowMs();
     const header = {
       type: "narration",
       name: "时间",
@@ -696,6 +711,7 @@
     messageTime,
     formatDateTime,
     formatReplyHeader,
+    normalizeWeekdayText: normalizeWeekdayMentions,
     ensureReplyHeader,
     prepareReplyTime,
     rollbackPreparedReplyTime,
