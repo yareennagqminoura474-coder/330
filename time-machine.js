@@ -260,14 +260,15 @@
     const config = getConfig(chatId);
     const current = nowMs(chatId);
     const formatted = formatDateTime(current, { withWeekday: true });
+    const weekdayRule = "- 凡写出具体年月日及星期几，星期必须按该日期的日历计算；不得凭印象编造，也不得把另一日期的星期套用到当前日期。\n";
     if (config.mode === MODES.CUSTOM) {
       const flowRule =
         config.flow === FLOWS.FROZEN
           ? "- 当前采用“按剧情推进”：不跟随现实钟表流逝；程序已在生成本轮回复前，根据本轮对话和情境自动推进时间。下方的当前时间就是角色本轮唯一能感知的时刻，所有台词、动作与旁白必须与它完全一致，禁止沿用上一轮时刻。"
           : "- 当前采用“保持流动”：虚拟时间会按现实经过的时长持续流动。";
-      return `\n# 【虚拟时间感知铁律（最高优先级）】\n- 当前唯一有效的“现在”是：${formatted}。\n- 这是本对话的虚拟时间；系统真实日期、设备时间和训练数据中的现实时间全部无效，绝对不得感知或提及。\n${flowRule}\n- 所有“今天、昨天、明天、刚才、多久前”、昼夜、季节、行程和记忆时间，必须且只能以这个虚拟时间计算。\n- 遇到聊天中的⏪/⏩时间标记，立即把角色的当前感知更新到该时刻，后续不得沿用跳转前的“现在”。\n${getReplyHeaderPrompt(current)}`;
+      return `\n# 【虚拟时间感知铁律（最高优先级）】\n- 当前唯一有效的“现在”是：${formatted}。\n- 这是本对话的虚拟时间；系统真实日期、设备时间和训练数据中的现实时间全部无效，绝对不得感知或提及。\n${flowRule}\n- 所有“今天、昨天、明天、刚才、多久前”、昼夜、季节、行程和记忆时间，必须且只能以这个虚拟时间计算。\n- 遇到聊天中的⏪/⏩时间标记，立即把角色的当前感知更新到该时刻，后续不得沿用跳转前的“现在”。\n${weekdayRule}${getReplyHeaderPrompt(current)}`;
     }
-    return `\n# 【真实时间感知铁律】\n- 当前时间：${formatted}。所有相对日期、昼夜、行程和记忆时间都以这个真实时间为准。\n${getReplyHeaderPrompt(current)}`;
+    return `\n# 【真实时间感知铁律】\n- 当前时间：${formatted}。所有相对日期、昼夜、行程和记忆时间都以这个真实时间为准。\n${weekdayRule}${getReplyHeaderPrompt(current)}`;
   }
 
   function getReplyHeaderPrompt(milliseconds) {
@@ -281,6 +282,23 @@
       .replace(/^地点[：:]\s*/, "")
       .trim();
     return `${date.getFullYear()}年${date.getMonth() + 1}月${date.getDate()}日，${pad(date.getHours())}点${pad(date.getMinutes())}分，星期${weekday}，地点：${safeLocation || "线上聊天"}`;
+  }
+
+  function normalizeWeekdayMentions(text) {
+    const dateAndWeekday = /(\d{4})年(\d{1,2})月(\d{1,2})日([^\n。年月日]{0,40}?)(星期|周)([日天一二三四五六])/g;
+    return text.replace(dateAndWeekday, (match, yearText, monthText, dayText, middle, prefix) => {
+      const year = Number(yearText);
+      const month = Number(monthText);
+      const day = Number(dayText);
+      const date = new Date(year, month - 1, day, 12);
+      if (
+        date.getFullYear() !== year ||
+        date.getMonth() + 1 !== month ||
+        date.getDate() !== day
+      ) return match;
+      const weekday = ["日", "一", "二", "三", "四", "五", "六"][date.getDay()];
+      return `${yearText}年${monthText}月${dayText}日${middle}${prefix}${weekday}`;
+    });
   }
 
   function inferLocation(items) {
@@ -463,6 +481,11 @@
     if (!items.some((item) => item && chatTypes.has(item.type || "text"))) {
       return items;
     }
+    for (const item of items) {
+      if (item && typeof item.content === "string") {
+        item.content = normalizeWeekdayMentions(item.content);
+      }
+    }
     const advancedMinutes = Number.isFinite(Number(options.advancedMinutes))
       ? Number(options.advancedMinutes)
       : 0;
@@ -476,12 +499,13 @@
       if (match?.[1] && !match[1].includes("<")) location = match[1].trim();
       items.splice(existingIndex, 1);
     }
+    const replyTimeMs = nowMs();
     const header = {
       type: "narration",
       name: "时间",
-      content: formatReplyHeader(nowMs(), location),
+      content: formatReplyHeader(replyTimeMs, location),
       isReplyHeader: true,
-      vts: nowMs(),
+      vts: replyTimeMs,
       autoAdvancedMinutes: advancedMinutes,
     };
     const thoughtCount = items.findIndex((item) => item?.type !== "thought_chain");
