@@ -49,7 +49,14 @@ vm.runInNewContext(fs.readFileSync("time-machine.js", "utf8"), {
   const marchFifth = new Date(2026, 2, 5, 12).getTime();
   assert.equal(clock.normalizeWeekdayText("2026年3月5日，星期五", marchFifth), "2026年3月5日，星期四");
   assert.equal(clock.normalizeWeekdayText("3月5号，星期五", marchFifth), "3月5号，星期四");
+  assert.equal(clock.normalizeWeekdayText("2026 年 3 月 5 日，周 五", marchFifth), "2026 年 3 月 5 日，周四");
+  assert.equal(clock.normalizeWeekdayText("2026-03-05 星期五", marchFifth), "2026-03-05 星期四");
   assert.equal(clock.normalizeWeekdayText("今天星期五，明天星期四", marchFifth), "今天星期四，明天星期五");
+  const spectatorChat = { id: "old-spectator-group", isSpectatorGroup: true };
+  const oldSpectatorMessage = { role: "assistant", type: "narration", content: "2026年3月5日，星期五", vts: marchFifth };
+  assert.equal(clock.normalizeChatMessageWeekday(oldSpectatorMessage, spectatorChat).content, "2026年3月5日，星期四");
+  assert.equal(oldSpectatorMessage.content, "2026年3月5日，星期五");
+  assert.equal(clock.normalizeChatMessageWeekday({ ...oldSpectatorMessage, role: "user" }, spectatorChat).content, "2026年3月5日，星期五");
   await clock.jumpTo(marchFifth, clock.FLOWS.FROZEN);
   const marchReply = clock.ensureReplyHeader([
     { type: "narration", content: "2026年3月5日，星期五，教室里很安静。" },

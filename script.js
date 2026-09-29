@@ -16074,25 +16074,11 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
   }
   async function _0x426585(_0x45add0, _0x481875) {
     const _0x200523 = _0x3ce505;
-    if (
-      _0x481875?.isGroup &&
-      _0x45add0?.role !== "user" &&
-      !_0x45add0?.sentAsCharacter &&
-      typeof _0x45add0?.content === "string" &&
-      window.ephoneTimeMachine?.normalizeWeekdayText
-    ) {
-      const _ephoneMessageTime = window.ephoneTimeMachine.messageTime(
+    if (window.ephoneTimeMachine?.normalizeChatMessageWeekday)
+      _0x45add0 = window.ephoneTimeMachine.normalizeChatMessageWeekday(
         _0x45add0,
-        _0x481875.id,
+        _0x481875,
       );
-      const _ephoneCorrectedContent = window.ephoneTimeMachine.normalizeWeekdayText(
-        _0x45add0.content,
-        _ephoneMessageTime,
-      );
-      if (_ephoneCorrectedContent !== _0x45add0.content) {
-        _0x45add0 = { ..._0x45add0, content: _ephoneCorrectedContent };
-      }
-    }
     if (_0x45add0[_0x200523(0x1140)] === _0x200523(0x7cb)) {
       const _0x14fed5 = document[_0x200523(0x139f)](_0x200523(0x192d));
       ((_0x14fed5[_0x200523(0xf4)] = _0x200523(0x16ee)),
@@ -36503,26 +36489,11 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
   }
   async function _0x49ef5f(_0x41a740, _0x590e8c) {
     const _ephoneChat = _0x5ea3c1.chats?.[_0x590e8c];
-    const _ephoneHistory =
-      _ephoneChat?.isGroup && window.ephoneTimeMachine?.normalizeWeekdayText
-        ? _0x41a740.map((message) => {
-            if (
-              !message ||
-              message.role === "user" ||
-              message.sentAsCharacter ||
-              typeof message.content !== "string"
-            ) return message;
-            const referenceMs = window.ephoneTimeMachine.messageTime(
-              message,
-              _0x590e8c,
-            );
-            const content = window.ephoneTimeMachine.normalizeWeekdayText(
-              message.content,
-              referenceMs,
-            );
-            return content === message.content ? message : { ...message, content };
-          })
-        : _0x41a740;
+    const _ephoneHistory = window.ephoneTimeMachine?.normalizeChatMessageWeekday
+      ? _0x41a740.map((message) =>
+          window.ephoneTimeMachine.normalizeChatMessageWeekday(message, _ephoneChat),
+        )
+      : _0x41a740;
     const _0x48a977 = _0x3ce505,
       _0x22a75f = await _0x24f906[_0x48a977(0x1679)][_0x48a977(0x16dd)](),
       _0x4f4d29 = _0x22a75f[_0x48a977(0x1916)]((_0x44aacd) => {

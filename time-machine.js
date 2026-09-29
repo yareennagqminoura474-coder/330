@@ -287,7 +287,7 @@
   function normalizeWeekdayMentions(text, referenceMs = nowMs()) {
     if (typeof text !== "string") return text;
     const referenceDate = new Date(Number.isFinite(referenceMs) ? referenceMs : nowMs());
-    const dateAndWeekday = /(?:(\d{4})年)?(\d{1,2})月(\d{1,2})(日|号)([^\n。年月日号]{0,80}?)(星期|周)([日天一二三四五六])/g;
+    const dateAndWeekday = /(?:(\d{4})\s*年\s*)?(\d{1,2})\s*月\s*(\d{1,2})\s*(日|号)([^\n。年月日号]{0,80}?)(星期|周)\s*([日天一二三四五六])/g;
     let corrected = text.replace(dateAndWeekday, (match, yearText, monthText, dayText, daySuffix, middle, prefix, _statedWeekday, offset, source) => {
       let year = yearText ? Number(yearText) : referenceDate.getFullYear();
       if (!yearText) {
@@ -304,7 +304,16 @@
         date.getDate() !== day
       ) return match;
       const weekday = ["日", "一", "二", "三", "四", "五", "六"][date.getDay()];
-      return `${yearText ? `${yearText}年` : ""}${monthText}月${dayText}${daySuffix}${middle}${prefix}${weekday}`;
+      return match.replace(/(星期|周)\s*[日天一二三四五六]$/, `$1${weekday}`);
+    });
+    corrected = corrected.replace(/(\d{4})[-/.](\d{1,2})[-/.](\d{1,2})([^\n。]{0,80}?)(星期|周)\s*([日天一二三四五六])/g, (match, yearText, monthText, dayText, _middle, _prefix) => {
+      const year = Number(yearText);
+      const month = Number(monthText);
+      const day = Number(dayText);
+      const date = new Date(year, month - 1, day, 12);
+      if (date.getFullYear() !== year || date.getMonth() + 1 !== month || date.getDate() !== day) return match;
+      const weekday = ["日", "一", "二", "三", "四", "五", "六"][date.getDay()];
+      return match.replace(/(星期|周)\s*[日天一二三四五六]$/, `$1${weekday}`);
     });
     const relativeDays = { 前天: -2, 昨天: -1, 今天: 0, 明天: 1, 后天: 2 };
     corrected = corrected.replace(/(前天|昨天|今天|明天|后天)([^\n。，；!?！？]{0,16}?)(星期|周)([日天一二三四五六])/g, (match, dayName, middle, prefix) => {
@@ -314,6 +323,21 @@
       return `${dayName}${middle}${prefix}${weekday}`;
     });
     return corrected;
+  }
+
+  function normalizeChatMessageWeekday(message, chat) {
+    if (
+      (!chat?.isGroup && !chat?.isSpectatorGroup) ||
+      !message ||
+      message.role === "user" ||
+      message.sentAsCharacter ||
+      typeof message.content !== "string"
+    ) return message;
+    const content = normalizeWeekdayMentions(
+      message.content,
+      messageTime(message, chat.id),
+    );
+    return content === message.content ? message : { ...message, content };
   }
 
   function inferLocation(items) {
@@ -712,6 +736,7 @@
     formatDateTime,
     formatReplyHeader,
     normalizeWeekdayText: normalizeWeekdayMentions,
+    normalizeChatMessageWeekday,
     ensureReplyHeader,
     prepareReplyTime,
     rollbackPreparedReplyTime,
