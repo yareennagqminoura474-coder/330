@@ -1,17 +1,20 @@
 // Service Worker 文件 (sw.js) - 强力保活版
 
 // 缓存版本号
-const CACHE_VERSION = "v1.7.53"; // 版本号+1
+const CACHE_VERSION = "v1.7.54"; // 版本号+1
 const CACHE_NAME = `ephone-cache-${CACHE_VERSION}`;
 
-const URLS_TO_CACHE = [
+const CORE_URLS_TO_CACHE = [
   "./index.html",
-  "./style.css?v=1.7.51",
+  "./style.css?v=1.7.54",
   "./persona-spaces.js?v=1.7.48",
-  "./script.js?v=1.7.52",
+  "./script.js?v=1.7.54",
   "./api-payload-guard.js?v=1.7.44",
   "./narration-mode.js",
-  "./time-machine.js?v=1.7.53",
+  "./time-machine.js?v=1.7.54",
+];
+
+const OPTIONAL_URLS_TO_CACHE = [
   "https://unpkg.com/dexie/dist/dexie.js",
   "https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js",
   "https://phoebeboo.github.io/mewoooo/pp.js",
@@ -39,7 +42,9 @@ self.addEventListener("install", (event) => {
   event.waitUntil(
     caches.open(CACHE_NAME).then((cache) => {
       console.log("缓存核心文件...");
-      return cache.addAll(URLS_TO_CACHE);
+      return cache.addAll(CORE_URLS_TO_CACHE).then(() =>
+        Promise.allSettled(OPTIONAL_URLS_TO_CACHE.map((url) => cache.add(url))),
+      );
     }),
   );
 });
@@ -78,6 +83,13 @@ self.addEventListener("fetch", (event) => {
   }
 
   if (event.request.method !== "GET") return;
+
+  if (event.request.mode === "navigate") {
+    event.respondWith(
+      fetch(event.request).catch(() => caches.match("./index.html")),
+    );
+    return;
+  }
 
   event.respondWith(
     caches.match(event.request).then((cachedResponse) => {

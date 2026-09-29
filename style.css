@@ -21,6 +21,24 @@
             flex-direction: column;
             background-color: #ffffff; 
         }
+        #app-version-badge {
+            position: absolute;
+            left: 5px;
+            bottom: calc(3px + env(safe-area-inset-bottom));
+            z-index: 20;
+            padding: 2px 4px;
+            border-radius: 4px;
+            background: rgba(255, 255, 255, 0.82);
+            color: #59616c;
+            font-size: 10px;
+            line-height: 1;
+            pointer-events: none;
+            user-select: none;
+        }
+        #phone-screen.dark-mode #app-version-badge {
+            background: rgba(28, 28, 30, 0.82);
+            color: #d1d1d6;
+        }
         #chat-input-area {
             flex-shrink: 0;
             padding: 8px;
