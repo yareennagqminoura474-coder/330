@@ -264,8 +264,12 @@
         #selection-delete-btn { color: #ff3b30; }
         #chat-messages {
             flex-grow: 1;
+            min-height: 0;
             overflow-y: auto;
             overflow-x: hidden; 
+            -webkit-overflow-scrolling: touch;
+            touch-action: pan-y;
+            overscroll-behavior-y: contain;
             padding: 10px 15px; 
             padding-top: 110px;
             margin-top: -80px;

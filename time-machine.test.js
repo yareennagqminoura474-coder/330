@@ -58,13 +58,20 @@ vm.runInNewContext(fs.readFileSync("time-machine.js", "utf8"), {
   assert.equal(oldSpectatorMessage.content, "2026年3月5日，星期五");
   assert.equal(clock.normalizeChatMessageWeekday({ ...oldSpectatorMessage, role: "user" }, spectatorChat).content, "2026年3月5日，星期五");
   await clock.jumpTo(marchFifth, clock.FLOWS.FROZEN);
+  assert.match(clock.getPromptRule("group-1"), /2026-03-05 12:00 周四/);
+  assert.match(clock.getPromptRule("group-1", marchFifth + 7 * 60 * 1000), /2026-03-05 12:07 周四/);
   const marchReply = clock.ensureReplyHeader([
     { type: "narration", content: "2026年3月5日，星期五，教室里很安静。" },
-  ]);
+  ], { chatId: "group-1", replyTimeMs: marchFifth });
   assert.match(marchReply[0].content, /2026年3月5日，12点00分，星期四/);
   assert.match(marchReply[1].content, /2026年3月5日，星期四/);
 
-  clock.prepareReplyTime([{ role: "user", type: "text", content: "继续" }]);
+  const preparation = clock.prepareReplyTime(
+    [{ role: "assistant", type: "text", content: "继续", sentAsCharacter: true }],
+    { chatId: "group-1" },
+  );
+  assert.equal(preparation.chatId, "group-1");
+  assert.equal(preparation.afterMs, clock.nowMs("group-1"));
   assert.match(clock.formatReplyHeader(clock.nowMs(), "学校"), /2026年3月5日，\d{2}点\d{2}分，星期四/);
   console.log("Time machine weekday tests passed");
 })().catch((error) => { console.error(error); process.exitCode = 1; });

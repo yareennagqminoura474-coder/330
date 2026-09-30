@@ -256,9 +256,11 @@
     await saveActive(config, false);
   }
 
-  function getPromptRule(chatId = activeChatId) {
+  function getPromptRule(chatId = activeChatId, currentMs = null) {
     const config = getConfig(chatId);
-    const current = nowMs(chatId);
+    const current = currentMs != null && Number.isFinite(Number(currentMs))
+      ? Number(currentMs)
+      : nowMs(chatId);
     const formatted = formatDateTime(current, { withWeekday: true });
     const weekdayRule = "- 凡写出具体年月日及星期几，星期必须按该日期的日历计算；不得凭印象编造，也不得把另一日期的星期套用到当前日期。\n";
     if (config.mode === MODES.CUSTOM) {
@@ -423,19 +425,23 @@
     return Math.max(1, Math.min(25, Math.round(minutes)));
   }
 
-  function advanceFrozenForReply(items) {
-    const config = getConfig();
+  function advanceFrozenForReply(items, chatId = activeChatId) {
+    if (!chatId) return 0;
+    const targetChatId = String(chatId);
+    const config = getConfig(targetChatId);
     if (config.mode !== MODES.CUSTOM || config.flow !== FLOWS.FROZEN) return 0;
-    freezeActiveRecords(config);
+    if (targetChatId === activeChatId) freezeActiveRecords(config);
     const minutes = replyAdvanceMinutes(items);
     config.anchorVirtualMs = virtualNow(config) + minutes * 60 * 1000;
     config.anchorRealMs = Date.now();
-    configs[activeChatId] = normalizeConfig(config);
+    configs[targetChatId] = normalizeConfig(config);
     persistConfigs();
-    Promise.resolve(activeBinding?.applyConfig?.(configs[activeChatId])).catch(
-      (error) => console.warn("剧情时间保存失败：", error),
-    );
-    updateUi();
+    if (targetChatId === activeChatId) {
+      Promise.resolve(activeBinding?.applyConfig?.(configs[targetChatId])).catch(
+        (error) => console.warn("剧情时间保存失败：", error),
+      );
+      updateUi();
+    }
     return minutes;
   }
 
@@ -466,19 +472,20 @@
   }
 
   function prepareReplyTime(history, options = {}) {
-    const beforeMs = nowMs();
+    const chatId = String(options.chatId || activeChatId || "");
+    const beforeMs = nowMs(chatId || activeChatId);
     const preparation = {
-      chatId: activeChatId,
+      chatId,
       beforeMs,
       afterMs: beforeMs,
       minutes: 0,
       changed: false,
     };
-    if (options.advance === false || !activeChatId) return preparation;
-    const minutes = advanceFrozenForReply(latestReplyContext(history));
+    if (options.advance === false || !chatId) return preparation;
+    const minutes = advanceFrozenForReply(latestReplyContext(history), chatId);
     if (!minutes) return preparation;
     preparation.minutes = minutes;
-    preparation.afterMs = nowMs();
+    preparation.afterMs = nowMs(chatId);
     preparation.changed = true;
     return preparation;
   }
@@ -505,7 +512,8 @@
   }
 
   function ensureReplyHeader(items, options = {}) {
-    if (!Array.isArray(items) || !activeChatId) return items;
+    const chatId = String(options.chatId || activeChatId || "");
+    if (!Array.isArray(items) || !chatId) return items;
     const chatTypes = new Set([
       "text",
       "narration",
@@ -520,7 +528,9 @@
     if (!items.some((item) => item && chatTypes.has(item.type || "text"))) {
       return items;
     }
-    const replyTimeMs = nowMs();
+    const replyTimeMs = Number.isFinite(Number(options.replyTimeMs))
+      ? Number(options.replyTimeMs)
+      : nowMs(chatId);
     for (const item of items) {
       if (item && typeof item.content === "string") {
         item.content = normalizeWeekdayMentions(item.content, replyTimeMs);

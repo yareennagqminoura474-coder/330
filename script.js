@@ -9857,6 +9857,16 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
         }, 0x64));
     });
   }
+  function _ephoneRestoreChatScrolling() {
+    const scroller = document.getElementById("chat-messages");
+    if (!scroller) return;
+    scroller.style.overflowY = "auto";
+    scroller.style.overflowX = "hidden";
+    scroller.style.touchAction = "pan-y";
+    scroller.style.webkitOverflowScrolling = "touch";
+    scroller.style.pointerEvents = "auto";
+    void scroller.offsetHeight;
+  }
   function _0x1f9d16(_0x2af20b, _0xc0c983) {
     const _0x314e82 = _0x3ce505;
     return new Promise((_0x5a37ce) => {
@@ -9865,6 +9875,24 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
         _0x1a9cdf = document[_0x48a369(0x1023)](_0x48a369(0xc34)),
         _0x11b0bd = document[_0x48a369(0x1023)](_0x48a369(0x12e5)),
         _0x27ecb3 = document[_0x48a369(0x8ad)](_0x48a369(0x1311));
+      const _ephonePreviousFooterStyle = _0x27ecb3.getAttribute("style");
+      let _ephoneChoiceFinished = false;
+      const _ephoneFinishChoice = (_ephoneValue) => {
+        if (_ephoneChoiceFinished) return;
+        _ephoneChoiceFinished = true;
+        if (document.activeElement instanceof HTMLElement)
+          document.activeElement.blur();
+        _0x1492e0.classList.remove("visible");
+        _0x1492e0.setAttribute("aria-hidden", "true");
+        if (_ephonePreviousFooterStyle == null)
+          _0x27ecb3.removeAttribute("style");
+        else _0x27ecb3.setAttribute("style", _ephonePreviousFooterStyle);
+        requestAnimationFrame(() => {
+          _ephoneRestoreChatScrolling();
+          requestAnimationFrame(_ephoneRestoreChatScrolling);
+        });
+        _0x5a37ce(_ephoneValue);
+      };
       ((_0x1a9cdf[_0x48a369(0x71a)] = _0x2af20b),
         (_0x11b0bd[_0x48a369(0x1bf6)] = ""),
         (_0x27ecb3["innerHTML"] = ""),
@@ -9875,6 +9903,10 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
         (_0x27ecb3[_0x48a369(0x791)][_0x48a369(0x1349)] = _0x48a369(0xa47)),
         (_0x27ecb3[_0x48a369(0x791)][_0x48a369(0xadf)] = _0x48a369(0x13fb)),
         (_0x27ecb3["style"]["gap"] = "8px"));
+      _0x27ecb3.style.minHeight = "0";
+      _0x27ecb3.style.webkitOverflowScrolling = "touch";
+      _0x27ecb3.style.touchAction = "pan-y";
+      _0x27ecb3.style.overscrollBehavior = "contain";
       let _0x2dcb66 = 0x0;
       const _0x4336e4 = 0xa,
         _0x1e21cf = document["createElement"](_0x48a369(0x228));
@@ -9894,9 +9926,7 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
             (_0x230d0c[_0x3af59c(0x791)]["padding"] = "12px\x2015px"),
             (_0x230d0c[_0x3af59c(0x791)]["marginBottom"] = "0"),
             (_0x230d0c[_0x3af59c(0x5d3)] = () => {
-              const _0x206e0f = _0x3af59c;
-              (_0x1492e0["classList"][_0x206e0f(0x1aa6)](_0x206e0f(0x2fb)),
-                _0x5a37ce(_0x16354d["value"]));
+              _ephoneFinishChoice(_0x16354d["value"]);
             }),
             _0x27ecb3[_0x3af59c(0x8b8)](_0x230d0c, _0x1e21cf));
         }),
@@ -9910,7 +9940,11 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
             : (_0x1e21cf["style"][_0x3556e1(0xab9)] = "none"));
       };
       ((_0x1e21cf["onclick"] = (_0x77ce59) => {
+        const _ephoneScrollTop = _0x27ecb3.scrollTop;
         (_0x77ce59["stopPropagation"](), _0x4524ba());
+        requestAnimationFrame(() => {
+          _0x27ecb3.scrollTop = _ephoneScrollTop;
+        });
       }),
         _0x27ecb3["appendChild"](_0x1e21cf),
         _0x4524ba());
@@ -9924,11 +9958,10 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
         (_0x29bc6e[_0x48a369(0x791)]["padding"] = "12px"),
         (_0x29bc6e["style"][_0x48a369(0xf25)] = _0x48a369(0x538)),
         (_0x29bc6e[_0x48a369(0x5d3)] = () => {
-          const _0x5306e3 = _0x48a369;
-          (_0x1492e0[_0x5306e3(0xd57)]["remove"](_0x5306e3(0x2fb)),
-            _0x5a37ce(null));
+          _ephoneFinishChoice(null);
         }),
         _0x27ecb3[_0x48a369(0x3fe)](_0x29bc6e),
+        _0x1492e0.setAttribute("aria-hidden", "false"),
         _0x1492e0["classList"][_0x48a369(0x17db)](_0x48a369(0x2fb)));
     })[_0x314e82(0x1a32)](() => {});
   }
@@ -15005,10 +15038,11 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
       _0x5baa4a = ![];
       return;
     }
-    _0x41934c(_0xe8ccb1, _0x461f9d(0x9a5));
-    const _0x256588 = _0xe8ccb1[_0x461f9d(0xb2d)];
-    await new Promise((_0x4e1b6a) => setTimeout(_0x4e1b6a, 0x64));
-    const _0x12ed44 = _0x5b7a9e[_0x461f9d(0x8e6)][_0x461f9d(0xa5d)],
+    try {
+      _0x41934c(_0xe8ccb1, _0x461f9d(0x9a5));
+      const _0x256588 = _0xe8ccb1[_0x461f9d(0xb2d)];
+      await new Promise((_0x4e1b6a) => setTimeout(_0x4e1b6a, 0x64));
+      const _0x12ed44 = _0x5b7a9e[_0x461f9d(0x8e6)][_0x461f9d(0xa5d)],
       _0x579e8e = _0x5ea3c1[_0x461f9d(0x9b1)][_0x461f9d(0x180c)] || 0x32,
       _0x586a43 = _0x12ed44 - _0x1fc256 - _0x579e8e,
       _0x5097c3 = _0x12ed44 - _0x1fc256,
@@ -15046,8 +15080,13 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
       _0x4fe509 - _0x5d7820 > 0x927c0 &&
       _0x44163a[_0x461f9d(0x3fe)](_0xac0bca(_0x4fe509));
     (_0x370ae0(_0xe8ccb1), _0xe8ccb1[_0x461f9d(0x18b9)](_0x44163a));
-    const _0xb4fea5 = _0xe8ccb1["scrollHeight"];
-    ((_0xe8ccb1[_0x461f9d(0xa06)] = _0xb4fea5 - _0x256588), (_0x5baa4a = ![]));
+      const _0xb4fea5 = _0xe8ccb1["scrollHeight"];
+      _0xe8ccb1[_0x461f9d(0xa06)] = _0xb4fea5 - _0x256588;
+    } finally {
+      _0x370ae0(_0xe8ccb1);
+      _0x5baa4a = ![];
+      requestAnimationFrame(_ephoneRestoreChatScrolling);
+    }
   }
   function _0x1aa49f(_0x154698 = null) {
     const _0x12cdde = _0x3ce505;
@@ -17323,7 +17362,12 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
       _ephoneSpectatorTimePreparation =
         window.ephoneTimeMachine?.prepareReplyTime?.(_0x326f3d.history, {
           advance: !_ephoneSpectatorOptions.reroll,
+          chatId: _0x4203ee,
         }) || null;
+      const _ephoneSpectatorReplyTimeMs =
+        _ephoneSpectatorTimePreparation?.afterMs ??
+        window.ephoneTimeMachine?.nowMs(_0x4203ee) ??
+        Date.now();
       const _0x53db97 =
           parseInt(_0x326f3d[_0xd07074(0x17c5)][_0xd07074(0x2a2)]) || 0xa,
         _0x1b5d7d = _0x326f3d[_0xd07074(0x8e6)][_0xd07074(0x1655)](-_0x53db97),
@@ -17474,9 +17518,13 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
           _0xd07074(0x7f9) +
           _0x5a6651 +
           _0xd07074(0x288) +
-          (window.ephoneTimeMachine?.getPromptRule(_0x4203ee) || "") +
+          (window.ephoneTimeMachine?.getPromptRule(
+            _0x4203ee,
+            _ephoneSpectatorReplyTimeMs,
+          ) || "") +
           "\n# 围观模式的旁白与台词\n" +
-          "第一个可见 JSON 对象必须是 narration 时间地点旁白。角色真正说出口或打出的内容用 text；动作、心理、神态、环境、场景和时间一律用 narration。每位发言角色的动作按情境穿插旁白。旁白对象格式为 {\"type\":\"narration\",\"name\":\"角色名或旁白\",\"content\":\"内容\"}。不要把动作放进 text，也不要以旁白代替角色说话。\n",
+          "第一个可见 JSON 对象必须是 narration 时间地点旁白。角色真正说出口或打出的内容用 text；动作、心理、神态、环境、场景和时间一律用 narration。每位发言角色的动作按情境穿插旁白。旁白对象格式为 {\"type\":\"narration\",\"name\":\"角色名或旁白\",\"content\":\"内容\"}。不要把动作放进 text，也不要以旁白代替角色说话。\n" +
+          `发送前再次核对：本轮角色唯一能感知的当前时间是 ${window.ephoneTimeMachine?.formatDateTime(_ephoneSpectatorReplyTimeMs, { withWeekday: true }) || ""}，任何冲突时间均无效。\n`,
         _0x235416 = _0x3fcfdf[_0xd07074(0xbc5)]((_0x46891e) => ({
           role: "user",
           content:
@@ -17524,6 +17572,8 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
       const _0x56fb86 = window.ephoneTimeMachine?.ensureReplyHeader
         ? window.ephoneTimeMachine.ensureReplyHeader(_0x297b4d(_0x112a1d), {
             advancedMinutes: _ephoneSpectatorTimePreparation?.minutes || 0,
+            chatId: _0x4203ee,
+            replyTimeMs: _ephoneSpectatorReplyTimeMs,
           })
         : _0x297b4d(_0x112a1d);
       _ephoneSpectatorTimeCommitted = true;
@@ -17540,7 +17590,7 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
           role: _0xd07074(0xca8),
           senderName: _0x5cafc4[_0xd07074(0xeda)] || "旁白",
           timestamp: _0xedf656,
-          vts: window.ephoneTimeMachine?.nowMs(_0x4203ee),
+          vts: _ephoneSpectatorReplyTimeMs,
         };
         switch (_0x5cafc4[_0xd07074(0x1140)]) {
           case "narration":
@@ -17697,6 +17747,7 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
         : "输入消息...";
       _0xInput.focus();
     }
+    requestAnimationFrame(_ephoneRestoreChatScrolling);
   }
   async function _0x456d1d(_0xephoneMode = null) {
     const _0x25f1e5 = _0x3ce505;
@@ -18008,25 +18059,40 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
       _0xephoneTimePreparation = window.ephoneTimeMachine?.prepareReplyTime
         ? window.ephoneTimeMachine.prepareReplyTime(_0x5b16cb["history"], {
             advance: !_0xephoneIsRerolling && !_0xephoneContinue,
+            chatId: _0x973a29,
           })
         : null;
       let _0x5e0f42 = "";
-      const _0x3e2aea =
-          window.ephoneTimeMachine?.nowDate(_0x973a29) ?? new Date(),
+      const _ephoneReplyTimeMs =
+          _0xephoneTimePreparation?.afterMs ??
+          window.ephoneTimeMachine?.nowMs(_0x973a29) ??
+          Date.now(),
+        _ephoneUsesVirtualTime =
+          window.ephoneTimeMachine?.getConfig(_0x973a29)?.mode === "custom",
+        _0x3e2aea = new Date(_ephoneReplyTimeMs),
         _0x12e285 = _0x5b16cb["settings"]["timeZone"] || _0x25f1e5(0xe1d),
-        _0x369e74 = _0x3e2aea[_0x25f1e5(0xcd1)](_0x25f1e5(0x483), {
-          timeZone: _0x12e285,
-          dateStyle: _0x25f1e5(0x932),
-          timeStyle: _0x25f1e5(0x1575),
-        }),
-        _0x2d1a1c = new Date(
-          _0x3e2aea[_0x25f1e5(0xcd1)](_0x25f1e5(0xbf7), {
-            timeZone: _0x12e285,
-          }),
-        ),
+        _0x369e74 = _ephoneUsesVirtualTime
+          ? window.ephoneTimeMachine.formatDateTime(_ephoneReplyTimeMs, {
+              withWeekday: true,
+            })
+          : _0x3e2aea[_0x25f1e5(0xcd1)](_0x25f1e5(0x483), {
+              timeZone: _0x12e285,
+              dateStyle: _0x25f1e5(0x932),
+              timeStyle: _0x25f1e5(0x1575),
+            }),
+        _0x2d1a1c = _ephoneUsesVirtualTime
+          ? new Date(_ephoneReplyTimeMs)
+          : new Date(
+              _0x3e2aea[_0x25f1e5(0xcd1)](_0x25f1e5(0xbf7), {
+                timeZone: _0x12e285,
+              }),
+            ),
         _0x19dd61 = _0x4b14d7(_0x2d1a1c),
         _0xephoneTimeRule =
-          window.ephoneTimeMachine?.getPromptRule(_0x973a29) || "";
+          window.ephoneTimeMachine?.getPromptRule(
+            _0x973a29,
+            _ephoneReplyTimeMs,
+          ) || "";
       let _0x539674, _0x4e7a2c;
       const _0x29cffe = _0x5b16cb["history"]
         [_0x25f1e5(0x1916)]((_0x419017) => _0x419017[_0x25f1e5(0x7ca)])
@@ -20245,6 +20311,10 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
       }
       _0x539674 +=
         "\n# 【回复长度与节奏（按情境灵活执行）】\n通常将内容拆分成约4到7条简短消息；简单回应可以更少，互动丰富或需要逐步展开时可以更多。此范围只是自然聊天的倾向，没有固定最低或最高条数。不要为凑数量添加空话，也不要把多个独立想法挤成一条。\n";
+      _0x539674 +=
+        "\n# 【发送前最终时间校验】\n" +
+        `本轮唯一有效的当前时间是 ${window.ephoneTimeMachine?.formatDateTime(_ephoneReplyTimeMs, { withWeekday: true }) || _0x369e74}。` +
+        "角色对现在时间、今天日期、星期、昼夜及相对时间的感知必须以此为准。忽略聊天历史、记忆、设备时间或其他提示中与它冲突的时间；如被问及当前时间，必须回答这一时刻。\n";
       if (
         _0x4e7a2c.length > 0 &&
         _0x4e7a2c[_0x4e7a2c.length - 1]?.role === "assistant"
@@ -20337,6 +20407,8 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
       const _0x899a3d = window.ephoneTimeMachine?.ensureReplyHeader
         ? window.ephoneTimeMachine.ensureReplyHeader(_0x297b4d(_0x5eb79b), {
             advancedMinutes: _0xephoneTimePreparation?.minutes || 0,
+            chatId: _0x973a29,
+            replyTimeMs: _ephoneReplyTimeMs,
           })
         : _0x297b4d(_0x5eb79b);
       if (_0xephoneController.signal.aborted) {
@@ -22792,6 +22864,8 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
             break;
         }
         if (_0x4c93fd) {
+          if (!Number.isFinite(Number(_0x4c93fd.vts)))
+            _0x4c93fd.vts = _ephoneReplyTimeMs;
           _0x5b16cb[_0x25f1e5(0x8e6)][_0x25f1e5(0x3e6)](_0x4c93fd);
           const _0x172238 = document[_0x25f1e5(0x3d0)] === _0x25f1e5(0x10be);
           (!_0x51d2fa || _0x172238) &&
@@ -23278,24 +23352,41 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
     if (_0xButton) _0xButton.title = "选到这";
   }
   function _0x100ddd(_0x35d896, _0x36e021) {
-    const _0x223981 = _0x3ce505;
-    let _0x6ed18c;
-    const _0x4df9e1 = (_0x1f453b) => {
-        const _0x57e205 = _0x14a8;
-        if (_0x229236) return;
-        (_0x1f453b[_0x57e205(0x758)](),
-          (_0x6ed18c = window["setTimeout"](
-            () => _0x36e021(_0x1f453b),
-            0x1f4,
-          )));
-      },
-      _0x4d592d = () => clearTimeout(_0x6ed18c);
-    (_0x35d896["addEventListener"]("mousedown", _0x4df9e1),
-      _0x35d896[_0x223981(0x111e)]("mouseup", _0x4d592d),
-      _0x35d896["addEventListener"]("mouseleave", _0x4d592d),
-      _0x35d896["addEventListener"]("touchstart", _0x4df9e1, { passive: !![] }),
-      _0x35d896[_0x223981(0x111e)](_0x223981(0xbe4), _0x4d592d),
-      _0x35d896[_0x223981(0x111e)](_0x223981(0xe1c), _0x4d592d));
+    let timer = null;
+    let touchX = 0;
+    let touchY = 0;
+    const cancel = () => {
+      clearTimeout(timer);
+      timer = null;
+    };
+    const startTimer = (event) => {
+      if (_0x229236) return;
+      cancel();
+      timer = window.setTimeout(() => {
+        timer = null;
+        _0x36e021(event);
+      }, 500);
+    };
+    _0x35d896.addEventListener("mousedown", (event) => {
+      event.stopPropagation();
+      startTimer(event);
+    });
+    _0x35d896.addEventListener("mouseup", cancel);
+    _0x35d896.addEventListener("mouseleave", cancel);
+    _0x35d896.addEventListener("touchstart", (event) => {
+      const touch = event.touches?.[0];
+      touchX = touch?.clientX ?? 0;
+      touchY = touch?.clientY ?? 0;
+      startTimer(event);
+    }, { passive: true });
+    _0x35d896.addEventListener("touchmove", (event) => {
+      const touch = event.touches?.[0];
+      if (!touch) return;
+      if (Math.abs(touch.clientX - touchX) > 8 || Math.abs(touch.clientY - touchY) > 8)
+        cancel();
+    }, { passive: true });
+    _0x35d896.addEventListener("touchend", cancel, { passive: true });
+    _0x35d896.addEventListener("touchcancel", cancel, { passive: true });
   }
   async function _0x1391eb() {
     const _0x299779 = _0x3ce505,
@@ -56868,6 +56959,7 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
             (_0x2f0fb4.style.height = "auto"),
             _0x2f0fb4.focus(),
             document.body.classList.remove("chat-actions-expanded"));
+          requestAnimationFrame(_ephoneRestoreChatScrolling);
           return;
         }
         if (
