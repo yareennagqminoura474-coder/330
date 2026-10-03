@@ -1,17 +1,18 @@
 // Service Worker 文件 (sw.js) - 强力保活版
 
 // 缓存版本号
-const CACHE_VERSION = "v1.7.56"; // 版本号+1
+const CACHE_VERSION = "v1.7.57"; // 版本号+1
 const CACHE_NAME = `ephone-cache-${CACHE_VERSION}`;
 
 const CORE_URLS_TO_CACHE = [
   "./index.html",
-  "./style.css?v=1.7.56",
+  "./style.css?v=1.7.57",
   "./persona-spaces.js?v=1.7.48",
-  "./script.js?v=1.7.56",
+  "./group-context.js?v=1.7.57",
+  "./script.js?v=1.7.57",
   "./api-payload-guard.js?v=1.7.44",
   "./narration-mode.js",
-  "./time-machine.js?v=1.7.56",
+  "./time-machine.js?v=1.7.57",
 ];
 
 const OPTIONAL_URLS_TO_CACHE = [
