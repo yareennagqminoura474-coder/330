@@ -4,12 +4,17 @@
   const STORAGE_KEY = "ephone_time_machine_v1";
   const MODES = Object.freeze({ REAL: "real", CUSTOM: "custom" });
   const FLOWS = Object.freeze({ FLOW: "flow", FROZEN: "frozen" });
+  const SPACE_TIME_HINT = "本空间所有聊天共用时间。手动跳转仅在当前聊天留下标记，其他聊天静默同步。约定等待十/二十分钟后，说‘时间到了’会按约定推进。";
   let activeChatId = null;
   let activeBinding = null;
   let configs = loadConfigs();
   const durableConfigIds = new Set();
   let cacheWarningShown = false;
   let clockTimer = null;
+  let spaceClock = null;
+  let spaceTable = null;
+  let spaceDatabaseName = null;
+  const spaceWrites = new Map();
 
   function loadConfigs() {
     try {
@@ -44,6 +49,8 @@
         source.frozen && typeof source.frozen === "object"
           ? { ...source.frozen }
           : {},
+      holdNextReply: source.holdNextReply === true || source.timeHoldNextReply === true,
+      revision: Math.max(0, Math.floor(Number(source.revision) || 0)),
     };
   }
 
@@ -107,9 +114,62 @@
   }
 
   function getConfig(chatId = activeChatId) {
-    if (!chatId) return normalizeConfig();
+    if (!chatId) return spaceClock ? normalizeConfig(spaceClock) : normalizeConfig();
     if (!configs[chatId]) configs[chatId] = normalizeConfig();
+    if (spaceClock) Object.assign(configs[chatId], { ...spaceClock, frozen: configs[chatId].frozen });
     return configs[chatId];
+  }
+
+  function setSpaceClock(config) {
+    spaceClock = normalizeConfig({ ...config, frozen: {} });
+    // Historical timestamp maps remain per chat, only the live clock is shared.
+    for (const value of Object.values(configs)) Object.assign(value, { ...spaceClock, frozen: value.frozen });
+  }
+
+  function persistSpaceClock() {
+    if (!spaceTable || !spaceClock) return Promise.resolve();
+    const table = spaceTable, name = table.db.name;
+    const snapshot = { ...spaceClock, frozen: {}, id: "main" };
+    const write = (spaceWrites.get(name) || Promise.resolve()).catch(() => {}).then(() => table.put(snapshot));
+    spaceWrites.set(name, write);
+    // Callers that prepare a reply await the original promise and handle failure.
+    write.catch((error) => console.warn("空间时间保存失败：", error));
+    return write;
+  }
+
+  async function loadSpace(db) {
+    if (!db?.spaceClock) return;
+    const table = db.spaceClock;
+    if (spaceDatabaseName === table.db.name && spaceClock) return;
+    await (spaceWrites.get(table.db.name) || Promise.resolve()).catch(() => {});
+    let saved = await table.get("main");
+    if (!saved) {
+      const chats = await table.db.table("chats").toArray();
+      // Choose the most recently adjusted existing clock deterministically,
+      // rather than allowing whichever chat opens first to change space time.
+      const candidates = chats.map((chat) => fromChatSettings(chat.settings) || configs[chat.id]).filter(Boolean);
+      const latest = candidates.sort((a, b) => Number(b.anchorRealMs || 0) - Number(a.anchorRealMs || 0))[0];
+      saved = { ...normalizeConfig(latest), frozen: {}, id: "main" };
+      // Preserve each old chat's historical times before applying a shared clock.
+      const migrated = [];
+      for (const chat of chats) {
+        const old = fromChatSettings(chat.settings) || configs[chat.id] || normalizeConfig();
+        const config = normalizeConfig(old);
+        if (preserveCollectionTimes(chat.history, config) + preserveCollectionTimes(chat.longTermMemory, config)) {
+          migrated.push(chat);
+        }
+      }
+      await table.db.transaction("rw", table, table.db.table("chats"), async () => {
+        // Do not overwrite a clock another tab just initialized.
+        const existing = await table.get("main");
+        if (existing) { saved = existing; return; }
+        if (migrated.length) await table.db.table("chats").bulkPut(migrated);
+        await table.put(saved);
+      });
+    }
+    spaceTable = table; spaceDatabaseName = table.db.name;
+    activeChatId = null; activeBinding = null;
+    setSpaceClock(saved); updateUi();
   }
 
   function virtualNow(config, realNow = Date.now()) {
@@ -165,8 +225,6 @@
   function messageTime(message, chatId = activeChatId) {
     if (!message) return null;
     const config = getConfig(chatId);
-    if (config.mode !== MODES.CUSTOM)
-      return parseTimestamp(message.timestamp ?? message.time);
     const virtualTimestamp = finiteOrNull(message.vts);
     if (virtualTimestamp != null) return virtualTimestamp;
     return resolveWithConfig(message.timestamp ?? message.time, config);
@@ -202,6 +260,7 @@
       customAnchorRealMs: settings.customAnchorRealMs,
       customAnchorVirtualMs: settings.customAnchorVirtualMs,
       frozen: settings.virtualTimeFrozenMap,
+      holdNextReply: settings.timeHoldNextReply,
     });
   }
 
@@ -220,6 +279,18 @@
       item.vts = value;
       config.frozen[String(realTimestamp)] = value;
     });
+    return changed;
+  }
+
+  function preserveCollectionTimes(collection, config) {
+    if (!Array.isArray(collection)) return 0;
+    let changed = 0;
+    for (const item of collection) {
+      if (!item || finiteOrNull(item.vts) != null) continue;
+      const value = resolveWithConfig(item.timestamp ?? item.time, config);
+      if (!Number.isFinite(value)) continue;
+      item.vts = value; changed++;
+    }
     return changed;
   }
 
@@ -247,6 +318,8 @@
     const chatId = activeChatId;
     const binding = activeBinding;
     configs[chatId] = normalizeConfig(config);
+    setSpaceClock(configs[chatId]);
+    await persistSpaceClock();
     await persistToChat(binding, chatId, configs[chatId]);
     if (activeChatId !== chatId || activeBinding !== binding) return;
     updateUi();
@@ -258,6 +331,9 @@
     const config = getConfig();
     if (config.mode === MODES.CUSTOM) freezeActiveRecords(config);
     config.mode = MODES.REAL;
+    config.anchorRealMs = Date.now();
+    config.holdNextReply = false;
+    config.revision++;
     await saveActive(config, true);
   }
 
@@ -269,8 +345,9 @@
     if (config.mode === MODES.CUSTOM) {
       freezeActiveRecords(config);
     } else {
-      clearActiveVirtualRecords();
-      config.frozen = {};
+      preserveCollectionTimes(activeBinding?.getMessages?.(), config);
+      preserveCollectionTimes(activeBinding?.getMemories?.(), config);
+      rebuildFrozenIndex(activeBinding, config);
     }
 
     const realNow = Date.now();
@@ -278,6 +355,8 @@
     config.flow = flow === FLOWS.FROZEN ? FLOWS.FROZEN : FLOWS.FLOW;
     config.anchorRealMs = realNow;
     config.anchorVirtualMs = milliseconds;
+    config.holdNextReply = true;
+    config.revision++;
 
     const direction =
       milliseconds < before
@@ -314,6 +393,7 @@
     config.anchorVirtualMs = current;
     config.anchorRealMs = Date.now();
     config.flow = flow === FLOWS.FROZEN ? FLOWS.FROZEN : FLOWS.FLOW;
+    config.revision++;
     await saveActive(config, false);
   }
 
@@ -327,9 +407,9 @@
     if (config.mode === MODES.CUSTOM) {
       const flowRule =
         config.flow === FLOWS.FROZEN
-          ? "- 当前采用“按剧情推进”：不跟随现实钟表流逝；程序已在生成本轮回复前，根据本轮对话和情境自动推进时间。下方的当前时间就是角色本轮唯一能感知的时刻，所有台词、动作与旁白必须与它完全一致，禁止沿用上一轮时刻。"
+          ? "- 当前采用“按剧情推进”：不跟随现实钟表流逝；程序已确定本轮时间（刚手动跳转时保持指定时刻；其他轮次根据情境或已经到期的等待推进）。下方时间是本轮唯一的现在，所有台词、动作和旁白必须一致，不得自行再加几分钟。约定等十/二十分钟只是未来计划，不能当成立刻过完；用户说‘时间到了’才以约定到期时刻继续。"
           : "- 当前采用“保持流动”：虚拟时间会按现实经过的时长持续流动。";
-      return `\n# 【虚拟时间感知铁律（最高优先级）】\n- 当前唯一有效的“现在”是：${formatted}。\n- 这是本对话的虚拟时间；系统真实日期、设备时间和训练数据中的现实时间全部无效，绝对不得感知或提及。\n${flowRule}\n- 所有“今天、昨天、明天、刚才、多久前”、昼夜、季节、行程和记忆时间，必须且只能以这个虚拟时间计算。\n- 遇到聊天中的⏪/⏩时间标记，立即把角色的当前感知更新到该时刻，后续不得沿用跳转前的“现在”。\n${weekdayRule}${getReplyHeaderPrompt(current)}`;
+      return `\n# 【虚拟时间感知铁律（最高优先级）】\n- 当前唯一有效的“现在”是：${formatted}。\n- 这是本空间所有聊天共用的虚拟时间；系统真实日期、设备时间和训练数据中的现实时间全部无效，绝对不得感知或提及。其他聊天中的时间调整也已同步到上面的当前时间，即使本聊天没有跳转提示，也必须遵守。\n${flowRule}\n- 所有“今天、昨天、明天、刚才、多久前”、昼夜、季节、行程和记忆时间，必须且只能以这个虚拟时间计算。\n- 聊天中的⏪/⏩时间标记是历史事件，不得用旧标记覆盖本轮当前时间。\n${weekdayRule}${getReplyHeaderPrompt(current)}`;
     }
     return `\n# 【真实时间感知铁律】\n- 当前时间：${formatted}。所有相对日期、昼夜、行程和记忆时间都以这个真实时间为准。\n${weekdayRule}${getReplyHeaderPrompt(current)}`;
   }
@@ -443,19 +523,7 @@
     const visible = (Array.isArray(items) ? items : []).filter(
       (item) => item && item.type !== "thought_chain",
     );
-    const text = visible
-      .map((item) =>
-        [
-          item.content,
-          item.message,
-          item.dialogue,
-          item.description,
-          item.reply_content,
-        ]
-          .filter(Boolean)
-          .join(" "),
-      )
-      .join(" ");
+    const text = visible.map(messageText).join(" ");
     let minutes = 1;
     minutes += Math.min(4, Math.floor(Math.max(0, visible.length - 1) / 2));
     minutes += Math.min(4, Math.floor(text.length / 120));
@@ -474,10 +542,8 @@
     if (/(过了一会|片刻后|稍后|不久后|转眼|场景|天色)/.test(text)) {
       minutes += 4;
     }
-    const explicitMinutes = [...text.matchAll(/(\d{1,2})\s*分钟/g)]
-      .map((match) => Number(match[1]))
-      .filter((value) => Number.isFinite(value) && value > 0);
-    if (explicitMinutes.length) minutes = Math.max(minutes, Math.max(...explicitMinutes));
+    // Mentioning a future ten-minute wait is not ten minutes already elapsed.
+    // Explicit elapsed durations/deadlines are handled separately and exactly.
     let hash = 0;
     for (let index = 0; index < text.length; index++) {
       hash = (hash * 31 + text.charCodeAt(index)) >>> 0;
@@ -486,23 +552,81 @@
     return Math.max(1, Math.min(25, Math.round(minutes)));
   }
 
-  function advanceFrozenForReply(items, chatId = activeChatId) {
-    if (!chatId) return 0;
-    const targetChatId = String(chatId);
-    const config = getConfig(targetChatId);
-    if (config.mode !== MODES.CUSTOM || config.flow !== FLOWS.FROZEN) return 0;
-    if (targetChatId === activeChatId) freezeActiveRecords(config);
-    const minutes = replyAdvanceMinutes(items);
-    config.anchorVirtualMs = virtualNow(config) + minutes * 60 * 1000;
-    config.anchorRealMs = Date.now();
-    configs[targetChatId] = normalizeConfig(config);
-    if (targetChatId === activeChatId) {
-      persistToChat(activeBinding, targetChatId, configs[targetChatId]).catch(
-        (error) => console.warn("剧情时间保存失败：", error),
-      );
-      updateUi();
-    } else persistConfigs();
-    return minutes;
+  function chineseNumber(value) {
+    if (/^\d+(?:\.\d+)?$/.test(value)) return Number(value);
+    if (value === "半") return 0.5;
+    const digits = { 零: 0, 〇: 0, 一: 1, 二: 2, 两: 2, 三: 3, 四: 4, 五: 5, 六: 6, 七: 7, 八: 8, 九: 9 };
+    let result = 0, current = 0;
+    for (const char of value.replace(/个/g, "")) {
+      if (char in digits) current = digits[char];
+      else if (char === "十" || char === "百" || char === "千") { result += (current || 1) * ({ 十: 10, 百: 100, 千: 1000 })[char]; current = 0; }
+      else return NaN;
+    }
+    return result + current;
+  }
+
+  function durations(text) {
+    const pattern = /([\d.零〇一二两三四五六七八九十百千半]+)\s*(?:个)?\s*(半)?\s*(小时|分钟|分半钟|刻钟)(半)?/g;
+    const values = [];
+    for (const match of String(text).matchAll(pattern)) {
+      const amount = chineseNumber(match[1]);
+      const minutes = amount * (match[3] === "小时" ? 60 : match[3] === "刻钟" ? 15 : 1) +
+        (match[2] || match[4] ? (match[3] === "小时" ? 30 : 0.5) : match[3] === "分半钟" ? 0.5 : 0);
+      if (!Number.isFinite(minutes) || minutes <= 0 || minutes > 10080) continue;
+      const entry = { minutes, start: match.index, end: match.index + match[0].length };
+      const previous = values.at(-1);
+      if (previous && /^\s*(?:又|零|多|和)?\s*$/.test(text.slice(previous.end, entry.start))) { previous.minutes += minutes; previous.end = entry.end; }
+      else values.push(entry);
+    }
+    return values;
+  }
+
+  function messageText(item) {
+    return [item?.content, item?.message, item?.dialogue, item?.description, item?.reply_content]
+      .filter((value) => typeof value === "string" && !/^data:/i.test(value))
+      .map((value) => value.slice(0, 8000)).join(" ");
+  }
+
+  function storyTarget(history, current, chatId) {
+    const visible = (Array.isArray(history) ? history : []).filter((item) => item && !item.isHidden && item.type !== "thought_chain");
+    const markerIndex = visible.findLastIndex((item) => item.type === "time_marker");
+    const recent = visible.slice(markerIndex + 1).filter((item) => !item.isReplyHeader).slice(-100);
+    const latest = recent.at(-1); if (!latest) return null;
+    const text = messageText(latest);
+    const negated = /(?:还没|还未|没有|没|未|不到|还不到)\s*(?:到)?\s*(?:时间|时候)|时间(?:还没|未|没|没有)到|时间到了[吗么？?]/.test(text);
+    const reached = !negated && /时间到了|到时间了|时间到(?:了)?[！!。\s）)]|时间到$|时候到了|到时候了|到点了|等完了|等待结束|计时结束|闹钟响了|倒计时结束/.test(text);
+    const ownDurations = durations(text);
+    const elapsed = ownDurations.find((duration) => {
+      const before = text.slice(Math.max(0, duration.start - 14), duration.start);
+      const after = text.slice(duration.end, duration.end + 12);
+      const elapsedScene = (latest.role === "user" || latest.type === "narration" || latest.type === "offline_text") &&
+        /^\s*(?:已经)?(?:过去|过后|过去了|之后|后[，,。\s）)]|后$)/.test(after) &&
+        !/^\s*(?:之后|以后|后)\s*(?:再|才|要|能|会|可以|准备)/.test(after);
+      return !/(?:再等|等上|需要|还有|要等|还要|至少|最多|能否|能不能|等待|等)\s*$/.test(before) &&
+        (/(?:过了|过去了|经过了?|已经等了|已等了|等了|耗时|花了)\s*$/.test(before) ||
+        elapsedScene);
+    });
+    if (elapsed && !negated) {
+      // An explicit elapsed scene is measured from that message's scene time,
+      // not repeatedly added again whenever an old user message stays in history.
+      const base = finiteOrNull(latest.vts) ?? current;
+      return Math.max(current, base + elapsed.minutes * 60000);
+    }
+    if (!reached) return null;
+    for (let index = recent.length - 2; index >= 0; index--) {
+      const item = recent[index], content = messageText(item);
+      const planned = durations(content).filter((duration) => {
+        const before = content.slice(Math.max(0, duration.start - 22), duration.start);
+        const after = content.slice(duration.end, duration.end + 20);
+        const completed = /(?:过了|过去了|已经等了|已等了|等了|耗时|花了)\s*$/.test(before) || /^\s*(?:过去了|已过去|过去)/.test(after);
+        return !completed && (/(?:等|等待|再过|过|还有|需要|计时|倒计时|限时|持续|休息|站|坐|罚|写|背|练|睡|煮|蒸|烤|跑|走|看)/.test(before) || /^\s*(?:后|之后|以后)/.test(after));
+      });
+      if (!planned.length) continue;
+      const duration = planned.at(-1);
+      const base = finiteOrNull(item.vts) ?? current;
+      return Math.max(current, base + duration.minutes * 60000);
+    }
+    return null;
   }
 
   function latestReplyContext(history) {
@@ -516,19 +640,7 @@
           (item.role === "user" || item.role === "assistant"),
       )
       .slice(-3);
-    const latestUserMessage = [...history]
-      .reverse()
-      .find(
-        (item) =>
-          item &&
-          item.role === "user" &&
-          !item.isHidden &&
-          item.type !== "time_marker",
-      );
-    if (!latestUserMessage) return recentContext;
-    return recentContext.includes(latestUserMessage)
-      ? recentContext
-      : [latestUserMessage];
+    return recentContext;
   }
 
   function prepareReplyTime(history, options = {}) {
@@ -540,35 +652,52 @@
       afterMs: beforeMs,
       minutes: 0,
       changed: false,
+      spaceDatabaseName,
+      beforeConfig: spaceClock ? { ...spaceClock, frozen: {} } : normalizeConfig(getConfig(chatId)),
     };
     if (options.advance === false || !chatId) return preparation;
-    const minutes = advanceFrozenForReply(latestReplyContext(history), chatId);
-    if (!minutes) return preparation;
-    preparation.minutes = minutes;
-    preparation.afterMs = nowMs(chatId);
+    const config = getConfig(chatId);
+    if (config.mode !== MODES.CUSTOM) return preparation;
+    if (String(chatId) === activeChatId) freezeActiveRecords(config);
+    if (config.holdNextReply) {
+      preparation.afterMs = config.anchorVirtualMs;
+      preparation.manualHold = true;
+      config.holdNextReply = false;
+    } else if (config.flow === FLOWS.FROZEN) {
+      const target = storyTarget(history, beforeMs, chatId);
+      preparation.afterMs = target == null ? beforeMs + replyAdvanceMinutes(latestReplyContext(history)) * 60000 : target;
+      preparation.storyDeadline = target != null;
+    } else return preparation;
+    preparation.minutes = preparation.manualHold ? 0 : (preparation.afterMs - beforeMs) / 60000;
+    config.anchorVirtualMs = preparation.afterMs;
+    config.anchorRealMs = Date.now(); config.revision++;
+    setSpaceClock(config);
+    preparation.revision = spaceClock.revision;
     preparation.changed = true;
+    preparation.ready = persistSpaceClock();
+    updateUi();
     return preparation;
   }
 
   async function rollbackPreparedReplyTime(preparation) {
     if (
       !preparation?.changed ||
-      !activeChatId ||
-      preparation.chatId !== activeChatId
+      preparation.spaceDatabaseName !== spaceDatabaseName
     ) {
       return;
     }
-    const config = getConfig();
+    const config = getConfig(preparation.chatId);
     if (
       config.mode !== MODES.CUSTOM ||
-      config.flow !== FLOWS.FROZEN ||
-      config.anchorVirtualMs !== preparation.afterMs
+      config.revision !== preparation.revision
     ) {
       return;
     }
-    config.anchorVirtualMs = preparation.beforeMs;
-    config.anchorRealMs = Date.now();
-    await saveActive(config, false);
+    setSpaceClock({ ...preparation.beforeConfig, revision: config.revision + 1 });
+    await persistSpaceClock();
+    if (activeBinding && preparation.chatId === activeChatId)
+      await persistToChat(activeBinding, activeChatId, getConfig());
+    updateUi();
   }
 
   function ensureReplyHeader(items, options = {}) {
@@ -629,6 +758,7 @@
       customAnchorRealMs: config.anchorRealMs,
       customAnchorVirtualMs: config.anchorVirtualMs,
       virtualTimeFrozenMap: config.frozen,
+      timeHoldNextReply: config.holdNextReply,
     };
   }
 
@@ -640,14 +770,18 @@
     configs[activeChatId] = normalizeConfig(
       settingsConfig || configs[activeChatId],
     );
-    const config = configs[activeChatId];
-    rebuildFrozenIndex(binding, config);
+    const originalConfig = configs[activeChatId];
+    rebuildFrozenIndex(binding, originalConfig);
     // Migrate historical lookup values to the records before dropping any
     // duplicate map. Existing vts always wins, including after time jumps.
-    const migratedRecords = freezeActiveRecords(config);
+    const migratedRecords = freezeActiveRecords(originalConfig);
+    if (spaceClock) preserveCollectionTimes(binding.getMessages?.(), originalConfig);
+    if (!spaceClock) setSpaceClock(originalConfig);
+    const config = getConfig();
     const storedMapSize = Object.keys(settingsConfig?.frozen || {}).length;
     const remainingMapSize = Object.keys(databaseConfig(config, binding).frozen).length;
-    if (!settingsConfig || migratedRecords || storedMapSize !== remainingMapSize) {
+    const clockChanged = settingsConfig && ["mode", "flow", "anchorRealMs", "anchorVirtualMs", "holdNextReply"].some((key) => settingsConfig[key] !== config[key]);
+    if (!settingsConfig || migratedRecords || clockChanged || storedMapSize !== remainingMapSize) {
       persistToChat(binding, activeChatId, config).catch(
         (error) => console.warn("历史时间迁移保存失败；原时间缓存仍保留。", error),
       );
@@ -675,7 +809,7 @@
     modal.setAttribute("aria-hidden", "true");
     modal.innerHTML = `
       <div class="time-machine-card" role="dialog" aria-modal="true" aria-labelledby="time-machine-title">
-        <div class="time-machine-title" id="time-machine-title">时间模式</div>
+        <div class="time-machine-title" id="time-machine-title">本空间时间</div>
         <div class="time-machine-current" id="time-machine-current"></div>
         <div class="time-machine-tabs" role="radiogroup" aria-label="时间模式">
           <button type="button" data-time-mode="real">真实时间</button>
@@ -689,9 +823,9 @@
           </div>
           <div class="time-machine-flow" role="radiogroup" aria-label="虚拟时间流速">
             <label><input type="radio" name="time-machine-flow" value="flow" checked><span><b>保持流动</b><small>现实过 10 分钟，虚拟时间也走 10 分钟</small></span></label>
-            <label><input type="radio" name="time-machine-flow" value="frozen"><span><b>按剧情推进</b><small>不跟现实时间；每次回复按内容前进几分钟</small></span></label>
+            <label><input type="radio" name="time-machine-flow" value="frozen"><span><b>按剧情推进</b><small>手动跳转后首轮保持原时刻；其余按剧情推进</small></span></label>
           </div>
-          <p class="time-machine-hint">手动跳转会留下可见的时间标记；按剧情推进时也会自动走时。</p>
+          <p class="time-machine-hint">${SPACE_TIME_HINT}</p>
         </div>
         <div class="time-machine-actions">
           <button type="button" id="time-machine-cancel">取消</button>
@@ -718,6 +852,10 @@
     modal
       .querySelector("#time-machine-confirm")
       .addEventListener("click", async () => {
+        if (window.isPersonaSpaceBusy?.()) {
+          modal.querySelector(".time-machine-hint").textContent = "正在回复或处理付款，请先停止或等它完成，再调整时间。";
+          return;
+        }
         const selected = modal.querySelector("[data-time-mode].active")?.dataset
           .timeMode;
         if (selected === MODES.REAL) {
@@ -755,6 +893,7 @@
   function openModal() {
     if (!activeChatId) return;
     const modal = document.getElementById("time-machine-modal");
+    modal.querySelector(".time-machine-hint").textContent = SPACE_TIME_HINT;
     const config = getConfig();
     selectDraftMode(config.mode);
     modal.querySelector("#time-machine-datetime").value =
@@ -813,6 +952,7 @@
     MODES,
     FLOWS,
     bindChat,
+    loadSpace,
     clearActiveChat,
     getConfig,
     nowMs,

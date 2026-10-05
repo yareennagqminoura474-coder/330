@@ -10061,7 +10061,7 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
         : `${_0xspaceBaseName}__space_${_0xspaceId}`,
     );
     ((_0x24f906 = _0xpersonaDb),
-      _0x24f906[_0x205142(0x1318)](0x32)
+      _0x24f906[_0x205142(0x1318)](0x33)
         [_0x205142(0x146d)]({
           doubanPosts: _0x205142(0x220),
           chats:
@@ -10085,6 +10085,7 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
           shoppingCategories: "++id,\x20name",
           marketState: "&id",
           marketOrders: "&id,timestamp,status",
+          spaceClock: "&id",
           apiPresets: "++id,\x20name",
           renderingRules: _0x205142(0xa18),
           appearancePresets: _0x205142(0xd4e),
@@ -11423,7 +11424,7 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
         presetCategories: _0x29b98f,
         npcs: _0x1349a6,
       });
-      for (const tableName of ["marketState", "marketOrders", "userWallet", "userTransactions"])
+      for (const tableName of ["marketState", "marketOrders", "userWallet", "userTransactions", "spaceClock"])
         _0x1cbf58[tableName] = await _0x24f906.table(tableName).toArray();
       const _0x23cf5f = new Blob([JSON["stringify"](_0x1cbf58, null, 0x2)], {
           type: _0x39250e(0x1206),
@@ -11543,6 +11544,7 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
       shoppingProducts: "商品",
       marketState: "逛逛商品与购物车",
       marketOrders: "逛逛订单",
+      spaceClock: "本空间时间",
       userWallet: "本空间钱包",
       userTransactions: "本空间账单",
       apiPresets: _0x30ebd8(0x622),
@@ -11695,6 +11697,7 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
       shoppingProducts: "商品",
       marketState: "逛逛商品与购物车",
       marketOrders: "逛逛订单",
+      spaceClock: "本空间时间",
       userWallet: "本空间钱包",
       userTransactions: "本空间账单",
       apiPresets: _0x322e48(0x622),
@@ -11955,7 +11958,7 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
             await _0x24f906["npcs"][_0x49b300(0x97c)](
               _0xd5cb09[_0x49b300(0x94f)],
             );
-          for (const tableName of ["marketState", "marketOrders", "userWallet", "userTransactions"])
+          for (const tableName of ["marketState", "marketOrders", "userWallet", "userTransactions", "spaceClock"])
             if (Array.isArray(_0xd5cb09[tableName])) await _0x24f906.table(tableName).bulkPut(_0xd5cb09[tableName]);
         },
       );
@@ -17474,6 +17477,7 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
           advance: !_ephoneSpectatorOptions.reroll,
           chatId: _0x4203ee,
         }) || null;
+      await _ephoneSpectatorTimePreparation?.ready;
       const _ephoneSpectatorReplyTimeMs =
         _ephoneSpectatorTimePreparation?.afterMs ??
         window.ephoneTimeMachine?.nowMs(_0x4203ee) ??
@@ -18125,6 +18129,7 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
             chatId: _0x973a29,
           })
         : null;
+      await _0xephoneTimePreparation?.ready;
       let _0x5e0f42 = "";
       const _ephoneReplyTimeMs =
           _0xephoneTimePreparation?.afterMs ??
@@ -56379,6 +56384,7 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
           _0x5ea3c1.activeChatId = null;
           _0x5ef2d4("messages-view");
         }
+        await window.ephoneTimeMachine?.loadSpace(_0x24f906);
         await _0x3367c4();
         await _0x4bb316();
         await _0x1f4e90();
@@ -56438,6 +56444,7 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
         },
       }),
       (window["renderWorldBookScreenProxy"] = _0x5dd041),
+      await window.ephoneTimeMachine?.loadSpace(_0x24f906),
       await _0x3367c4(),
       await _0x4b0d91(),
       _0x1d0309(),
@@ -65044,6 +65051,7 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
       _0x5787db(),
       _0x426f02(),
       _0x275208(_0x274136(0x114a)));
+    window.ephoneAppReady = true;
   }
   (function _0x4ec901() {
     const _0x5791b5 = _0x3ce505;
