@@ -18524,3 +18524,8 @@ body.frame-mode-active .cphone-dock-container {
     background-color: rgba(255, 255, 255, 0.15) !important; /* 深色下的半透明白 */
     color: #8d8d92 !important; /* 浅灰字 */
 }
+.ephone-spectator-money-card { padding: 14px; min-width: 180px; max-width: 280px; color: #fff; background: #eb9450; border-radius: 12px; }
+.is-red-packet .ephone-spectator-money-card { background: #db6657; }
+.ephone-money-description { font-size: 12px; line-height: 1.5; overflow-wrap: anywhere; margin: 8px 0; }
+.ephone-money-receive { border: 0; border-radius: 16px; background: #fff; color: #b44b23; padding: 8px 24px; font-size: 15px; cursor: pointer; }
+.ephone-money-wallet-note { font-size: 11px; margin-top: 6px; opacity: .9; }

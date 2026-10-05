@@ -14691,6 +14691,60 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
         : "后面已有新消息，不能再重抽上一轮回复";
     }
   }
+  let _ephoneSpectatorMoneyBusy = false;
+  let _ephoneWalletPending = 0;
+  async function _ephoneReceiveSpectatorMoney(timestamp) {
+    if (_ephoneSpectatorMoneyBusy) return;
+    const chat = _0x5ea3c1.chats[_0x5ea3c1.activeChatId];
+    if (!chat?.isSpectatorGroup) return;
+    if (_0xephoneSpectatorGenerating || _0xephoneGenerationController) {
+      await _0x1e5953("提示", "请等本轮回复完成，或先停止回复，再接收。");
+      return;
+    }
+    _ephoneSpectatorMoneyBusy = true;
+    const states = new Map();
+    document.querySelector(".ephone-spectator-controls")?.querySelectorAll("button, textarea").forEach((element) => {
+      states.set(element, element.disabled);
+      element.disabled = true;
+    });
+    try {
+      const message = chat.history.find((item) => item.timestamp === timestamp);
+      if (!message) return;
+      const recipients = window.ephoneSpectatorMoney.eligible(chat, message);
+      if (!recipients.length) {
+        await _0x1e5953("领取状态", window.ephoneSpectatorMoney.escape(window.ephoneSpectatorMoney.describe(message)));
+        return;
+      }
+      const action = message.type === "transfer" ? "接收转账" : "领取红包";
+      const recipient = await _0x1f9d16(action + "（你替角色点击）", recipients.map((name) => ({
+        text: `替 ${window.ephoneSpectatorMoney.escape(name)} ${action}`, value: name,
+      })));
+      if (!recipient || _0x5ea3c1.activeChatId !== chat.id || _0x5ea3c1.chats[chat.id] !== chat) return;
+      const receipt = await window.ephoneSpectatorMoney.receive(chat, timestamp, recipient, {
+        save: async (candidate, receipt) => {
+          const spaceId = window.EPHONE_SPACE_ID || "default";
+          const result = await window.ephoneSpaceWallet.creditReceipt(_0x24f906, candidate, receipt, spaceId);
+          if ((window.EPHONE_SPACE_ID || "default") === spaceId) {
+            _0x57a126 = result.balance;
+            window.userBalance = result.balance;
+          }
+        },
+        vts: window.ephoneTimeMachine?.nowMs(chat.id) ?? Date.now(),
+      });
+      if (_0x5ea3c1.activeChatId === chat.id) {
+        await _0x57e676(chat.id);
+        _ephoneSyncRerollButtons(chat);
+        await _0x1e5953("已领取", window.ephoneSpectatorMoney.escape(receipt.content + "，已存入本空间的钱包。"));
+      }
+    } catch (error) {
+      await _0x1e5953("领取失败", error.message || "保存失败，请重试。");
+    } finally {
+      _ephoneSpectatorMoneyBusy = false;
+      for (const [element, disabled] of states) element.disabled = disabled;
+      _ephoneSyncRerollButtons(_0x5ea3c1.chats[_0x5ea3c1.activeChatId]);
+      _ephoneRestoreChatScrolling();
+    }
+  }
   function _ephoneBuildSpectatorControls(chat) {
     const host = document.getElementById("chat-lock-content");
     if (!host) return;
@@ -17124,6 +17178,10 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
         }
       }
     }
+    if (_0x481875.isSpectatorGroup && ["transfer", "red_packet"].includes(_0x45add0.type)) {
+      _0x770263 = window.ephoneSpectatorMoney.render(_0x481875, _0x45add0);
+      delete _0x310183.dataset.status;
+    }
     _0x310183[_0x200523(0x1bf6)] =
       _0x200523(0x1b9d) +
       _0x1ae9fe +
@@ -17367,7 +17425,7 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
       _0xephoneSpectatorController?.abort();
       return;
     }
-    if (_0xephoneGenerationController) return;
+    if (_0xephoneGenerationController || _ephoneSpectatorMoneyBusy) return;
     _0xephoneSpectatorGenerating = true;
     const _ephoneSpectatorController = new AbortController();
     _0xephoneSpectatorController = _ephoneSpectatorController;
@@ -17480,6 +17538,8 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
             _0x4203ee,
             _ephoneSpectatorReplyTimeMs,
           ) || "") +
+          window.ephoneSpectatorMoney.prompt +
+          window.ephoneSpectatorMoney.ledger(_0x326f3d) +
           "\n# 围观模式的旁白与台词\n" +
           "第一个可见 JSON 对象必须是 narration 时间地点旁白。角色真正说出口或打出的内容用 text；动作、心理、神态、环境、场景和时间一律用 narration。每位发言角色的动作按情境穿插旁白。旁白对象格式为 {\"type\":\"narration\",\"name\":\"角色名或旁白\",\"content\":\"内容\"}。不要把动作放进 text，也不要以旁白代替角色说话。\n" +
           "无论最后一条是谁发送的，均从其内容继续往后推进。用户以角色身份输入的台词属于该角色，不属于额外的‘用户’，不要重写或忽略。根据剧情安排必要的多轮互动，条数不固定，不要每人只说一句就停止；同一条 text 只放一段自然发言，动作另用 narration。\n" +
@@ -17565,6 +17625,13 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
           vts: _ephoneSpectatorReplyTimeMs,
         };
         switch (_0x5cafc4[_0xd07074(0x1140)]) {
+          case "transfer":
+          case "red_packet":
+            _0x14c18c = window.ephoneSpectatorMoney.normalize(
+              _0x5cafc4, _0x45a46e, _ephoneGroupContext.profiles,
+              window.ephoneGroupContext.resolveSpeaker,
+            );
+            break;
           case "narration":
             _0x14c18c = {
               ..._0x45a46e,
@@ -33448,13 +33515,26 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
             content: _0x11da09["content"],
           };
           break;
+        case "red_packet": {
+          if (!_0x3d176c.isSpectatorGroup) continue;
+          const context = await _ephoneBuildGroupContext(_0x3d176c);
+          const speaker = window.ephoneGroupContext.resolveSpeaker(context.profiles, _0x33cb92.senderName);
+          if (!speaker) continue;
+          _0x27bc55 = window.ephoneSpectatorMoney.normalize(_0x11da09, {
+            ..._0x33cb92, senderName: speaker,
+            vts: window.ephoneTimeMachine?.nowMs(_0x3d176c.id) ?? Date.now(),
+          }, context.profiles, window.ephoneGroupContext.resolveSpeaker);
+          if (!_0x27bc55) continue;
+          break;
+        }
         case "transfer":
           _0x27bc55 = {
             ..._0x33cb92,
             type: _0x23e348(0xeca),
             amount: _0x11da09[_0x23e348(0xa1b)],
             note: _0x11da09["note"],
-            receiverName: _0x11da09["receiver"] || "我",
+            receiverName: _0x11da09.receiverName || _0x11da09["receiver"] || "我",
+            status: "pending",
           };
           break;
         case _0x23e348(0x574):
@@ -51933,6 +52013,9 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
         (_0xb04c7[_0x14e26b(0xdcf)] = _0x4a1be2),
         await _0x24f906[_0x14e26b(0x17e1)][_0x14e26b(0x114d)](_0xb04c7));
       console[_0x14e26b(0x13f0)](_0x14e26b(0x50e), _0x57a126);
+      window.userBalance = _0x57a126;
+      const walletSpaceLabel = document.getElementById("wallet-space-label");
+      if (walletSpaceLabel) walletSpaceLabel.textContent = (window.EPHONE_SPACE_NAME || "默认空间") + "的钱包";
       const _0x2b4f9b = document["getElementById"]("alipay-balance-display");
       if (_0x2b4f9b)
         _0x2b4f9b[_0x14e26b(0x71a)] = _0x57a126[_0x14e26b(0x530)](0x2);
@@ -51941,58 +52024,31 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
         (_0x57a126 = 0x0));
     }
   }
-  async function _0x2ee1ca(_0x9976d2, _0x5692a8, _0x4c89bb) {
-    const _0x593527 = _0x3ce505;
-    let _0x2b8a14 = parseFloat(_0x9976d2);
-    if (isNaN(_0x2b8a14) || _0x2b8a14 <= 0x0)
-      return (console[_0x593527(0x110f)](_0x593527(0x264), _0x9976d2), ![]);
+  async function _0x2ee1ca(amount, type, description) {
+    const spaceId = window.EPHONE_SPACE_ID || "default";
+    _ephoneWalletPending++;
     try {
-      let _0x3e7dbe = await _0x24f906[_0x593527(0x17e1)]["get"](
-        _0x593527(0x1c01),
-      );
-      !_0x3e7dbe &&
-        (_0x3e7dbe = { id: _0x593527(0x1c01), balance: 0x0, kinshipCards: [] });
-      if (typeof _0x3e7dbe[_0x593527(0x190c)] !== _0x593527(0x20a))
-        _0x3e7dbe[_0x593527(0x190c)] = 0x0;
-      if (_0x5692a8 === _0x593527(0x4dc)) {
-        if (_0x3e7dbe["balance"] < _0x2b8a14)
-          return (
-            await _0x1e5953(
-              _0x593527(0x7ff),
-              _0x593527(0x4fe) +
-                _0x3e7dbe[_0x593527(0x190c)][_0x593527(0x530)](0x2),
-            ),
-            ![]
-          );
-        _0x3e7dbe[_0x593527(0x190c)] -= _0x2b8a14;
-      } else
-        _0x5692a8 === _0x593527(0x180d) && (_0x3e7dbe["balance"] += _0x2b8a14);
-      (await _0x24f906[_0x593527(0x17e1)][_0x593527(0x114d)](_0x3e7dbe),
-        (window[_0x593527(0x105d)] = _0x3e7dbe[_0x593527(0x190c)]));
-      const _0x1bc1ea = {
-        timestamp: Date[_0x593527(0x902)](),
-        type: _0x5692a8,
-        amount: _0x2b8a14,
-        description: _0x4c89bb || _0x593527(0x20f),
-      };
-      return (
-        await _0x24f906[_0x593527(0x1ad4)][_0x593527(0x17db)](_0x1bc1ea),
-        console["log"](
-          "✅\x20[钱包]\x20交易成功:\x20" +
-            _0x5692a8 +
-            "\x20¥" +
-            _0x2b8a14[_0x593527(0x530)](0x2) +
-            _0x593527(0x130d) +
-            _0x3e7dbe[_0x593527(0x190c)]["toFixed"](0x2),
-        ),
-        !![]
-      );
-    } catch (_0x9c2190) {
-      return (
-        console[_0x593527(0x110f)](_0x593527(0xbfb), _0x9c2190),
-        alert(_0x593527(0x1785)),
-        ![]
-      );
+      const result = await window.ephoneSpaceWallet.book(_0x24f906, amount, type, description, {
+        walletSpaceId: spaceId,
+        vts: window.ephoneTimeMachine?.nowMs(_0x5ea3c1.activeChatId) ?? Date.now(),
+      });
+      if (!result.ok) {
+        await _0x1e5953("支付失败", "余额不足！当前: " + result.balance.toFixed(2));
+        return false;
+      }
+      if ((window.EPHONE_SPACE_ID || "default") === spaceId) {
+        _0x57a126 = result.balance;
+        window.userBalance = result.balance;
+        const display = document.getElementById("alipay-balance-display");
+        if (display) display.textContent = result.balance.toFixed(2);
+      }
+      return true;
+    } catch (error) {
+      console.error("钱包保存失败", error);
+      await _0x1e5953("记账失败", "本次未完成入账，请重试。" + (error.message || ""));
+      return false;
+    } finally {
+      _ephoneWalletPending--;
     }
   }
   async function _0x3dc2bb() {
@@ -52228,7 +52284,7 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
       ((_0x11e55f["className"] = "bill-item"),
         (_0x11e55f["innerHTML"] =
           _0x58f820(0x1699) +
-          (_0x39d172["description"] || _0x58f820(0x20f)) +
+          window.ephoneSpectatorMoney.escape(_0x39d172["description"] || _0x58f820(0x20f)) +
           "</div>\x0a\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20<div\x20class=\x22bill-time\x22>" +
           _0x10d012 +
           _0x58f820(0xdd1) +
@@ -56312,10 +56368,19 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
         await _0x3367c4();
         await _0x4bb316();
         await _0x1f4e90();
+        if (_0xspaceRefresh.spaceChanged) {
+          await _0x4dd5f6();
+          _0x5080bf.page = 0;
+          _0x5080bf.hasMore = true;
+          _0x5080bf.filterType = "all";
+          _0x5080bf.filterDate = null;
+          document.querySelectorAll(".bill-item, .bill-month-separator, .bill-empty-msg, .kinship-card-entry").forEach((element) => element.remove());
+        }
         const _0xspaceLabel = document.getElementById("me-space-name");
         if (_0xspaceLabel)
           _0xspaceLabel.textContent = window.EPHONE_SPACE_NAME || "默认空间";
       }),
+      (window.isPersonaSpaceBusy = () => Boolean(_0xephoneGenerationController || _0xephoneSpectatorGenerating || _ephoneSpectatorMoneyBusy || _ephoneWalletPending)),
       (window["renderWorldBookScreenProxy"] = _0x5dd041),
       await _0x3367c4(),
       await _0x4b0d91(),
@@ -57381,6 +57446,14 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
         _0x274136(0x34e),
         async (_0x298c24) => {
           const _0xeae960 = _0x274136;
+          const spectatorMoneyCard = _0x298c24.target.closest(".ephone-spectator-money-card");
+          if (spectatorMoneyCard) {
+            _0x298c24.stopPropagation();
+            if (_0x229236) return;
+            const bubble = spectatorMoneyCard.closest(".message-bubble");
+            if (bubble) await _ephoneReceiveSpectatorMoney(Number(bubble.dataset.timestamp));
+            return;
+          }
           if (
             _0x298c24[_0xeae960(0x571)][_0xeae960(0x17e5)] === _0xeae960(0x1627)
           ) {

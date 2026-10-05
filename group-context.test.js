@@ -2,6 +2,7 @@ const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const vm = require("node:vm");
 const context = require("./group-context.js");
+const money = require("./spectator-money.js");
 
 function fixture(spectator = true) {
   const a = { id: "chat_a", name: "师兄备注", originalName: "杨帆", groupId: 1,
@@ -88,7 +89,13 @@ function appHarness() {
   const sandbox = {
     console: { ...console, warn() {} }, AbortController, DOMException, Date, Math,
     setTimeout: (fn) => setTimeout(fn, 0),
-    window: { ephoneGroupContext: context, ephoneTimeMachine: {
+    window: { ephoneGroupContext: context, ephoneSpectatorMoney: money, ephoneSpaceWallet: {
+      creditReceipt: async (db, candidate, receipt) => {
+        await db.chats.put(candidate);
+        return { ok: true, balance: receipt.amount };
+      },
+    }, ephoneTimeMachine: {
+      nowMs: () => 200,
       prepareReplyTime: () => ({ afterMs: 200, minutes: 2 }),
       rollbackPreparedReplyTime: async () => { rollbacks++; },
       getPromptRule: () => "当前虚拟时间virtual-200",
@@ -104,6 +111,8 @@ function appHarness() {
     _0x297b4d: JSON.parse, getGeminiResponseText: (response) => response.choices[0].message.content,
     _ephoneBuildApiEndpoint: (base, path) => base + "/" + path,
     _0xff8a5b() {}, _0xbb356a: async (message) => rendered.push(message), _0x4bb316() {},
+    _0x57e676: async () => {},
+    _0x1f9d16: async (title, options) => options[0]?.value,
     _0x1e5953: async (...args) => errors.push(args), _ephoneRestoreChatScrolling() {},
     _0xephoneSpectatorGenerating: false, _0xephoneSpectatorController: null, _0xephoneGenerationController: null,
     lastRawAiResponse: "", lastResponseTimestamps: [],
@@ -150,6 +159,71 @@ function appHarness() {
   h.data.chat.history.push({ role: "assistant", sentAsCharacter: true, senderName: "林澈", content: "再等等", timestamp: 9999 });
   h.sandbox._ephoneSyncRerollButtons(h.data.chat);
   assert.equal(h.reroll.disabled, true);
+
+  // Execute the actual watch-mode response parser and receive button handler.
+  const finance = appHarness();
+  finance.sandbox._ephoneApiFetch = async (url, options) => {
+    finance.requests.push({ body: JSON.parse(options.body) });
+    return { ok: true, json: async () => ({ choices: [{ message: { content: JSON.stringify([
+      { type: "transfer", name: "大师兄", receiver: "林澈", amount: 100, note: "零用钱" },
+      { type: "red_packet", name: "师父", receiver: "林澈", amount: 20, packetType: "direct" },
+      { type: "transfer", name: "杨帆", receiver: "陌生人", amount: 100 },
+      { type: "accept_transfer", name: "林澈", for_timestamp: 100 },
+    ]) } }] }) };
+  };
+  await finance.sandbox._0x135d5c();
+  assert.equal(finance.errors.length, 0);
+  const cards = finance.data.chat.history.filter((item) => ["transfer", "red_packet"].includes(item.type));
+  assert.equal(cards.length, 2);
+  assert.equal(cards[0].senderName, "杨帆");
+  assert.equal(cards[0].status, "pending");
+  assert.equal(cards[1].senderName, "林珣");
+  assert.equal(cards[1].isFullyClaimed, false);
+  assert.match(finance.requests[0].body.messages[0].content, /真正转账必须输出卡片指令/);
+  await finance.sandbox._ephoneReceiveSpectatorMoney(cards[0].timestamp);
+  assert.match(finance.saved.at(-1).history.at(-1).content, /林澈 已接收 杨帆 的转账/);
+  assert.equal(finance.data.chat.history.find((item) => item.timestamp === cards[0].timestamp).status, "accepted");
+  assert.equal(finance.reroll.disabled, true);
+  const length = finance.data.chat.history.length;
+  await finance.sandbox._ephoneReceiveSpectatorMoney(cards[0].timestamp);
+  assert.equal(finance.data.chat.history.length, length);
+  await finance.sandbox._ephoneReceiveSpectatorMoney(cards[1].timestamp);
+  assert.equal(finance.data.chat.history.find((item) => item.timestamp === cards[1].timestamp).claimedBy["林澈"], 20);
+  assert.equal(finance.input.disabled, false);
+  finance.sandbox._ephoneApiFetch = async (url, options) => {
+    finance.requests.push({ body: JSON.parse(options.body) });
+    return { ok: true, json: async () => ({ choices: [{ message: { content: "[]" } }] }) };
+  };
+  await finance.sandbox._0x135d5c();
+  assert.match(finance.requests.at(-1).body.messages[0].content, /已接收（收款人：林澈）/);
+  assert.match(finance.requests.at(-1).body.messages[0].content, /已领取：林澈 ¥20.00；已领完/);
+
+  const cancelled = appHarness();
+  cancelled.data.chat.history.push({ type: "transfer", senderName: "杨帆", receiverName: "林澈", amount: 5, timestamp: 444 });
+  cancelled.sandbox._0x1f9d16 = async () => null;
+  await cancelled.sandbox._ephoneReceiveSpectatorMoney(444);
+  assert.equal(cancelled.saved.length, 0);
+  assert.equal(cancelled.input.disabled, false);
+
+  const writeFailure = appHarness();
+  writeFailure.data.chat.history.push({ type: "transfer", senderName: "杨帆", receiverName: "林澈", amount: 5, timestamp: 444 });
+  writeFailure.sandbox._0x24f906.chats.put = async () => { throw new Error("测试保存失败"); };
+  await writeFailure.sandbox._ephoneReceiveSpectatorMoney(444);
+  assert.equal(writeFailure.data.chat.history.at(-1).status, undefined);
+  assert.match(writeFailure.errors.at(-1)[1], /测试保存失败/);
+  assert.equal(writeFailure.input.disabled, false);
+
+  const concurrent = appHarness();
+  concurrent.data.chat.history.push({ type: "transfer", senderName: "杨帆", receiverName: "林澈", amount: 5, timestamp: 444 });
+  let choose;
+  concurrent.sandbox._0x1f9d16 = () => new Promise((resolve) => { choose = resolve; });
+  const receiving = concurrent.sandbox._ephoneReceiveSpectatorMoney(444);
+  await concurrent.sandbox._ephoneReceiveSpectatorMoney(444);
+  await concurrent.sandbox._0x135d5c();
+  assert.equal(concurrent.requests.length, 0);
+  choose("林澈");
+  await receiving;
+  assert.equal(concurrent.data.chat.history.filter((item) => item.moneyReceipt).length, 1);
 
   const stopped = appHarness();
   let enteredFetch;

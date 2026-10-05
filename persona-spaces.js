@@ -10,6 +10,8 @@
     "memories",
     "callRecords",
     "qzonePosts",
+    "userWallet",
+    "userTransactions",
   ]);
   const IMPORTABLE_SHARED_TABLES = [
     "globalSettings",
@@ -191,6 +193,8 @@
   }
 
   async function switchSpace(spaceId) {
+    if (window.isPersonaSpaceBusy?.())
+      throw new Error("正在回复或处理收付款，请完成或停止后再切换空间。");
     const destination = readSpaces().find((space) => space.id === spaceId);
     if (!destination) throw new Error("找不到这个空间。");
     if (!sharedDb) throw new Error("数据库还在加载，请稍后再试。");
@@ -390,7 +394,7 @@
         <header class="ephone-spaces-header">
           <div>
             <h2 id="ephone-spaces-title">人设空间</h2>
-            <p id="ephone-spaces-description">角色、群聊、NPC 和相关记忆按空间保存；主题、API 与其他应用设置共用。</p>
+            <p id="ephone-spaces-description">角色、群聊、NPC、记忆和钱包按空间保存；主题、API 等基础设置共用。原共用钱包保留在默认空间。</p>
           </div>
           <button type="button" class="ephone-spaces-close" aria-label="关闭">×</button>
         </header>

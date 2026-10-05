@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
   <title>EPhone</title>
-  <link rel="stylesheet" href="style.css?v=1.7.58">
+  <link rel="stylesheet" href="style.css?v=1.7.59">
   <link rel="apple-touch-icon" href="https://s3plus.meituan.net/opapisdk/op_ticket_885190757_1758510900942_qdqqd_djw0z2.jpeg">
   <link rel="manifest" href="manifest.json">
   <meta name="apple-mobile-web-app-capable" content="yes">
@@ -23,16 +23,18 @@
   <script src="https://cdnjs.cloudflare.com/ajax/libs/tone/14.8.49/Tone.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.6.0/mammoth.browser.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/crypto-js/4.1.1/crypto-js.min.js"></script>
-  <script src="time-machine.js?v=1.7.58" defer="defer"></script>
+  <script src="time-machine.js?v=1.7.59" defer="defer"></script>
   <script src="api-payload-guard.js?v=1.7.44" defer="defer"></script>
-  <script src="persona-spaces.js?v=1.7.48" defer="defer"></script>
-  <script src="group-context.js?v=1.7.58" defer="defer"></script>
-  <script src="script.js?v=1.7.58" defer="defer"></script>
+  <script src="persona-spaces.js?v=1.7.59" defer="defer"></script>
+  <script src="group-context.js?v=1.7.59" defer="defer"></script>
+  <script src="spectator-money.js?v=1.7.59" defer="defer"></script>
+  <script src="space-wallet.js?v=1.7.59" defer="defer"></script>
+  <script src="script.js?v=1.7.59" defer="defer"></script>
   <script src="narration-mode.js" defer="defer"></script>
 </head>
 <body>
   <div id="phone-screen">
-    <span id="app-version-badge" aria-label="EPhone 版本 1.7.58">v1.7.58</span>
+    <span id="app-version-badge" aria-label="EPhone 版本 1.7.59">v1.7.59</span>
     <div id="status-bar"> <span id="status-bar-time">12:00</span>
       <div id="status-bar-battery" class="battery-container"> <span class="battery-text">--%</span>
         <div class="battery-icon">
@@ -2623,6 +2625,7 @@
             <div class="balance-label">
                 <span>总资产(CNY)</span>
                 </div>
+            <div id="wallet-space-label" style="font-size:12px; opacity:0.8; margin-bottom:6px;">当前空间的钱包</div>
             <div class="balance-amount" id="alipay-balance-display">0.00</div>
             <div class="balance-status-tag" id="alipay-status-tag">标准会员</div>
         </div>

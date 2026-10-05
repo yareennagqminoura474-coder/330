@@ -48,6 +48,9 @@
     if (["ai_image", "user_photo"].includes(message.type)) content = `[图片：${content}]`;
     if (message.type === "sticker") content = `[表情：${message.meaning || "表情"}]`;
     if (message.type === "voice_message") content = `[语音：${content}]`;
+    if (["transfer", "red_packet"].includes(message.type)) {
+      content = root.ephoneSpectatorMoney?.describe(message) || `[${message.type === "transfer" ? "转账" : "红包"}：${message.senderName || speaker} → ${message.receiverName || "群成员"}，金额 ${message.amount ?? message.totalAmount}；状态 ${message.status || "未领取"}；已领 ${JSON.stringify(message.claimedBy || {})}]`;
+    }
     if (message.quote) content = `[引用 ${message.quote.senderName || "消息"}：${text(message.quote.content)}] ${content}`;
     const time = Number(message.vts ?? message.timestamp);
     const date = Number.isFinite(time) && formatTime ? ` [${formatTime(time)}]` : "";
