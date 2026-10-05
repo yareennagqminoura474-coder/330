@@ -67,7 +67,8 @@ function unitTests() {
   assert.match(context.describeMessage(data.chat, data.chat.history[1]), /^旁白\/场景/);
   const html = fs.readFileSync("index.html", "utf8");
   assert.ok(html.indexOf('src="group-context.js?') < html.indexOf('src="script.js?'));
-  assert.match(fs.readFileSync("sw.js", "utf8"), /group-context\.js\?v=1\.7\.57/);
+  const contextAsset = html.match(/src="(group-context\.js\?v=[^"]+)"/)[1];
+  assert.ok(fs.readFileSync("sw.js", "utf8").includes(contextAsset));
   const app = fs.readFileSync("script.js", "utf8");
   const ordinaryGroupBlock = app.slice(app.indexOf("const _ephoneGroupContext = await _ephoneBuildGroupContext(_0x5b16cb)"), app.indexOf("const _0x51aaf6" ) + 85);
   assert.match(ordinaryGroupBlock, /_ephoneGroupContext\.linkedMemoryText/);

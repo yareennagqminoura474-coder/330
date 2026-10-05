@@ -7,12 +7,16 @@
   let activeChatId = null;
   let activeBinding = null;
   let configs = loadConfigs();
+  const durableConfigIds = new Set();
+  let cacheWarningShown = false;
   let clockTimer = null;
 
   function loadConfigs() {
     try {
       const parsed = JSON.parse(localStorage.getItem(STORAGE_KEY) || "{}");
-      return parsed && typeof parsed === "object" ? parsed : {};
+      return parsed && typeof parsed === "object" && !Array.isArray(parsed)
+        ? Object.fromEntries(Object.entries(parsed).map(([id, config]) => [id, normalizeConfig(config)]))
+        : {};
     } catch (error) {
       console.warn("时间轴配置读取失败：", error);
       return {};
@@ -44,12 +48,62 @@
   }
 
   function finiteOrNull(value) {
+    if (value == null || value === "") return null;
     const number = Number(value);
     return Number.isFinite(number) ? number : null;
   }
 
   function persistConfigs() {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(configs));
+    // IndexedDB chat settings/record vts are authoritative. Retain the legacy
+    // maps of unopened chats until their database save has actually succeeded.
+    const cache = Object.fromEntries(Object.entries(configs).map(([id, config]) => [
+      id, durableConfigIds.has(id) ? { ...config, frozen: {} } : config,
+    ]));
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(cache));
+      cacheWarningShown = false;
+    } catch (error) {
+      if (!cacheWarningShown) {
+        console.warn("辅助时间缓存无法写入；时间将随聊天保存在数据库中。", error);
+        cacheWarningShown = true;
+      }
+    }
+  }
+
+  function recordsForBinding(binding) {
+    return [...(binding?.getMessages?.() || []), ...(binding?.getMemories?.() || [])];
+  }
+
+  function rebuildFrozenIndex(binding, config) {
+    // Timestamp-only UI callers still need an index, but it need not be stored
+    // twice: rebuild it from message/memory vts whenever a chat is opened.
+    for (const item of recordsForBinding(binding)) {
+      const timestamp = parseTimestamp(item?.timestamp ?? item?.time);
+      const virtualTimestamp = finiteOrNull(item?.vts);
+      if (timestamp != null && virtualTimestamp != null)
+        config.frozen[String(timestamp)] = virtualTimestamp;
+    }
+  }
+
+  function databaseConfig(config, binding) {
+    const snapshot = normalizeConfig(config);
+    for (const item of recordsForBinding(binding)) {
+      const timestamp = parseTimestamp(item?.timestamp ?? item?.time);
+      const virtualTimestamp = finiteOrNull(item?.vts);
+      if (timestamp != null && virtualTimestamp != null &&
+          finiteOrNull(snapshot.frozen[String(timestamp)]) === virtualTimestamp)
+        delete snapshot.frozen[String(timestamp)];
+    }
+    return snapshot;
+  }
+
+  async function persistToChat(binding, id, config) {
+    if (typeof binding?.applyConfig !== "function") return;
+    // The callback stores both updated records and settings in one chat row.
+    // Only compact the old cache after that durable save, never before it.
+    await binding.applyConfig(databaseConfig(config, binding));
+    durableConfigIds.add(id);
+    persistConfigs();
   }
 
   function getConfig(chatId = activeChatId) {
@@ -80,6 +134,7 @@
   }
 
   function parseTimestamp(value) {
+    if (value == null || value === "") return null;
     if (typeof value === "number" && Number.isFinite(value)) return value;
     const parsed =
       typeof value === "string" ? Date.parse(value) : Number(value);
@@ -90,8 +145,8 @@
     const timestamp = parseTimestamp(value);
     if (!Number.isFinite(timestamp) || config.mode !== MODES.CUSTOM)
       return timestamp;
-    const frozen = Number(config.frozen[String(timestamp)]);
-    if (Number.isFinite(frozen)) return frozen;
+    const frozen = finiteOrNull(config.frozen[String(timestamp)]);
+    if (frozen != null) return frozen;
     if (
       !Number.isFinite(config.anchorRealMs) ||
       !Number.isFinite(config.anchorVirtualMs)
@@ -112,7 +167,8 @@
     const config = getConfig(chatId);
     if (config.mode !== MODES.CUSTOM)
       return parseTimestamp(message.timestamp ?? message.time);
-    if (Number.isFinite(Number(message.vts))) return Number(message.vts);
+    const virtualTimestamp = finiteOrNull(message.vts);
+    if (virtualTimestamp != null) return virtualTimestamp;
     return resolveWithConfig(message.timestamp ?? message.time, config);
   }
 
@@ -150,18 +206,21 @@
   }
 
   function freezeCollection(collection, config) {
-    if (!Array.isArray(collection) || config.mode !== MODES.CUSTOM) return;
+    if (!Array.isArray(collection) || config.mode !== MODES.CUSTOM) return 0;
+    let changed = 0;
     collection.forEach((item) => {
       if (!item || item.type === "time_marker") return;
       const realTimestamp = parseTimestamp(item.timestamp ?? item.time);
       if (!Number.isFinite(realTimestamp)) return;
-      const value = Number.isFinite(Number(item.vts))
+      const value = finiteOrNull(item.vts) != null
         ? Number(item.vts)
         : resolveWithConfig(realTimestamp, config);
       if (!Number.isFinite(value)) return;
+      if (finiteOrNull(item.vts) !== value) changed++;
       item.vts = value;
       config.frozen[String(realTimestamp)] = value;
     });
+    return changed;
   }
 
   function clearVirtualCollection(collection) {
@@ -173,9 +232,9 @@
   }
 
   function freezeActiveRecords(config) {
-    if (!activeBinding || activeBinding.id !== activeChatId) return;
-    freezeCollection(activeBinding.getMessages?.(), config);
-    freezeCollection(activeBinding.getMemories?.(), config);
+    if (!activeBinding || String(activeBinding.id) !== activeChatId) return 0;
+    return freezeCollection(activeBinding.getMessages?.(), config) +
+      freezeCollection(activeBinding.getMemories?.(), config);
   }
 
   function clearActiveVirtualRecords() {
@@ -185,9 +244,11 @@
   }
 
   async function saveActive(config, refresh) {
-    configs[activeChatId] = normalizeConfig(config);
-    persistConfigs();
-    await activeBinding?.applyConfig?.(configs[activeChatId]);
+    const chatId = activeChatId;
+    const binding = activeBinding;
+    configs[chatId] = normalizeConfig(config);
+    await persistToChat(binding, chatId, configs[chatId]);
+    if (activeChatId !== chatId || activeBinding !== binding) return;
     updateUi();
     if (refresh) await activeBinding?.refresh?.();
   }
@@ -435,13 +496,12 @@
     config.anchorVirtualMs = virtualNow(config) + minutes * 60 * 1000;
     config.anchorRealMs = Date.now();
     configs[targetChatId] = normalizeConfig(config);
-    persistConfigs();
     if (targetChatId === activeChatId) {
-      Promise.resolve(activeBinding?.applyConfig?.(configs[targetChatId])).catch(
+      persistToChat(activeBinding, targetChatId, configs[targetChatId]).catch(
         (error) => console.warn("剧情时间保存失败：", error),
       );
       updateUi();
-    }
+    } else persistConfigs();
     return minutes;
   }
 
@@ -580,7 +640,23 @@
     configs[activeChatId] = normalizeConfig(
       settingsConfig || configs[activeChatId],
     );
-    persistConfigs();
+    const config = configs[activeChatId];
+    rebuildFrozenIndex(binding, config);
+    // Migrate historical lookup values to the records before dropping any
+    // duplicate map. Existing vts always wins, including after time jumps.
+    const migratedRecords = freezeActiveRecords(config);
+    const storedMapSize = Object.keys(settingsConfig?.frozen || {}).length;
+    const remainingMapSize = Object.keys(databaseConfig(config, binding).frozen).length;
+    if (!settingsConfig || migratedRecords || storedMapSize !== remainingMapSize) {
+      persistToChat(binding, activeChatId, config).catch(
+        (error) => console.warn("历史时间迁移保存失败；原时间缓存仍保留。", error),
+      );
+    } else {
+      // This chat is already migrated in IndexedDB. Avoid rewriting its entire
+      // history merely because the user reopens it or loads more messages.
+      durableConfigIds.add(activeChatId);
+      persistConfigs();
+    }
     updateUi();
   }
 
