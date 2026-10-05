@@ -1,20 +1,23 @@
 // Service Worker 文件 (sw.js) - 强力保活版
 
 // 缓存版本号
-const CACHE_VERSION = "v1.7.59"; // 版本号+1
+const CACHE_VERSION = "v1.7.60"; // 版本号+1
 const CACHE_NAME = `ephone-cache-${CACHE_VERSION}`;
 
 const CORE_URLS_TO_CACHE = [
+  "./life-market-core.js?v=1.7.60",
+  "./life-market.js?v=1.7.60",
+  "./life-market.css?v=1.7.60",
   "./index.html",
-  "./style.css?v=1.7.59",
-  "./persona-spaces.js?v=1.7.59",
-  "./group-context.js?v=1.7.59",
-  "./spectator-money.js?v=1.7.59",
-  "./space-wallet.js?v=1.7.59",
-  "./script.js?v=1.7.59",
+  "./style.css?v=1.7.60",
+  "./persona-spaces.js?v=1.7.60",
+  "./group-context.js?v=1.7.60",
+  "./spectator-money.js?v=1.7.60",
+  "./space-wallet.js?v=1.7.60",
+  "./script.js?v=1.7.60",
   "./api-payload-guard.js?v=1.7.44",
   "./narration-mode.js",
-  "./time-machine.js?v=1.7.59",
+  "./time-machine.js?v=1.7.60",
 ];
 
 const OPTIONAL_URLS_TO_CACHE = [

@@ -10061,7 +10061,7 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
         : `${_0xspaceBaseName}__space_${_0xspaceId}`,
     );
     ((_0x24f906 = _0xpersonaDb),
-      _0x24f906[_0x205142(0x1318)](0x31)
+      _0x24f906[_0x205142(0x1318)](0x32)
         [_0x205142(0x146d)]({
           doubanPosts: _0x205142(0x220),
           chats:
@@ -10083,6 +10083,8 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
           callRecords: _0x205142(0x166e),
           shoppingProducts: _0x205142(0x1491),
           shoppingCategories: "++id,\x20name",
+          marketState: "&id",
+          marketOrders: "&id,timestamp,status",
           apiPresets: "++id,\x20name",
           renderingRules: _0x205142(0xa18),
           appearancePresets: _0x205142(0xd4e),
@@ -11421,6 +11423,8 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
         presetCategories: _0x29b98f,
         npcs: _0x1349a6,
       });
+      for (const tableName of ["marketState", "marketOrders", "userWallet", "userTransactions"])
+        _0x1cbf58[tableName] = await _0x24f906.table(tableName).toArray();
       const _0x23cf5f = new Blob([JSON["stringify"](_0x1cbf58, null, 0x2)], {
           type: _0x39250e(0x1206),
         }),
@@ -11537,6 +11541,10 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
       memories: "回忆",
       callRecords: _0x30ebd8(0x1a17),
       shoppingProducts: "商品",
+      marketState: "逛逛商品与购物车",
+      marketOrders: "逛逛订单",
+      userWallet: "本空间钱包",
+      userTransactions: "本空间账单",
       apiPresets: _0x30ebd8(0x622),
       renderingRules: "渲染规则",
       appearancePresets: "外观预设",
@@ -11685,6 +11693,10 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
       memories: "回忆",
       callRecords: _0x322e48(0x1a17),
       shoppingProducts: "商品",
+      marketState: "逛逛商品与购物车",
+      marketOrders: "逛逛订单",
+      userWallet: "本空间钱包",
+      userTransactions: "本空间账单",
       apiPresets: _0x322e48(0x622),
       renderingRules: _0x322e48(0x19ff),
       appearancePresets: _0x322e48(0x10b7),
@@ -11943,6 +11955,8 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
             await _0x24f906["npcs"][_0x49b300(0x97c)](
               _0xd5cb09[_0x49b300(0x94f)],
             );
+          for (const tableName of ["marketState", "marketOrders", "userWallet", "userTransactions"])
+            if (Array.isArray(_0xd5cb09[tableName])) await _0x24f906.table(tableName).bulkPut(_0xd5cb09[tableName]);
         },
       );
     } catch (_0x160a21) {
@@ -56380,7 +56394,49 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
         if (_0xspaceLabel)
           _0xspaceLabel.textContent = window.EPHONE_SPACE_NAME || "默认空间";
       }),
-      (window.isPersonaSpaceBusy = () => Boolean(_0xephoneGenerationController || _0xephoneSpectatorGenerating || _ephoneSpectatorMoneyBusy || _ephoneWalletPending)),
+      (window.isPersonaSpaceBusy = () => Boolean(_0xephoneGenerationController || _0xephoneSpectatorGenerating || _ephoneSpectatorMoneyBusy || _ephoneWalletPending || window.EPhoneLifeMarket?.isBusy())),
+      (window.EPhoneMarketAdapter = {
+        now: (chatId) => window.ephoneTimeMachine?.nowMs(chatId || _0x5ea3c1.activeChatId) || Date.now(),
+        formatTime: (value) => window.ephoneTimeMachine?.formatDateTime(value, { withWeekday: true }) || new Date(value).toLocaleString("zh-CN"),
+        snapshot: async (store, spaceId) => {
+          // Capture the concrete space DB before awaiting; never read people or
+          // wallet from a subsequently switched space through the facade.
+          const [chats, npcs, wallet] = await Promise.all([store.chats.toArray(), store.database.table("npcs").toArray(), store.wallet.get("main")]);
+          if (spaceId !== (window.EPHONE_SPACE_ID || "default")) throw new Error("空间已切换，请重新打开商城。");
+          const context = window.ephoneLifeMarketCore.buildContext({ chats, npcs, wallet,
+            activeChatId: _0x5ea3c1.activeChatId, nickname: _0x5ea3c1.qzoneSettings?.nickname,
+            formatTime: window.EPhoneMarketAdapter.formatTime, groupContext: window.ephoneGroupContext });
+          const linkedIds = new Set(chats.flatMap((chat) => (chat.settings?.linkedWorldBookIds || []).map((link) => typeof link === "object" ? link.id : link)));
+          context.worldBooks = (_0x5ea3c1.worldBooks || []).filter((book) => linkedIds.has(book.id)).slice(0, 8).map((book) => ({ name: book.name,
+            content: (typeof book.content === "string" ? book.content : (book.content || []).filter((entry) => entry.enabled !== false).map((entry) => entry.content).join("\n")).slice(0, 1800) }));
+          return { context, vts: window.EPhoneMarketAdapter.now() };
+        },
+        generate: async (prompt, signal) => {
+          const config = _0x5ea3c1.apiConfig || {};
+          const { proxyUrl, apiKey, model } = config.secondaryProxyUrl && config.secondaryApiKey && config.secondaryModel
+            ? { proxyUrl: config.secondaryProxyUrl, apiKey: config.secondaryApiKey, model: config.secondaryModel } : config;
+          if (!proxyUrl || !apiKey || !model) throw new Error("请先在设置里选择API预设和模型。");
+          signal?.throwIfAborted();
+          const user = [{ role: "user", content: "生成这次手动刷新所需的完整JSON。" }];
+          const native = String(proxyUrl).includes("generativelanguage.googleapis.com");
+          const gemini = native ? _0x20e281(model, apiKey, prompt, user) : null;
+          const response = native ? await fetch(gemini.url, { ...gemini.data, signal }) : await _ephoneApiFetch(_ephoneBuildApiEndpoint(proxyUrl, "chat/completions"), {
+            method: "POST", signal, headers: { "Content-Type": "application/json", Authorization: "Bearer " + apiKey },
+            body: JSON.stringify({ model, messages: [{ role: "system", content: prompt }, ...user], temperature: 0.9, stream: false }),
+          });
+          if (!response.ok) throw new Error(`API 请求失败：${response.status} - ${(await response.text()).slice(0, 300)}`);
+          return getGeminiResponseText(await response.json());
+        },
+        onPaid: async (result) => {
+          _0x57a126 = result.balance; window.userBalance = result.balance;
+          const display = document.getElementById("alipay-balance-display"); if (display) display.textContent = result.balance.toFixed(2);
+          if (result.chat) {
+            const current = _0x5ea3c1.chats[result.chat.id];
+            if (current) current.history = result.chat.history; else _0x5ea3c1.chats[result.chat.id] = result.chat;
+            await _0x4bb316();
+          }
+        },
+      }),
       (window["renderWorldBookScreenProxy"] = _0x5dd041),
       await _0x3367c4(),
       await _0x4b0d91(),
@@ -62017,7 +62073,7 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
       ),
       document[_0x274136(0x1023)]("open-shopping-btn")["addEventListener"](
         _0x274136(0x34e),
-        _0x5a5315,
+        () => window.EPhoneLifeMarket.open(),
       ),
       document[_0x274136(0x1023)]("shopping-back-btn")[_0x274136(0x111e)](
         _0x274136(0x34e),

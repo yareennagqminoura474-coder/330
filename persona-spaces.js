@@ -12,6 +12,8 @@
     "qzonePosts",
     "userWallet",
     "userTransactions",
+    "marketState",
+    "marketOrders",
   ]);
   const IMPORTABLE_SHARED_TABLES = [
     "globalSettings",
