@@ -7955,6 +7955,8 @@ function isImage(_0x121f53) {
   return [];
 }
 function getGeminiResponseText(_0x1283da) {
+  const _ephoneVisibleText = window.ephoneChatResponse?.extractText(_0x1283da);
+  if (typeof _ephoneVisibleText === "string") return _ephoneVisibleText;
   const _0x228548 = _0xca61b6;
   if (
     _0x1283da[_0x228548(0x1209)] &&
@@ -13472,6 +13474,9 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
     document[_0x543d39(0x1023)](_0x543d39(0x594))[_0x543d39(0x71a)] = _0x2a0131;
   }
   function _0x297b4dRaw(_0x1b8fdd) {
+    const _ephoneStructuredReply = window.ephoneChatResponse?.inspect(_0x1b8fdd);
+    if (_ephoneStructuredReply?.structured && !_ephoneStructuredReply.incomplete)
+      return _ephoneStructuredReply.items;
     const _0x109d92 = _0x3ce505;
     if (!_0x1b8fdd) return [{ type: "text", content: _0x109d92(0xae0) }];
     let _0x102996 = _0x1b8fdd[_0x109d92(0x1833)]();
@@ -17618,45 +17623,52 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
         }));
       _0x235416.push({ role: "user", content: "请按以上人设、人物关系及当前时间，从最后一条消息继续推进剧情；不要复述已有消息。" });
       _ephoneSpectatorController.signal.throwIfAborted();
-      let _0x4799c0 = _0x4dfdb5[_0xd07074(0x1507)](_0xd07074(0x328)),
-        _0x13b518;
-      if (_0x4799c0) {
-        let _0x29aa1f = _0x20e281(_0x45d813, _0x570fe9, _0x404106, _0x235416);
-        _0x13b518 = await fetch(_0x29aa1f[_0xd07074(0x863)], {
-          ..._0x29aa1f.data, signal: _ephoneSpectatorController.signal,
-        });
-      } else
-        _0x13b518 = await _ephoneApiFetch(
-          _ephoneBuildApiEndpoint(_0x4dfdb5, "chat/completions"),
-          {
-          method: "POST",
-          signal: _ephoneSpectatorController.signal,
-          headers: {
-            "Content-Type": _0xd07074(0x1206),
-            Authorization: _0xd07074(0x654) + _0x570fe9,
-          },
-          body: JSON[_0xd07074(0x1baf)]({
-            model: _0x45d813,
-            messages: [
-              { role: _0xd07074(0xd77), content: _0x404106 },
-              ..._0x235416,
-            ],
-            temperature: _0x5ea3c1[_0xd07074(0x9b1)][_0xd07074(0x8ae)] || 0.9,
-          }),
-        });
-      if (!_0x13b518["ok"]) {
-        const _0x45883a = await _0x13b518["json"]()["catch"](() => ({
-          error: { message: _0x13b518["statusText"] },
-        }));
-        throw new Error(
-          _0xd07074(0x143a) +
-            _0x13b518[_0xd07074(0x162f)] +
-            "\x20-\x20" +
-            (_0x45883a[_0xd07074(0x110f)]?.[_0xd07074(0xeb4)] || "未知错误"),
-        );
-      }
-      const _0x3351c4 = await _0x13b518[_0xd07074(0x711)](),
-        _0x112a1d = getGeminiResponseText(_0x3351c4);
+      const _ephoneSpectatorComplete = await window.ephoneChatResponse.complete(async (_ephoneRecoveryPrompt) => {
+        const _ephoneRequestMessages = _ephoneRecoveryPrompt
+          ? [..._0x235416, { role: "user", content: _ephoneRecoveryPrompt }] : _0x235416;
+        let _0x4799c0 = _0x4dfdb5[_0xd07074(0x1507)](_0xd07074(0x328)),
+          _0x13b518;
+        if (_0x4799c0) {
+          let _0x29aa1f = _0x20e281(_0x45d813, _0x570fe9, _0x404106, _ephoneRequestMessages);
+          _0x13b518 = await fetch(_0x29aa1f[_0xd07074(0x863)], {
+            ..._0x29aa1f.data, signal: _ephoneSpectatorController.signal,
+          });
+        } else
+          _0x13b518 = await _ephoneApiFetch(
+            _ephoneBuildApiEndpoint(_0x4dfdb5, "chat/completions"),
+            {
+            method: "POST",
+            signal: _ephoneSpectatorController.signal,
+            headers: {
+              "Content-Type": _0xd07074(0x1206),
+              Authorization: _0xd07074(0x654) + _0x570fe9,
+            },
+            body: JSON[_0xd07074(0x1baf)]({
+              model: _0x45d813,
+              messages: [
+                { role: _0xd07074(0xd77), content: _0x404106 },
+                ..._ephoneRequestMessages,
+              ],
+              temperature: _0x5ea3c1[_0xd07074(0x9b1)][_0xd07074(0x8ae)] || 0.9,
+            }),
+          });
+        if (!_0x13b518["ok"]) {
+          const _0x45883a = await _0x13b518["json"]()["catch"](() => ({
+            error: { message: _0x13b518["statusText"] },
+          }));
+          throw new Error(
+            _0xd07074(0x143a) +
+              _0x13b518[_0xd07074(0x162f)] +
+              "\x20-\x20" +
+              (_0x45883a[_0xd07074(0x110f)]?.[_0xd07074(0xeb4)] || "未知错误"),
+          );
+        }
+        return await _0x13b518.json();
+      }, {
+        signal: _ephoneSpectatorController.signal, parse: _0x297b4d,
+        isRenderable: (item) => item.type === "narration" || !!window.ephoneGroupContext.resolveSpeaker(_ephoneGroupContext.profiles, item.name),
+      });
+      const _0x112a1d = _ephoneSpectatorComplete.raw;
       _ephoneSpectatorController.signal.throwIfAborted();
       lastRawAiResponse = _0x112a1d;
       const _0x56fb86 = window.ephoneTimeMachine?.ensureReplyHeader
@@ -20303,80 +20315,88 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
             "【继续当前对话】请根据以上完整聊天记录，自然接续互动并推动后续。最后一条 assistant 是已经发送的角色消息，不是尚未完成的生成前缀；不要续写或复述它本身。",
         });
       }
-      let _0x401894 = _0x275228 === GEMINI_API_URL,
-        _0x25b2a9 = _0x20e281(_0x1d2298, _0xdbefc3, _0x539674, _0x4e7a2c),
-        _0x114828;
-      try {
-        if (_0x25b2a9?.data) _0x25b2a9.data.signal = _0xephoneController.signal;
-        _0x114828 = _0x401894
-          ? await fetch(_0x25b2a9[_0x25f1e5(0x863)], _0x25b2a9["data"])
-          : await _ephoneApiFetch(
-              _ephoneBuildApiEndpoint(_0x275228, "chat/completions"),
-              {
-              method: "POST",
-              signal: _0xephoneController.signal,
-              headers: {
-                "Content-Type": _0x25f1e5(0x1206),
-                Authorization: _0x25f1e5(0x654) + _0xdbefc3,
-              },
-              body: JSON["stringify"]({
-                model: _0x1d2298,
-                messages: [
-                  { role: "system", content: _0x539674 },
-                  ..._0x4e7a2c,
-                ],
-                temperature:
-                  _0x5ea3c1["globalSettings"][_0x25f1e5(0x8ae)] || 0.8,
-                stream: ![],
-              }),
-            });
-      } catch (_0x3a545a) {
-        if (_0x3a545a?.name === "AbortError") throw _0x3a545a;
-        const _ephoneNetworkDetail = String(
-            _0x3a545a?.message || _0x3a545a || "未知错误",
-          ),
-          _ephoneApiHost = (() => {
-            try {
-              return new URL(_0x275228).host;
-            } catch {
-              return "unknown";
-            }
-          })(),
-          _ephoneOnlineState =
-            typeof navigator === "undefined"
-              ? "unknown"
-              : navigator.onLine
-                ? "online"
-                : "offline";
-        throw new Error(
-          "网络请求失败:\x20" +
-            _ephoneNetworkDetail +
-            (_ephoneNetworkDetail.includes("host=")
-              ? ""
-              : ` (host=${_ephoneApiHost}, browser=${_ephoneOnlineState})`),
-        );
-      }
-      if (!_0x114828["ok"]) {
-        let _0x3ebff3 =
-          "API\x20返回错误:\x20" +
-          _0x114828["status"] +
-          "\x20" +
-          _0x114828[_0x25f1e5(0x1338)];
+      const _ephoneCompleteReply = await window.ephoneChatResponse.complete(async (_ephoneRecoveryPrompt) => {
+        const _ephoneRequestMessages = _ephoneRecoveryPrompt
+          ? [..._0x4e7a2c, { role: "user", content: _ephoneRecoveryPrompt }] : _0x4e7a2c;
+        let _0x401894 = _0x275228 === GEMINI_API_URL,
+          _0x25b2a9 = _0x20e281(_0x1d2298, _0xdbefc3, _0x539674, _ephoneRequestMessages),
+          _0x114828;
         try {
-          const _0x53dc72 = await _0x114828[_0x25f1e5(0x711)]();
-          _0x53dc72[_0x25f1e5(0x110f)] &&
-          _0x53dc72[_0x25f1e5(0x110f)][_0x25f1e5(0xeb4)]
-            ? (_0x3ebff3 +=
-                "\x20-\x20" + _0x53dc72[_0x25f1e5(0x110f)]["message"])
-            : (_0x3ebff3 +=
-                _0x25f1e5(0xed2) + JSON[_0x25f1e5(0x1baf)](_0x53dc72));
-        } catch (_0x428379) {
-          _0x3ebff3 += "\x20-\x20响应内容:\x20" + (await _0x114828["text"]());
+          if (_0x25b2a9?.data) _0x25b2a9.data.signal = _0xephoneController.signal;
+          _0x114828 = _0x401894
+            ? await fetch(_0x25b2a9[_0x25f1e5(0x863)], _0x25b2a9["data"])
+            : await _ephoneApiFetch(
+                _ephoneBuildApiEndpoint(_0x275228, "chat/completions"),
+                {
+                method: "POST",
+                signal: _0xephoneController.signal,
+                headers: {
+                  "Content-Type": _0x25f1e5(0x1206),
+                  Authorization: _0x25f1e5(0x654) + _0xdbefc3,
+                },
+                body: JSON["stringify"]({
+                  model: _0x1d2298,
+                  messages: [
+                    { role: "system", content: _0x539674 },
+                    ..._ephoneRequestMessages,
+                  ],
+                  temperature:
+                    _0x5ea3c1["globalSettings"][_0x25f1e5(0x8ae)] || 0.8,
+                  stream: ![],
+                }),
+              });
+        } catch (_0x3a545a) {
+          if (_0x3a545a?.name === "AbortError") throw _0x3a545a;
+          const _ephoneNetworkDetail = String(
+              _0x3a545a?.message || _0x3a545a || "未知错误",
+            ),
+            _ephoneApiHost = (() => {
+              try {
+                return new URL(_0x275228).host;
+              } catch {
+                return "unknown";
+              }
+            })(),
+            _ephoneOnlineState =
+              typeof navigator === "undefined"
+                ? "unknown"
+                : navigator.onLine
+                  ? "online"
+                  : "offline";
+          throw new Error(
+            "网络请求失败:\x20" +
+              _ephoneNetworkDetail +
+              (_ephoneNetworkDetail.includes("host=")
+                ? ""
+                : ` (host=${_ephoneApiHost}, browser=${_ephoneOnlineState})`),
+          );
         }
-        throw new Error(_0x3ebff3);
-      }
-      const _0x4144e7 = await _0x114828[_0x25f1e5(0x711)](),
-        _0x5eb79b = getGeminiResponseText(_0x4144e7);
+        if (!_0x114828["ok"]) {
+          let _0x3ebff3 =
+            "API\x20返回错误:\x20" +
+            _0x114828["status"] +
+            "\x20" +
+            _0x114828[_0x25f1e5(0x1338)];
+          try {
+            const _0x53dc72 = await _0x114828[_0x25f1e5(0x711)]();
+            _0x53dc72[_0x25f1e5(0x110f)] &&
+            _0x53dc72[_0x25f1e5(0x110f)][_0x25f1e5(0xeb4)]
+              ? (_0x3ebff3 +=
+                  "\x20-\x20" + _0x53dc72[_0x25f1e5(0x110f)]["message"])
+              : (_0x3ebff3 +=
+                  _0x25f1e5(0xed2) + JSON[_0x25f1e5(0x1baf)](_0x53dc72));
+          } catch (_0x428379) {
+            _0x3ebff3 += "\x20-\x20响应内容:\x20" + (await _0x114828["text"]());
+          }
+          throw new Error(_0x3ebff3);
+        }
+        return await _0x114828.json();
+      }, {
+        signal: _0xephoneController.signal, parse: _0x297b4d,
+        isRenderable: (item) => !_0x5b16cb.isGroup || item.type === "narration" ||
+          (!!item.name && item.name !== _0x5b16cb.name),
+      });
+      const _0x5eb79b = _ephoneCompleteReply.raw;
       ((lastRawAiResponse = _0x5eb79b),
         (lastResponseTimestamps = _0xephoneContinue ? lastResponseTimestamps : []),
         (_0x5b16cb[_0x25f1e5(0x8e6)] = _0x5b16cb[_0x25f1e5(0x8e6)][

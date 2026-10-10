@@ -89,7 +89,7 @@ function appHarness() {
   const sandbox = {
     console: { ...console, warn() {} }, AbortController, DOMException, Date, Math,
     setTimeout: (fn) => setTimeout(fn, 0),
-    window: { ephoneGroupContext: context, ephoneSpectatorMoney: money, ephoneSpaceWallet: {
+    window: { ephoneChatResponse: require("./chat-response.js"), ephoneGroupContext: context, ephoneSpectatorMoney: money, ephoneSpaceWallet: {
       creditReceipt: async (db, candidate, receipt) => {
         await db.chats.put(candidate);
         return { ok: true, balance: receipt.amount };
