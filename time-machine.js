@@ -138,6 +138,7 @@
   }
 
   async function loadSpace(db) {
+    await window.ephoneHolidayCalendar?.loadSpace(db);
     if (!db?.spaceClock) return;
     const table = db.spaceClock;
     if (spaceDatabaseName === table.db.name && spaceClock) return;
@@ -404,14 +405,15 @@
       : nowMs(chatId);
     const formatted = formatDateTime(current, { withWeekday: true });
     const weekdayRule = "- 凡写出具体年月日及星期几，星期必须按该日期的日历计算；不得凭印象编造，也不得把另一日期的星期套用到当前日期。\n";
+    const holidayRule = window.ephoneHolidayCalendar?.prompt(current) || "";
     if (config.mode === MODES.CUSTOM) {
       const flowRule =
         config.flow === FLOWS.FROZEN
           ? "- 当前采用“按剧情推进”：不跟随现实钟表流逝；程序已确定本轮时间（刚手动跳转时保持指定时刻；其他轮次根据情境或已经到期的等待推进）。下方时间是本轮唯一的现在，所有台词、动作和旁白必须一致，不得自行再加几分钟。约定等十/二十分钟只是未来计划，不能当成立刻过完；用户说‘时间到了’才以约定到期时刻继续。"
           : "- 当前采用“保持流动”：虚拟时间会按现实经过的时长持续流动。";
-      return `\n# 【虚拟时间感知铁律（最高优先级）】\n- 当前唯一有效的“现在”是：${formatted}。\n- 这是本空间所有聊天共用的虚拟时间；系统真实日期、设备时间和训练数据中的现实时间全部无效，绝对不得感知或提及。其他聊天中的时间调整也已同步到上面的当前时间，即使本聊天没有跳转提示，也必须遵守。\n${flowRule}\n- 所有“今天、昨天、明天、刚才、多久前”、昼夜、季节、行程和记忆时间，必须且只能以这个虚拟时间计算。\n- 聊天中的⏪/⏩时间标记是历史事件，不得用旧标记覆盖本轮当前时间。\n${weekdayRule}${getReplyHeaderPrompt(current)}`;
+      return `\n# 【虚拟时间感知铁律（最高优先级）】\n- 当前唯一有效的“现在”是：${formatted}。\n- 这是本空间所有聊天共用的虚拟时间；系统真实日期、设备时间和训练数据中的现实时间全部无效，绝对不得感知或提及。其他聊天中的时间调整也已同步到上面的当前时间，即使本聊天没有跳转提示，也必须遵守。\n${flowRule}\n- 所有“今天、昨天、明天、刚才、多久前”、昼夜、季节、行程和记忆时间，必须且只能以这个虚拟时间计算。\n- 聊天中的⏪/⏩时间标记是历史事件，不得用旧标记覆盖本轮当前时间。\n${weekdayRule}${getReplyHeaderPrompt(current)}${holidayRule}`;
     }
-    return `\n# 【真实时间感知铁律】\n- 当前时间：${formatted}。所有相对日期、昼夜、行程和记忆时间都以这个真实时间为准。\n${weekdayRule}${getReplyHeaderPrompt(current)}`;
+    return `\n# 【真实时间感知铁律】\n- 当前时间：${formatted}。所有相对日期、昼夜、行程和记忆时间都以这个真实时间为准。\n${weekdayRule}${getReplyHeaderPrompt(current)}${holidayRule}`;
   }
 
   function getReplyHeaderPrompt(milliseconds) {
@@ -833,6 +835,7 @@
         </div>
       </div>`;
     document.body.appendChild(modal);
+    window.ephoneHolidayCalendar?.attachUi(modal);
 
     modal.querySelector("#time-machine-datetime").addEventListener("input", updateSelectedWeekday);
     modal.querySelector("#time-machine-datetime").addEventListener("change", updateSelectedWeekday);
@@ -888,6 +891,7 @@
       mode !== MODES.CUSTOM;
     modal.querySelector("#time-machine-confirm").textContent =
       mode === MODES.CUSTOM ? "跳转" : "使用真实时间";
+    window.ephoneHolidayCalendar?.renderPreview(modal);
   }
 
   function openModal() {
@@ -899,6 +903,7 @@
     modal.querySelector("#time-machine-datetime").value =
       toDateTimeLocal(nowMs());
     updateSelectedWeekday();
+    window.ephoneHolidayCalendar?.openUi(modal);
     const flowInput = modal.querySelector(
       `input[name="time-machine-flow"][value="${config.flow}"]`,
     );
@@ -916,6 +921,7 @@
     label.textContent = date && Number.isFinite(date.getTime())
       ? `星期${["日", "一", "二", "三", "四", "五", "六"][date.getDay()]}`
       : "";
+    window.ephoneHolidayCalendar?.renderPreview(modal);
   }
 
   function closeModal() {

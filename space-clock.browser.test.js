@@ -14,7 +14,7 @@ const { chromium } = require("playwright-core");
   const browser = await chromium.launch({ executablePath: "C:/Program Files/Google/Chrome/Application/chrome.exe", headless: true });
   const prompts = [], errors = []; let failure = false;
   try {
-    const page = await browser.newPage({ viewport: { width: 420, height: 900 }, isMobile: true, hasTouch: true });
+    const page = await browser.newPage({ viewport: { width: 420, height: 900 }, isMobile: true, hasTouch: true, serviceWorkers: "block" });
     page.on("pageerror", (error) => errors.push(error.message));
     await page.route("**/*", async (route) => {
       const url = route.request().url(); if (url.startsWith(origin)) return route.continue();
@@ -88,7 +88,51 @@ const { chromium } = require("playwright-core");
     assert.match(prompts.at(-1), /2026-03-05 09:40 周四/);
     await page.reload({ waitUntil: "domcontentloaded" }); await page.waitForFunction(() => window.ephoneAppReady);
     await openChat("clock-standard"); assert.equal(await page.evaluate(() => window.ephoneTimeMachine.nowMs()), morning + 140 * 60000);
+    // The shared clock must drive actual holiday prompts in ALL chat modes,
+    // not just a label in the time picker or the model's own calendar guesses.
+    await openChat("clock-watch");
+    await page.locator('[data-spectator-action="time"]').click();
+    await page.locator("#time-machine-datetime").fill("2026-10-01T07:20");
+    assert.match(await page.locator("#holiday-preview").innerText(), /国庆节放假中/);
+    await page.locator("#time-machine-confirm").click();
+    await page.locator("#spectator-propel-btn").click(); await page.waitForFunction(() => !window.isPersonaSpaceBusy());
+    assert.match(prompts.at(-1), /公共安排：国庆节放假中/);
+    await openChat("clock-standard"); await page.locator("#wait-reply-btn").click(); await page.waitForFunction(() => !window.isPersonaSpaceBusy());
+    assert.match(prompts.at(-1), /公共安排：国庆节放假中/);
+    await openChat("clock-person"); await page.locator("#wait-reply-btn").click(); await page.waitForFunction(() => !window.isPersonaSpaceBusy());
+    assert.match(prompts.at(-1), /公共安排：国庆节放假中/);
+    await openChat("clock-watch");
+    await page.evaluate(() => window.ephoneTimeMachine.jumpTo(new Date("2026-10-10T09:00:00").getTime(), "frozen"));
+    await page.locator("#spectator-propel-btn").click(); await page.waitForFunction(() => !window.isPersonaSpaceBusy());
+    assert.match(prompts.at(-1), /2026-10-10 周六/);
+    assert.match(prompts.at(-1), /公共安排：调休上班日/);
+    await page.locator('[data-spectator-action="time"]').click();
+    await page.locator(".holiday-calendar summary").click();
+    await page.locator("#holiday-draft").fill("2027-01-20 ~ 2027-02-15 | 寒假 | 放假 | 清北班学生");
+    const beforeHolidaySave = await page.evaluate(() => window.ephoneTimeMachine.nowMs());
+    await page.locator("#holiday-save").click();
+    await page.waitForFunction(() => document.getElementById("holiday-save-status").textContent.includes("已保存"));
+    assert.equal(await page.evaluate(() => window.ephoneTimeMachine.nowMs()), beforeHolidaySave);
+    await page.locator("#holiday-draft").fill("2027-02-30 | 错误假期 | 放假"); await page.locator("#holiday-save").click();
+    await page.waitForFunction(() => document.getElementById("holiday-save-status").textContent.includes("未保存"));
+    assert.match(await page.evaluate(async () => (await window.db.spaceClock.get("holiday-calendar")).draft), /寒假/);
+    await page.locator("#time-machine-cancel").click();
+    await page.reload({ waitUntil: "domcontentloaded" }); await page.waitForFunction(() => window.ephoneAppReady);
+    await openChat("clock-watch");
+    await page.evaluate(() => window.ephoneTimeMachine.jumpTo(new Date("2027-02-06T09:00:00").getTime(), "frozen"));
+    await page.locator("#spectator-propel-btn").click(); await page.waitForFunction(() => !window.isPersonaSpaceBusy());
+    assert.match(prompts.at(-1), /当天节日：春节（正月初一）/);
+    assert.match(prompts.at(-1), /2027年的中国大陆放假调休安排尚未内置/);
+    assert.match(prompts.at(-1), /本空间自定义安排：寒假；对象：清北班学生.*当前生效/);
+    await page.locator('[data-spectator-action="time"]').click();
+    await page.locator("#time-machine-datetime").fill("2027-02-16T09:00");
+    assert.doesNotMatch(await page.locator("#holiday-preview").innerText(), /本空间自定义安排：寒假/);
+    const modalLayout = await page.evaluate(() => {
+      const card = document.querySelector(".time-machine-card"); return { height: card.getBoundingClientRect().height, width: card.getBoundingClientRect().width };
+    });
+    assert.ok(modalLayout.height <= 860 && modalLayout.width <= 420);
+    await page.locator("#time-machine-cancel").click();
     assert.deepEqual(errors, []);
-    console.log("PASS: mobile time modal, normal and spectator request prompts/headers, silent shared clock, exact first manual round, ten-minute deadline, failed-request hold rollback, persisted reload");
+    console.log("PASS: mobile time modal, all three chat modes' actual holiday prompts, official vacation/makeup days, unknown-year festivals, custom school vacations/save/reload/validation/expiry, compact scrollable modal, silent shared clock, exact first manual round, ten-minute deadline, failed-request hold rollback, persisted reload");
   } finally { await browser.close(); await new Promise((resolve) => server.close(resolve)); }
 })().catch((error) => { console.error(error); process.exitCode = 1; });

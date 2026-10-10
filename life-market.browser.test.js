@@ -48,6 +48,7 @@ function batch(prefix) {
     await page.waitForFunction(() => window.ephoneAppReady);
     await page.locator("#life-market-home").click();
     await page.waitForSelector("#life-market-screen.active");
+    await page.waitForFunction(() => document.querySelector(".market-content")?.textContent.includes("尚未刷新"));
     assert.equal(calls, 0); assert.match(await page.locator(".market-content").innerText(), /尚未刷新/);
     await page.locator("#market-refresh").click();
     await page.waitForFunction(() => document.querySelector(".market-message")?.textContent.includes("已全部更新"));
