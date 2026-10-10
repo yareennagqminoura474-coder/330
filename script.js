@@ -13641,14 +13641,56 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
     _ephonePresetModelRestorers.set(_selectId, { cancel: _cancel });
   }
   window.ephoneRestoreApiPresetModel = _ephoneRestoreApiPresetModel;
+  let _ephoneSecondarySaveQueue = Promise.resolve(),
+    _ephoneSecondarySaveSerial = 0;
+  function _ephoneSaveSecondaryApiDraft() {
+    const _patch = {
+      secondaryProxyUrl: _ephoneNormalizeApiBaseUrl(document.getElementById("secondary-proxy-url").value.trim()),
+      secondaryApiKey: document.getElementById("secondary-api-key").value.trim(),
+      secondaryModel: document.getElementById("secondary-model-select").value,
+    }, _serial = ++_ephoneSecondarySaveSerial,
+      _table = _0x24f906.apiConfig,
+      _status = document.getElementById("secondary-api-save-status");
+    Object.assign(_0x5ea3c1.apiConfig, _patch);
+    if (_status) _status.textContent = "副 API 保存中…";
+    // Serialize writes and merge the latest row, never overwrite primary API
+    // or other settings with a stale form snapshot.
+    const _write = _ephoneSecondarySaveQueue.catch(() => {}).then(() =>
+      _table.db.transaction("rw", _table, async () => {
+        const _latest = await _table.get("main") || { id: "main" };
+        await _table.put({ ..._latest, ..._patch, id: "main" });
+      }),
+    );
+    _ephoneSecondarySaveQueue = _write;
+    _write.then(() => {
+      if (_serial === _ephoneSecondarySaveSerial && _status) _status.textContent = "副 API 已自动保存";
+    }, () => {
+      if (_serial === _ephoneSecondarySaveSerial && _status) _status.textContent = "副 API 保存失败，请点右上角“完成”重试。";
+    });
+    return _write;
+  }
+  function _ephoneRenderSavedApiModels() {
+    for (const [_id, _field, _placeholder] of [
+      ["model-select", "model", "未选择模型"],
+      ["secondary-model-select", "secondaryModel", "留空使用主 API"],
+    ]) {
+      const _select = document.getElementById(_id);
+      _ephonePresetModelRestorers.get(_id)?.cancel();
+      _select.replaceChildren(new Option(_placeholder, ""));
+      _ephoneRestoreApiPresetModel(_id, _0x5ea3c1.apiConfig[_field]);
+    }
+  }
   async function _0x1cf16a() {
     const _0x29ae36 = _0x3ce505,
       _0x5df602 = document[_0x29ae36(0x1023)](_0x29ae36(0x5ff)),
       _0x35deb4 = parseInt(_0x5df602[_0x29ae36(0x16b0)]);
     if (isNaN(_0x35deb4)) return;
+    await _ephoneSecondarySaveQueue.catch(() => {});
     const _0x1f44f5 = await _0x24f906[_0x29ae36(0x17fc)]["get"](_0x35deb4);
+    if (parseInt(_0x5df602.value) !== _0x35deb4) return;
     if (_0x1f44f5) {
       _0x5ea3c1[_0x29ae36(0x162b)] = {
+        ..._0x5ea3c1.apiConfig,
         id: _0x29ae36(0x1c01),
         proxyUrl: _ephoneNormalizeApiBaseUrl(
           _0x1f44f5[_0x29ae36(0x125f)] || "https://api.openai.com",
@@ -13658,8 +13700,8 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
         secondaryProxyUrl: _ephoneNormalizeApiBaseUrl(
           _0x1f44f5["secondaryProxyUrl"],
         ),
-        secondaryApiKey: _0x1f44f5[_0x29ae36(0xd79)],
-        secondaryModel: _0x1f44f5[_0x29ae36(0x3c5)],
+        secondaryApiKey: _0x1f44f5[_0x29ae36(0xd79)] || "",
+        secondaryModel: _0x1f44f5[_0x29ae36(0x3c5)] || "",
         minimaxGroupId: _0x1f44f5["minimaxGroupId"],
         minimaxApiKey: _0x1f44f5[_0x29ae36(0x10f9)],
         minimaxModel: _0x1f44f5[_0x29ae36(0xe40)],
@@ -13734,6 +13776,7 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
     const _0x5bc5e2 = _0x3ce505,
       _0x216b19 = await _0x1b625f("保存\x20API\x20预设", _0x5bc5e2(0xb7f));
     if (!_0x216b19 || !_0x216b19[_0x5bc5e2(0x1833)]()) return;
+    await _ephoneSecondarySaveQueue.catch(() => {});
     const _0x268c76 = {
         name: _0x216b19["trim"](),
         proxyUrl: _ephoneNormalizeApiBaseUrl(
@@ -13783,6 +13826,9 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
     const _0xephoneSavedPresetId = await _0x24f906["apiPresets"][
       _0x5bc5e2(0x114d)
     ](_0x268c76);
+    const { name: _presetName, id: _presetId, ..._connection } = _0x268c76;
+    Object.assign(_0x5ea3c1.apiConfig, _connection);
+    await _0x24f906.apiConfig.put(_0x5ea3c1.apiConfig);
     (await _0x2dde7d(_0xephoneSavedPresetId),
       alert(_0x5bc5e2(0x389)));
   }
@@ -13808,6 +13854,7 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
       alert(_0x103b72(0x587)));
   }
   function _0x4bf560(_0x2e08c2 = null) {
+    _ephoneRenderSavedApiModels();
     const _0x4e6ea9 = _0x3ce505;
     ((document[_0x4e6ea9(0x1023)]("proxy-url")[_0x4e6ea9(0x16b0)] =
       _0x5ea3c1[_0x4e6ea9(0x162b)]["proxyUrl"] || ""),
@@ -56409,13 +56456,9 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
           // wallet from a subsequently switched space through the facade.
           const [chats, npcs, wallet] = await Promise.all([store.chats.toArray(), store.database.table("npcs").toArray(), store.wallet.get("main")]);
           if (spaceId !== (window.EPHONE_SPACE_ID || "default")) throw new Error("空间已切换，请重新打开商城。");
-          const context = window.ephoneLifeMarketCore.buildContext({ chats, npcs, wallet,
-            activeChatId: _0x5ea3c1.activeChatId, nickname: _0x5ea3c1.qzoneSettings?.nickname,
-            formatTime: window.EPhoneMarketAdapter.formatTime, groupContext: window.ephoneGroupContext });
-          const linkedIds = new Set(chats.flatMap((chat) => (chat.settings?.linkedWorldBookIds || []).map((link) => typeof link === "object" ? link.id : link)));
-          context.worldBooks = (_0x5ea3c1.worldBooks || []).filter((book) => linkedIds.has(book.id)).slice(0, 8).map((book) => ({ name: book.name,
-            content: (typeof book.content === "string" ? book.content : (book.content || []).filter((entry) => entry.enabled !== false).map((entry) => entry.content).join("\n")).slice(0, 1800) }));
-          return { context, vts: window.EPhoneMarketAdapter.now() };
+          const context = window.ephoneLifeMarketCore.buildContext({ chats, npcs,
+            nickname: _0x5ea3c1.qzoneSettings?.nickname, groupContext: window.ephoneGroupContext });
+          return { context, walletBalance: Number(wallet?.balance || 0), vts: window.EPhoneMarketAdapter.now() };
         },
         generate: async (prompt, signal) => {
           const config = _0x5ea3c1.apiConfig || {};
@@ -57115,6 +57158,7 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
         _0x274136(0x34e),
         async () => {
           const _0x31a9f5 = _0x274136;
+          await _ephoneSecondarySaveQueue.catch(() => {});
           ((_0x5ea3c1[_0x31a9f5(0x162b)][_0x31a9f5(0x125f)] =
             _ephoneNormalizeApiBaseUrl(
               document["getElementById"]("proxy-url")[_0x31a9f5(0x16b0)][
@@ -57327,7 +57371,16 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
           _0x482a61(0x1863),
         );
       }));
+    for (const _id of ["secondary-proxy-url", "secondary-api-key", "secondary-model-select"]) {
+      const _input = document.getElementById(_id);
+      const _save = () => { _ephoneSaveSecondaryApiDraft().catch(() => {}); };
+      _input.addEventListener("input", _save);
+      _input.addEventListener("change", _save);
+    }
+    const _ephoneModelFetchSerials = new Map();
     async function _0xaf3c9e(_0x3bc716, _0x2d35e1, _0x318c8a) {
+      const _serial = (_ephoneModelFetchSerials.get(_0x318c8a) || 0) + 1;
+      _ephoneModelFetchSerials.set(_0x318c8a, _serial);
       const _0x35c0bf = _0x274136,
         _0x412c5d =
           document[_0x35c0bf(0x1023)](_0x3bc716)["value"][_0x35c0bf(0x1833)](),
@@ -57356,8 +57409,11 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
             `HTTP ${_0x45b28c.status}${_0x45b28c.statusText ? " " + _0x45b28c.statusText : ""}${_ephoneErrorDetail ? ": " + _ephoneErrorDetail : ""}`,
           );
         }
-        const _0x1f4233 = await _0x45b28c[_0x35c0bf(0x711)](),
-          _ephoneRawModels = _0x56776b
+        const _0x1f4233 = await _0x45b28c[_0x35c0bf(0x711)]();
+        if (_ephoneModelFetchSerials.get(_0x318c8a) !== _serial ||
+            _ephoneNormalizeApiBaseUrl(document.getElementById(_0x3bc716).value.trim()) !== _ephoneNormalizedUrl ||
+            document.getElementById(_0x2d35e1).value.trim() !== _0x4cb343) return;
+        const _ephoneRawModels = _0x56776b
             ? _0x1f4233.models
             : Array.isArray(_0x1f4233)
               ? _0x1f4233
@@ -57401,8 +57457,9 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
           if (_0x2b2beb["id"] === _0x42db4) _0x2452df[_0x4afb38(0x1133)] = !![];
           _0x5b482e[_0x4afb38(0x3fe)](_0x2452df);
         }),
-          _ephoneRestoreApiPresetModel(_0x318c8a, _0x42db4),
-          alert(_0x35c0bf(0x14ac)));
+          _ephoneRestoreApiPresetModel(_0x318c8a, _0x42db4));
+        if (_0x318c8a === "secondary-model-select") await _ephoneSaveSecondaryApiDraft();
+        alert(_0x35c0bf(0x14ac));
       } catch (_0x313626) {
         const _ephoneFetchError = String(
             _0x313626?.message || _0x313626 || "未知错误",

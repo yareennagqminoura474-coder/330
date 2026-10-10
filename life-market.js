@@ -60,7 +60,7 @@
     screen.querySelector(".market-nav").innerHTML = [["goods", "🛍", "购物"], ["food", "🍱", "外卖"], ["cart", "🛒", `购物车${state.cart.length ? " · " + state.cart.reduce((n, line) => n + line.quantity, 0) : ""}`], ["orders", "🧾", "订单"]].map(([id, icon, label]) => `<button type="button" data-tab="${id}" class="${tab === id ? "selected" : ""}" aria-current="${tab === id ? "page" : "false"}"><span>${icon}</span>${label}</button>`).join("");
     const content = screen.querySelector(".market-content");
     if (tab === "goods" || tab === "food") {
-      content.innerHTML = `<div class="market-hero"><small>只在你点刷新时更新</small><h2>${esc(state.headline || "今天，想买点什么？")}</h2><p>${esc(state.note || "参考本空间的钱包、人物性格与近期聊天，挑选日常好物和餐饮。")}</p><small>${state.refreshedAt ? "上次刷新：" + esc(new Date(state.refreshedAt).toLocaleString("zh-CN")) : "尚未刷新"}</small></div>` + (state.items.length ? `<input id="market-search" aria-label="搜索商品或餐饮" placeholder="搜索商品、餐饮或推荐理由" value="${esc(search)}"><div class="market-categories">${["全部", ...new Set(state.items.filter((item) => item.kind === tab).map((item) => item.category))].map((name) => `<button type="button" data-category="${esc(name)}" class="${category === name ? "selected" : ""}">${esc(name)}</button>`).join("")}</div><div class="market-products ${tab}"></div>` : '<div class="market-empty">点右上角“刷新”，生成第一批商品和外卖。<br>未点击刷新，不会调用API，也不会自动换列表。</div>');
+      content.innerHTML = `<div class="market-hero"><small>只在你点刷新时更新</small><h2>${esc(state.headline || "今天，想买点什么？")}</h2><p>${esc(state.note || "只参考本空间人物的性格与喜好，挑选日常好物和餐饮。")}</p><small>${state.refreshedAt ? "上次刷新：" + esc(new Date(state.refreshedAt).toLocaleString("zh-CN")) : "尚未刷新"}</small></div>` + (state.items.length ? `<input id="market-search" aria-label="搜索商品或餐饮" placeholder="搜索商品、餐饮或推荐理由" value="${esc(search)}"><div class="market-categories">${["全部", ...new Set(state.items.filter((item) => item.kind === tab).map((item) => item.category))].map((name) => `<button type="button" data-category="${esc(name)}" class="${category === name ? "selected" : ""}">${esc(name)}</button>`).join("")}</div><div class="market-products ${tab}"></div>` : '<div class="market-empty">点右上角“刷新”，生成第一批商品和外卖。<br>未点击刷新，不会调用API，也不会自动换列表。</div>');
       renderProducts();
     } else if (tab === "cart") {
       const totals = core.quote(state.cart);
@@ -93,7 +93,7 @@
     message = "正在生成整批购物和外卖…旧列表会保留到刷新成功。"; renderBusy();
     try {
       const adapter = window.EPhoneMarketAdapter, snapshot = await adapter.snapshot(store, spaceId);
-      balance = snapshot.context.walletBalance;
+      balance = snapshot.walletBalance;
       state = await store.refresh({ ...snapshot, generate: adapter.generate, formatTime: adapter.formatTime, signal: controller.signal, batchId: crypto.randomUUID() });
       category = "全部"; search = ""; message = "购物和外卖已全部更新，购物车和订单已保留。";
     } catch (error) { message = error.name === "AbortError" ? "已停止刷新，保留上一次的内容。" : `刷新失败，旧内容已保留：${error.message}`; }

@@ -2,7 +2,7 @@ const assert = require("node:assert/strict"), fs = require("node:fs"), path = re
 const { chromium } = require("playwright-core");
 function batch(prefix) {
   const make = (kind, count) => Array.from({ length: count }, (_, i) => ({ name: `${prefix}${kind}${i}`, category: `类别${i % 4}`,
-    merchant: `店${i % 3}`, description: "日常好物", reason: "呼应书法爱好与近期学习需求", price: 10.15 + i, deliveryFee: 2.35, deliveryMinutes: 30, emoji: kind === "餐" ? "🍱" : "🛍" }));
+    merchant: `店${i % 3}`, description: "日常好物", reason: "呼应书法爱好", price: 10.15 + i, deliveryFee: 2.35, deliveryMinutes: 30, emoji: kind === "餐" ? "🍱" : "🛍" }));
   return { headline: `${prefix} · 新生活`, goods: make("物", 12), food: make("餐", 8) };
 }
 (async () => {
@@ -19,7 +19,7 @@ function batch(prefix) {
   const browser = await chromium.launch({ executablePath: "C:/Program Files/Google/Chrome/Application/chrome.exe", headless: true });
   let calls = 0, failure = false; const prompts = [], errors = [];
   try {
-    const page = await browser.newPage({ viewport: { width: 420, height: 900 }, isMobile: true, hasTouch: true });
+    const page = await browser.newPage({ viewport: { width: 420, height: 900 }, isMobile: true, hasTouch: true, serviceWorkers: "block" });
     page.on("pageerror", (error) => errors.push(error.message));
     await page.route("**/*", async (route) => {
       const url = route.request().url();
@@ -33,7 +33,7 @@ function batch(prefix) {
       return route.abort(); // No real API, credentials, payments, or user data.
     });
     await page.goto(origin, { waitUntil: "domcontentloaded" });
-    await page.waitForFunction(() => window.db && window.EPhoneMarketAdapter);
+    await page.waitForFunction(() => window.ephoneAppReady);
     await page.locator("#update-notice-dismiss-btn").click();
     await page.evaluate(async () => {
       const config = await window.db.apiConfig.get("main") || { id: "main" };
@@ -45,14 +45,14 @@ function batch(prefix) {
       await window.db.worldBooks.put({ id: 987, name: "学校", content: [{ title: "校园", content: "山海书院", enabled: true }] });
     });
     await page.reload({ waitUntil: "domcontentloaded" });
-    await page.waitForFunction(() => window.db && window.EPhoneMarketAdapter);
+    await page.waitForFunction(() => window.ephoneAppReady);
     await page.locator("#life-market-home").click();
     await page.waitForSelector("#life-market-screen.active");
     assert.equal(calls, 0); assert.match(await page.locator(".market-content").innerText(), /尚未刷新/);
     await page.locator("#market-refresh").click();
     await page.waitForFunction(() => document.querySelector(".market-message")?.textContent.includes("已全部更新"));
     assert.equal(calls, 1); assert.equal(await page.locator(".market-card").count(), 12);
-    assert.match(prompts[0], /喜欢书法/); assert.match(prompts[0], /想买新文具/); assert.match(prompts[0], /200.00/); assert.match(prompts[0], /山海书院/);
+    assert.match(prompts[0], /喜欢书法/); assert.doesNotMatch(prompts[0], /想买新文具|200\.00|山海书院/);
     await page.locator('[data-tab="food"]').click(); assert.equal(await page.locator(".market-card").count(), 8);
     await page.locator('[data-tab="goods"]').click();
     await page.locator('.market-card [data-delta="1"]').first().click();
@@ -74,7 +74,7 @@ function batch(prefix) {
     assert.equal(await page.evaluate(async () => (await window.db.userWallet.get("main")).balance), 189.85);
     assert.match(await page.locator(".market-order").innerText(), /林/);
     assert.match(await page.evaluate(async () => (await window.db.chats.get("market-role")).history.at(-1).content), /已为林下单/);
-    await page.reload({ waitUntil: "domcontentloaded" }); await page.waitForFunction(() => window.db && window.EPhoneMarketAdapter);
+    await page.reload({ waitUntil: "domcontentloaded" }); await page.waitForFunction(() => window.ephoneAppReady);
     await page.locator("#life-market-home").click(); assert.equal(calls, 3);
     assert.match(await page.locator(".market-products").innerText(), /批2物/);
     await page.evaluate(async () => {

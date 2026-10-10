@@ -4,7 +4,7 @@ require("fake-indexeddb/auto");
 const Dexie = require("dexie"), core = require("./life-market-core"), groupContext = require("./group-context");
 function batch(prefix) {
   const make = (kind, count) => Array.from({ length: count }, (_, i) => ({ name: `${prefix}${kind}${i}`, category: `类别${i % 4}`,
-    merchant: `店${i % 3}`, description: "日常所需", reason: "近期聊天的学习和饮食需求", price: 10.15 + i,
+    merchant: `店${i % 3}`, description: "日常所需", reason: "符合人物性格与喜好", price: 10.15 + i,
     deliveryFee: 2.35, deliveryMinutes: 30, emoji: kind === "餐" ? "🍱" : "🛍" }));
   return { headline: "新的生活", goods: make("物", 12), food: make("餐", 8) };
 }
@@ -21,7 +21,18 @@ function batch(prefix) {
   await upgraded.open();
   const store = new core.Store(upgraded); let calls = 0;
   const context = core.buildContext({ chats: await upgraded.chats.toArray(), wallet: await upgraded.userWallet.get("main"), groupContext });
-  assert.match(JSON.stringify(context), /喜欢书法/); assert.match(JSON.stringify(context), /我想买文具/); assert.equal(context.walletBalance, 200);
+  assert.match(JSON.stringify(context), /喜欢书法/); assert.doesNotMatch(JSON.stringify(context), /我想买文具/); assert.equal(context.walletBalance, undefined);
+  const privateRole = { id: "source", name: "甲", settings: { aiPersona: "最新人设喜欢摄影", myPersona: "喜欢园艺" },
+    get history() { throw new Error("不得读取聊天记录"); }, get longTermMemory() { throw new Error("不得读取总结记忆"); } };
+  const spectator = { id: "spectator", isSpectatorGroup: true, members: [{ id: "source", originalName: "甲", persona: "旧人设", ephonePersonaOverride: false }],
+    get history() { throw new Error("不得读取群历史"); }, get longTermMemory() { throw new Error("不得读取群总结"); } };
+  const onlyPersonas = core.buildContext({ chats: [privateRole, spectator], npcs: [{ id: 1, name: "乙", persona: "喜欢运动" }],
+    groupContext: { memberProfile: groupContext.memberProfile, buildContext() { throw new Error("不得读取联动记忆"); } } });
+  assert.match(JSON.stringify(onlyPersonas), /最新人设喜欢摄影/); assert.match(JSON.stringify(onlyPersonas), /喜欢园艺/);
+  assert.doesNotMatch(JSON.stringify(onlyPersonas), /旧人设/); assert.match(JSON.stringify(onlyPersonas), /喜欢运动/);
+  assert.equal(core.prompt({ ...context, walletBalance: 100, memories: "聊天秘密", worldbooks: "世界书秘密" }, { seenNames: [] }, 1),
+    core.prompt({ ...context, walletBalance: 999, memories: "另一段聊天", worldbooks: "另一世界书" }, { seenNames: [] }, 999999));
+  assert.doesNotMatch(core.prompt({ ...context, history: "聊天秘密", walletBalance: 123456 }, { seenNames: [] }), /聊天秘密|123456/);
   assert.equal((await store.load()).items.length, 0); assert.equal(await upgraded.marketState.count(), 0);
   const generate = async () => { calls++; return batch("第一批"); };
   const first = await store.refresh({ generate, context, vts: 1770000000000, batchId: "one" });
