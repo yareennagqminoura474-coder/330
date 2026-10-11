@@ -172,6 +172,7 @@
     activeChatId = null; activeBinding = null;
     setSpaceClock(saved); updateUi();
     window.EPhoneCharacterDaily?.observeSpace(nowMs());
+    window.EPhoneLifeSimulation?.observeSpace();
   }
 
   function virtualNow(config, realNow = Date.now()) {
@@ -341,6 +342,7 @@
     try { await window.EPhoneCharacterWallet?.sync(nowMs()); }
     catch (error) { console.warn("时间已跳转，角色钱包尚待结算", error); }
     await window.EPhoneCharacterDaily?.onTimeChange(before, nowMs());
+    await window.EPhoneLifeSimulation?.sync(nowMs());
   }
 
   async function jumpTo(milliseconds, flow) {
@@ -391,6 +393,7 @@
     try { await window.EPhoneCharacterWallet?.sync(nowMs()); }
     catch (error) { console.warn("时间已跳转，角色钱包尚待结算", error); }
     await window.EPhoneCharacterDaily?.onTimeChange(before, milliseconds);
+    await window.EPhoneLifeSimulation?.sync(milliseconds);
   }
 
   async function setFlow(flow) {
@@ -968,6 +971,7 @@
     bindChat,
     loadSpace,
     clearActiveChat,
+    getActiveChatId: () => activeChatId,
     getConfig,
     nowMs,
     nowDate,

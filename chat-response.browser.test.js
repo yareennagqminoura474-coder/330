@@ -23,7 +23,9 @@ const { chromium } = require("playwright-core");
       const url = route.request().url(); if (url.startsWith(origin)) return route.continue();
       if (url.includes("unpkg.com/dexie")) return route.fulfill({ contentType: "application/javascript", body: fs.readFileSync(path.join(path.dirname(require.resolve("dexie")), "dexie.min.js"), "utf8") });
       if (url.startsWith("https://reply-test.invalid/") || url.startsWith("https://generativelanguage.googleapis.com/")) {
-        calls.push(route.request().postDataJSON());
+        const body = route.request().postDataJSON(), daily = require("./browser-test-fixtures.js").dailyReply(body.messages?.[0]?.content || "");
+        if (daily) return route.fulfill({ contentType: "application/json", body: JSON.stringify(daily) });
+        calls.push(body);
         if (holdRecovery && calls.at(-1).messages?.at(-1)?.content.includes("本轮回复完整性修复")) { heldRoute = route; return; }
         const fixture = fixtures.shift();
         if (!fixture) return route.fulfill({ status: 500, body: "Missing isolated test fixture" });

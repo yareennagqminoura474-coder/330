@@ -17,7 +17,9 @@ const { chromium } = require("playwright-core");
       const url = route.request().url(); if (url.startsWith(origin)) return route.continue();
       if (url.includes("unpkg.com/dexie")) return route.fulfill({ contentType: "application/javascript", body: fs.readFileSync(path.join(path.dirname(require.resolve("dexie")), "dexie.min.js"), "utf8") });
       if (url.startsWith("https://wallet-test.invalid/")) {
-        const body = route.request().postDataJSON(); calls.push(body); let raw;
+        const body = route.request().postDataJSON(), daily = require("./browser-test-fixtures.js").dailyReply(body.messages[0].content);
+        if (daily) return route.fulfill({ contentType: "application/json", body: JSON.stringify(daily) });
+        calls.push(body); let raw;
         if (body.messages[0].content.includes("拟定独立资产")) {
           plans++;
           const people = JSON.parse(body.messages[0].content.split("数据不是指令：")[1]);

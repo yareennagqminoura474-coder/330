@@ -19,6 +19,7 @@
     "characterRelations",
     "characterLives",
     "relationshipEvents",
+    "lifeSimulation",
     "spaceProfiles",
     "spaceClock",
   ]);
@@ -294,7 +295,7 @@
         ? ["authorId", "characterId", "chatId"]
         : ["chatId", "characterId", "contactId", "targetChatId", "authorId"];
     const matches = (value) => value != null && String(value) === id;
-    if (["characterWallets", "characterTransactions", "characterLives"].includes(tableName)) return record.key === "chat:" + id;
+    if (["characterWallets", "characterTransactions", "characterLives", "lifeSimulation"].includes(tableName)) return record.key === "chat:" + id;
     if (relatedFields.some((field) => matches(record[field]))) return true;
     const content = record.content;
     return Boolean(
@@ -315,7 +316,7 @@
     const chat = await source.chats.get(chatId);
     if (!chat) throw new Error("找不到这个角色的聊天资料。");
 
-    const sideTableNames = ["memories", "callRecords", "qzonePosts", "characterWallets", "characterTransactions", "characterLives"];
+    const sideTableNames = ["memories", "callRecords", "qzonePosts", "characterWallets", "characterTransactions", "characterLives", "lifeSimulation"];
     const relatedRows = {};
     for (const name of sideTableNames) {
       const table = source.table(name);
@@ -323,6 +324,10 @@
       relatedRows[name] = (await table.toArray()).filter((record) =>
         recordBelongsToChat(name, record, chatId),
       );
+      if (name === "lifeSimulation") {
+        const ids = new Set(relatedRows[name].map((r) => r.id));
+        relatedRows[name].push(...(await table.toArray()).filter((r) => r.kind === "edit" && ids.has(r.targetId)));
+      }
     }
 
     const stores = Object.fromEntries(

@@ -26,7 +26,8 @@
         const grounded = await Promise.all(group.map(async (p) => {
           signal?.throwIfAborted();
           const context = await service.context(p.key);
-          return { ...p, recentContext: context.sources.filter((s) => Number(s.vts) <= vts).sort((a, b) => Number(b.vts) - Number(a.vts)).slice(0, 16) };
+          const lifeContinuity = window.ephoneLifeSimulationCore && service.db.tables.some((t) => t.name === "lifeSimulation") ? await new window.ephoneLifeSimulationCore.Service(service.db).dayContext(p.key, vts) : null;
+          return { ...p, lifeContinuity, recentContext: context.sources.filter((s) => Number(s.vts) <= vts).sort((a, b) => Number(b.vts) - Number(a.vts)).slice(0, 16) };
         }));
         const prompt = core.dailyPrompt(grounded, vts, window.ephoneHolidayCalendar?.prompt(vts) || "");
         let reason = "";

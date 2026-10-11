@@ -10063,7 +10063,7 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
         : `${_0xspaceBaseName}__space_${_0xspaceId}`,
     );
     ((_0x24f906 = _0xpersonaDb),
-      _0x24f906[_0x205142(0x1318)](0x36)
+      _0x24f906[_0x205142(0x1318)](0x37)
         [_0x205142(0x146d)]({
           doubanPosts: _0x205142(0x220),
           chats:
@@ -10094,6 +10094,7 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
           characterRelations: "&id,a,b",
           characterLives: "&key",
           relationshipEvents: "&id,chatId,vts,status",
+          lifeSimulation: "&id,kind,key,vts,threadId",
           apiPresets: "++id,\x20name",
           renderingRules: _0x205142(0xa18),
           appearancePresets: _0x205142(0xd4e),
@@ -11432,7 +11433,7 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
         presetCategories: _0x29b98f,
         npcs: _0x1349a6,
       });
-      for (const tableName of ["marketState", "marketOrders", "userWallet", "userTransactions", "spaceClock", "spaceProfiles", "characterWallets", "characterTransactions", "characterRelations", "characterLives", "relationshipEvents"])
+      for (const tableName of ["marketState", "marketOrders", "userWallet", "userTransactions", "spaceClock", "spaceProfiles", "characterWallets", "characterTransactions", "characterRelations", "characterLives", "relationshipEvents", "lifeSimulation"])
         _0x1cbf58[tableName] = await _0x24f906.table(tableName).toArray();
       const _0x23cf5f = new Blob([JSON["stringify"](_0x1cbf58, null, 0x2)], {
           type: _0x39250e(0x1206),
@@ -11556,6 +11557,7 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
       characterRelations: "人物关系网",
       characterLives: "角色独立生活",
       relationshipEvents: "聊天关系变化",
+      lifeSimulation: "生活连续性与角色私聊",
       marketState: "逛逛商品与购物车",
       marketOrders: "逛逛订单",
       spaceClock: "本空间时间",
@@ -11715,6 +11717,7 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
       characterRelations: "人物关系网",
       characterLives: "角色独立生活",
       relationshipEvents: "聊天关系变化",
+      lifeSimulation: "生活连续性与角色私聊",
       marketState: "逛逛商品与购物车",
       marketOrders: "逛逛订单",
       spaceClock: "本空间时间",
@@ -11978,7 +11981,7 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
             await _0x24f906["npcs"][_0x49b300(0x97c)](
               _0xd5cb09[_0x49b300(0x94f)],
             );
-          for (const tableName of ["marketState", "marketOrders", "userWallet", "userTransactions", "spaceClock", "spaceProfiles", "characterWallets", "characterTransactions", "characterRelations", "characterLives", "relationshipEvents"])
+          for (const tableName of ["marketState", "marketOrders", "userWallet", "userTransactions", "spaceClock", "spaceProfiles", "characterWallets", "characterTransactions", "characterRelations", "characterLives", "relationshipEvents", "lifeSimulation"])
             if (Array.isArray(_0xd5cb09[tableName])) await _0x24f906.table(tableName).bulkPut(_0xd5cb09[tableName]);
         },
       );
@@ -17531,11 +17534,18 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
   async function _ephoneSocialPrompt(chat, vts) {
     if (!window.ephoneCharacterSocialCore || !_0x24f906.characterRelations) return "";
     await window.EPhoneCharacterDaily?.beforeReply(vts, { signal: (_0xephoneSpectatorController || _0xephoneGenerationController)?.signal });
-    return new window.ephoneCharacterSocialCore.Service(_0x24f906).prompt(chat, vts);
+    await window.EPhoneLifeSimulation?.sync(vts, chat);
+    const continuity = window.ephoneLifeSimulationCore && _0x24f906.lifeSimulation ? await new window.ephoneLifeSimulationCore.Service(_0x24f906).prompt(chat, vts) : "";
+    return (await new window.ephoneCharacterSocialCore.Service(_0x24f906).prompt(chat, vts)) + continuity;
   }
   async function _ephoneSocialAction(action, chat, vts, timestamp) {
     if (!window.ephoneCharacterSocialCore) return;
     await _0x24f906.chats.put(chat);
+    if (window.ephoneLifeSimulationCore?.ACTIONS.includes(action.type)) {
+      try { await new window.ephoneLifeSimulationCore.Service(_0x24f906).act(action, chat, vts); }
+      catch (error) { console.warn("生活连续性记录未采纳，保留原记录", error.message); }
+      return;
+    }
     try { await new window.ephoneCharacterSocialCore.Service(_0x24f906).act(action, chat, vts, timestamp); }
     catch (error) { console.warn("独立生活/关系变化未采纳，保留原设置", error.message); }
   }
@@ -17663,7 +17673,7 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
       _0xephoneSpectatorController?.abort();
       return;
     }
-    if (_0xephoneGenerationController || _ephoneSpectatorMoneyBusy || window.EPhoneCharacterWallet?.isBusy() || window.EPhoneCharacterSocial?.isBusy() || window.EPhoneCharacterDaily?.isBusy()) return;
+    if (_0xephoneGenerationController || _ephoneSpectatorMoneyBusy || window.EPhoneCharacterWallet?.isBusy() || window.EPhoneCharacterSocial?.isBusy() || window.EPhoneCharacterDaily?.isBusy() || window.EPhoneLifeSimulation?.isBusy()) return;
     _0xephoneSpectatorGenerating = true;
     const _ephoneSpectatorController = new AbortController();
     _0xephoneSpectatorController = _ephoneSpectatorController;
@@ -17867,7 +17877,7 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
           console.warn("观看群聊忽略非群成员或身份不明确的发言：", _0x5cafc4.name);
           continue;
         }
-        if (window.ephoneCharacterSocialCore && ["life_update", "relationship_event"].includes(_0x5cafc4.type)) {
+        if (window.ephoneCharacterSocialCore && (["life_update", "relationship_event"].includes(_0x5cafc4.type) || window.ephoneLifeSimulationCore?.ACTIONS.includes(_0x5cafc4.type))) {
           await _ephoneSocialAction({ ..._0x5cafc4, name: _ephoneSpeaker }, _0x326f3d, _ephoneSpectatorReplyTimeMs, _0x47fd25++);
           continue;
         }
@@ -18075,7 +18085,7 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
       _0xephoneGenerationController.abort();
       return;
     }
-    if (window.EPhoneCharacterDaily?.isBusy()) return;
+    if (window.EPhoneCharacterDaily?.isBusy() || window.EPhoneLifeSimulation?.isBusy()) return;
     if (!_0xephoneGenerationController) {
       _0xephoneGenerationController = new AbortController();
     }
@@ -20819,7 +20829,7 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
         if (await _ephoneReceiveRoleCard({ ..._0x58c66c, name: _0x58c66c.name || _0x5b16cb.originalName || _0x5b16cb.name }, _0x5b16cb, _ephoneReplyTimeMs, _0x1b9d0b)) {
           _0x1b9d0b = Math.max(_0x1b9d0b + 1, Number(_0x5b16cb.history.at(-1)?.timestamp || 0) + 1); continue;
         }
-        if (window.ephoneCharacterSocialCore && ["life_update", "relationship_event"].includes(_0x58c66c.type)) {
+        if (window.ephoneCharacterSocialCore && (["life_update", "relationship_event"].includes(_0x58c66c.type) || window.ephoneLifeSimulationCore?.ACTIONS.includes(_0x58c66c.type))) {
           await _ephoneSocialAction({ ..._0x58c66c, name: _0x58c66c.name || _0x5b16cb.originalName || _0x5b16cb.name }, _0x5b16cb, _ephoneReplyTimeMs, _0x1b9d0b++);
           continue;
         }
@@ -56686,7 +56696,7 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
           _0xspaceLabel.textContent = window.EPHONE_SPACE_NAME || "默认空间";
         await window.ephonePlayerIdentity?.render?.();
       }),
-      (window.isPersonaSpaceBusy = () => Boolean(_0xephoneGenerationController || _0xephoneSpectatorGenerating || _ephoneSpectatorMoneyBusy || _ephoneWalletPending || window.EPhoneLifeMarket?.isBusy() || window.EPhoneCharacterWallet?.isBusy() || window.EPhoneCharacterSocial?.isBusy() || window.EPhoneCharacterDaily?.isBusy() || window.ephonePlayerIdentity?.isBusy?.())),
+      (window.isPersonaSpaceBusy = () => Boolean(_0xephoneGenerationController || _0xephoneSpectatorGenerating || _ephoneSpectatorMoneyBusy || _ephoneWalletPending || window.EPhoneLifeMarket?.isBusy() || window.EPhoneCharacterWallet?.isBusy() || window.EPhoneCharacterSocial?.isBusy() || window.EPhoneCharacterDaily?.isBusy() || window.EPhoneLifeSimulation?.isBusy() || window.ephonePlayerIdentity?.isBusy?.())),
       (window.EPhoneMarketAdapter = {
         now: (chatId) => window.ephoneTimeMachine?.nowMs(chatId || _0x5ea3c1.activeChatId) || Date.now(),
         formatTime: (value) => window.ephoneTimeMachine?.formatDateTime(value, { withWeekday: true }) || new Date(value).toLocaleString("zh-CN"),

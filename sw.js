@@ -1,35 +1,38 @@
 // Service Worker 文件 (sw.js) - 强力保活版
 
 // 缓存版本号
-const CACHE_VERSION = "v1.7.71"; // 版本号+1
+const CACHE_VERSION = "v1.7.72"; // 版本号+1
 const CACHE_NAME = `ephone-cache-${CACHE_VERSION}`;
 
 const CORE_URLS_TO_CACHE = [
-  "./life-market-core.js?v=1.7.71",
-  "./player-identity.js?v=1.7.71",
-  "./story-expenses.js?v=1.7.71",
-  "./character-wallet-core.js?v=1.7.71",
-  "./character-wallet.js?v=1.7.71",
-  "./character-wallet.css?v=1.7.71",
-  "./character-social-core.js?v=1.7.71",
-  "./character-daily.js?v=1.7.71",
-  "./character-social.js?v=1.7.71",
-  "./character-social.css?v=1.7.71",
-  "./market-orders.js?v=1.7.71",
-  "./life-market.js?v=1.7.71",
-  "./life-market.css?v=1.7.71",
+  "./life-market-core.js?v=1.7.72",
+  "./player-identity.js?v=1.7.72",
+  "./story-expenses.js?v=1.7.72",
+  "./character-wallet-core.js?v=1.7.72",
+  "./character-wallet.js?v=1.7.72",
+  "./character-wallet.css?v=1.7.72",
+  "./character-social-core.js?v=1.7.72",
+  "./life-simulation-core.js?v=1.7.72",
+  "./life-simulation.js?v=1.7.72",
+  "./life-simulation.css?v=1.7.72",
+  "./character-daily.js?v=1.7.72",
+  "./character-social.js?v=1.7.72",
+  "./character-social.css?v=1.7.72",
+  "./market-orders.js?v=1.7.72",
+  "./life-market.js?v=1.7.72",
+  "./life-market.css?v=1.7.72",
   "./index.html",
-  "./style.css?v=1.7.71",
-  "./persona-spaces.js?v=1.7.71",
-  "./group-context.js?v=1.7.71",
-  "./spectator-money.js?v=1.7.71",
-  "./space-wallet.js?v=1.7.71",
-  "./chat-response.js?v=1.7.71",
-  "./script.js?v=1.7.71",
+  "./style.css?v=1.7.72",
+  "./persona-spaces.js?v=1.7.72",
+  "./group-context.js?v=1.7.72",
+  "./spectator-money.js?v=1.7.72",
+  "./space-wallet.js?v=1.7.72",
+  "./chat-response.js?v=1.7.72",
+  "./script.js?v=1.7.72",
   "./api-payload-guard.js?v=1.7.44",
-  "./narration-mode.js?v=1.7.71",
-  "./time-machine.js?v=1.7.71",
-  "./holiday-calendar.js?v=1.7.71",
+  "./narration-mode.js?v=1.7.72",
+  "./time-machine.js?v=1.7.72",
+  "./holiday-calendar.js?v=1.7.72",
 ];
 
 const OPTIONAL_URLS_TO_CACHE = [
