@@ -42,6 +42,7 @@
       (message.role === "user" ? chat.settings?.myNickname || "我" : chat.originalName || chat.name);
     let content = text(message.content);
     if (message.marketOrder) content = "【后台订单卡片；不是全群公告，不自动赋予其他角色知识；按订单账本知情范围解释】" + content;
+    if (message.walletEntry) content = "【后台角色记账凭据；不是角色台词或群公告，不自动赋予其他角色知识】" + content;
     if (Array.isArray(message.content)) {
       content = message.content.map((part) => text(part?.text)).filter(Boolean).join("\n") || "[图片消息]";
     }

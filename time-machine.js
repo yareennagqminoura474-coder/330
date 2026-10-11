@@ -336,6 +336,8 @@
     config.holdNextReply = false;
     config.revision++;
     await saveActive(config, true);
+    try { await window.EPhoneCharacterWallet?.sync(nowMs()); }
+    catch (error) { console.warn("时间已跳转，角色钱包尚待结算", error); }
   }
 
   async function jumpTo(milliseconds, flow) {
@@ -383,6 +385,8 @@
     if (Array.isArray(history)) history.push(marker);
     config.frozen[String(realNow)] = milliseconds;
     await saveActive(config, true);
+    try { await window.EPhoneCharacterWallet?.sync(nowMs()); }
+    catch (error) { console.warn("时间已跳转，角色钱包尚待结算", error); }
   }
 
   async function setFlow(flow) {

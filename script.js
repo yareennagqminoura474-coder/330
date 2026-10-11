@@ -10063,7 +10063,7 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
         : `${_0xspaceBaseName}__space_${_0xspaceId}`,
     );
     ((_0x24f906 = _0xpersonaDb),
-      _0x24f906[_0x205142(0x1318)](0x34)
+      _0x24f906[_0x205142(0x1318)](0x35)
         [_0x205142(0x146d)]({
           doubanPosts: _0x205142(0x220),
           chats:
@@ -10089,6 +10089,8 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
           marketOrders: "&id,timestamp,status",
           spaceClock: "&id",
           spaceProfiles: "&id",
+          characterWallets: "&key",
+          characterTransactions: "&id,key,vts,category",
           apiPresets: "++id,\x20name",
           renderingRules: _0x205142(0xa18),
           appearancePresets: _0x205142(0xd4e),
@@ -11427,7 +11429,7 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
         presetCategories: _0x29b98f,
         npcs: _0x1349a6,
       });
-      for (const tableName of ["marketState", "marketOrders", "userWallet", "userTransactions", "spaceClock", "spaceProfiles"])
+      for (const tableName of ["marketState", "marketOrders", "userWallet", "userTransactions", "spaceClock", "spaceProfiles", "characterWallets", "characterTransactions"])
         _0x1cbf58[tableName] = await _0x24f906.table(tableName).toArray();
       const _0x23cf5f = new Blob([JSON["stringify"](_0x1cbf58, null, 0x2)], {
           type: _0x39250e(0x1206),
@@ -11546,6 +11548,8 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
       callRecords: _0x30ebd8(0x1a17),
       shoppingProducts: "商品",
       spaceProfiles: "本空间角色绑定",
+      characterWallets: "角色资产与收支计划",
+      characterTransactions: "角色独立收支明细",
       marketState: "逛逛商品与购物车",
       marketOrders: "逛逛订单",
       spaceClock: "本空间时间",
@@ -11700,6 +11704,8 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
       callRecords: _0x322e48(0x1a17),
       shoppingProducts: "商品",
       spaceProfiles: "本空间角色绑定",
+      characterWallets: "角色资产与收支计划",
+      characterTransactions: "角色独立收支明细",
       marketState: "逛逛商品与购物车",
       marketOrders: "逛逛订单",
       spaceClock: "本空间时间",
@@ -11963,7 +11969,7 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
             await _0x24f906["npcs"][_0x49b300(0x97c)](
               _0xd5cb09[_0x49b300(0x94f)],
             );
-          for (const tableName of ["marketState", "marketOrders", "userWallet", "userTransactions", "spaceClock", "spaceProfiles"])
+          for (const tableName of ["marketState", "marketOrders", "userWallet", "userTransactions", "spaceClock", "spaceProfiles", "characterWallets", "characterTransactions"])
             if (Array.isArray(_0xd5cb09[tableName])) await _0x24f906.table(tableName).bulkPut(_0xd5cb09[tableName]);
         },
       );
@@ -14729,7 +14735,7 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
     for (let index = first; index < visible.length; index++) {
       const message = visible[index];
       if (!timestampSet.has(String(message.timestamp)) ||
-          message.role !== "assistant" || message.sentAsCharacter)
+          message.role !== "assistant" || message.sentAsCharacter || message.walletFunded)
         return null;
     }
     return timestamps;
@@ -14796,6 +14802,7 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
         save: async (candidate, receipt) => {
           const spaceId = window.EPHONE_SPACE_ID || "default";
           const result = await window.ephoneSpaceWallet.creditReceipt(_0x24f906, candidate, receipt, spaceId);
+          receipt.walletDestinationLabel = result.destinationLabel || "本空间的钱包";
           if ((window.EPHONE_SPACE_ID || "default") === spaceId) {
             _0x57a126 = result.balance;
             window.userBalance = result.balance;
@@ -14806,7 +14813,7 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
       if (_0x5ea3c1.activeChatId === chat.id) {
         await _0x57e676(chat.id);
         _ephoneSyncRerollButtons(chat);
-        await _0x1e5953("已领取", window.ephoneSpectatorMoney.escape(receipt.content + "，已存入本空间的钱包。"));
+        await _0x1e5953("已领取", window.ephoneSpectatorMoney.escape(receipt.content + "，已存入" + receipt.walletDestinationLabel + "。"));
       }
     } catch (error) {
       await _0x1e5953("领取失败", error.message || "保存失败，请重试。");
@@ -17511,6 +17518,80 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
     for (const result of await service.captureDisclosures(chat)) await _ephoneSyncOrderResult(result);
     return service.prompt(chat);
   }
+  async function _ephoneFinancePrompt(chat, vts) {
+    if (!window.ephoneCharacterWalletCore || !_0x24f906.characterWallets) return "";
+    return new window.ephoneCharacterWalletCore.Service(_0x24f906).prompt(chat, vts);
+  }
+  async function _ephoneWalletAction(action, chat, vts, timestamp) {
+    const service = new window.ephoneCharacterWalletCore.Service(_0x24f906);
+    const people = window.ephonePlayerIdentity.participants(chat, Object.values(_0x5ea3c1.chats));
+    const person = window.ephonePlayerIdentity.resolve(people, action.name);
+    let notice;
+    try {
+      if (!person) throw new Error("收支角色身份不明确。");
+      if (!(await service.account(person.key)).configured) throw new Error("请先在“我 → 角色钱包”设置该角色资产，未凭空记账。");
+      const direction = action.type === "wallet_income" ? "income" : "expense";
+      notice = { role: "system", type: "pat_message", walletEntry: true, senderName: person.name, timestamp, vts,
+        content: "【" + person.name + "的钱包】" + (direction === "income" ? "收入" : "支出") + " ¥" + Number(action.amount).toFixed(2) + " · " + String(action.content || "剧情收支").slice(0, 600) };
+      await service.db.transaction("rw", ...service.tables(), service.chats, async () => {
+        await service.change(person.key, action.amount, direction, { id: "story:" + chat.id + ":" + timestamp, vts,
+          category: action.category || "other", description: action.content || "剧情收支", source: "story" });
+        await service.chats.put({ ...chat, history: [...chat.history, notice] });
+      });
+    } catch (error) {
+      notice = { role: "system", type: "pat_message", walletEntry: true, timestamp, vts,
+        content: "【角色收支未生效】" + error.message + " 不能在剧情里视为已支付或到账。" };
+      await service.chats.put({ ...chat, history: [...chat.history, notice] });
+    }
+    chat.history.push(notice);
+    try {
+      await window.EPhoneMarketAdapter?.onPaid({ balance: Number((await service.userWallet.get("main"))?.balance || 0) });
+      if (_0x5ea3c1.activeChatId === chat.id) await _0xbb356a(notice, chat);
+    } catch (error) { console.warn("角色收支已保存，界面同步失败", error); }
+  }
+  async function _ephoneReceiveRoleCard(action, chat, vts, timestamp) {
+    if (!["accept_transfer", "open_red_packet"].includes(action.type) || !window.ephoneCharacterWalletCore) return false;
+    const service = new window.ephoneCharacterWalletCore.Service(_0x24f906);
+    const people = window.ephonePlayerIdentity.participants(chat, Object.values(_0x5ea3c1.chats));
+    const person = window.ephonePlayerIdentity.resolve(people, action.name);
+    const original = chat.history.find((m) => Number(m.timestamp) === Number(action.for_timestamp ?? action.packet_timestamp));
+    if (!person || !original || !["transfer", "red_packet"].includes(original.type)) return false;
+    const binding = await service.spaceProfiles.get("player");
+    if (!original.walletFunded && !binding?.key && !(await service.account(person.key)).configured) return false;
+    let receipt;
+    try {
+      await _0x24f906.chats.put(chat);
+      const candidate = chat.isGroup || chat.isSpectatorGroup ? chat : { ...chat, members: [{ id: chat.id, originalName: chat.originalName || chat.name, name: chat.name }] };
+      receipt = await window.ephoneSpectatorMoney.receive(candidate, original.timestamp, person.name, {
+        now: timestamp, vts,
+        save: async (next, confirmation) => {
+          const result = await window.ephoneSpaceWallet.creditReceipt(_0x24f906, next, confirmation, window.EPHONE_SPACE_ID || "default");
+          confirmation.walletDestinationLabel = result.destinationLabel || "本空间的钱包";
+        }
+      });
+      chat.history = candidate.history;
+    } catch (error) {
+      receipt = { role: "system", type: "pat_message", walletEntry: true, timestamp, vts, content: "【领取未生效】" + error.message };
+      chat.history.push(receipt); await _0x24f906.chats.put(chat);
+    }
+    try {
+      await window.EPhoneMarketAdapter?.onPaid({ balance: Number((await service.userWallet.get("main"))?.balance || 0) });
+      if (_0x5ea3c1.activeChatId === chat.id) await _0xbb356a(receipt, chat);
+    } catch (error) { console.warn("领取状态已保存，界面同步失败", error); }
+    return true;
+  }
+  async function _ephoneFundMoneyCard(chat, message) {
+    if (!window.ephoneCharacterWalletCore || !["transfer", "red_packet"].includes(message.type)) return message;
+    try {
+      await new window.ephoneCharacterWalletCore.Service(_0x24f906).reserveCard(chat, message);
+      await window.EPhoneMarketAdapter?.onPaid({ balance: Number((await _0x24f906.userWallet.get("main"))?.balance || 0) });
+      return message;
+    } catch (error) {
+      if (message.walletFunded) { console.warn("转账已扣款，界面同步失败", error); return message; }
+      return { role: "system", type: "pat_message", walletEntry: true, timestamp: message.timestamp, vts: message.vts,
+        content: "【转账/红包未发出】" + error.message + " 未扣款，不存在可领取的款项。" };
+    }
+  }
   async function _ephoneRunOrderAction(action, chat, vts, timestamp) {
     // Preserve reply bubbles not yet saved by the normal generation loop.
     await _0x24f906.chats.put(chat);
@@ -17537,7 +17618,7 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
       _0xephoneSpectatorController?.abort();
       return;
     }
-    if (_0xephoneGenerationController || _ephoneSpectatorMoneyBusy) return;
+    if (_0xephoneGenerationController || _ephoneSpectatorMoneyBusy || window.EPhoneCharacterWallet?.isBusy()) return;
     _0xephoneSpectatorGenerating = true;
     const _ephoneSpectatorController = new AbortController();
     _0xephoneSpectatorController = _ephoneSpectatorController;
@@ -17654,6 +17735,7 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
           window.ephoneSpectatorMoney.prompt +
           window.ephoneSpectatorMoney.ledger(_0x326f3d) +
           (await _ephoneOrderPrompt(_0x326f3d)) +
+          (await _ephoneFinancePrompt(_0x326f3d, _ephoneSpectatorReplyTimeMs)) +
           "\n# 围观模式的旁白与台词\n" +
           "第一个可见 JSON 对象必须是 narration 时间地点旁白。角色真正说出口或打出的内容用 text；动作、心理、神态、环境、场景和时间一律用 narration。每位发言角色的动作按情境穿插旁白。旁白对象格式为 {\"type\":\"narration\",\"name\":\"角色名或旁白\",\"content\":\"内容\"}。不要把动作放进 text，也不要以旁白代替角色说话。\n" +
           "无论最后一条是谁发送的，均从其内容继续往后推进。用户以角色身份输入的台词属于该角色，不属于额外的‘用户’，不要重写或忽略。根据剧情安排必要的多轮互动，条数不固定，不要每人只说一句就停止；同一条 text 只放一段自然发言，动作另用 narration。\n" +
@@ -17722,6 +17804,8 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
             replyTimeMs: _ephoneSpectatorReplyTimeMs,
           })
         : _0x297b4d(_0x112a1d);
+      const _ephoneSettled = await window.EPhoneCharacterWallet?.sync(_ephoneSpectatorReplyTimeMs);
+      if (_ephoneSettled?.entries.length) _ephoneSpectatorTimeCommitted = true;
       let _0x47fd25 = Date["now"]();
       for (const _0x5cafc4 of _0x56fb86) {
         if (_ephoneSpectatorController.signal.aborted) break;
@@ -17735,6 +17819,10 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
         if (_0x5cafc4.type !== "narration" && !_ephoneSpeaker) {
           console.warn("观看群聊忽略非群成员或身份不明确的发言：", _0x5cafc4.name);
           continue;
+        }
+        if (window.ephoneCharacterWalletCore && ["wallet_income", "wallet_expense"].includes(_0x5cafc4.type)) {
+          await _ephoneWalletAction({ ..._0x5cafc4, name: _ephoneSpeaker }, _0x326f3d, _ephoneSpectatorReplyTimeMs, _0x47fd25++);
+          _ephoneSpectatorTimeCommitted = true; continue;
         }
         if (window.ephoneMarketOrders && _ephoneOrderActionTypes.includes(_0x5cafc4.type)) {
           await _ephoneRunOrderAction({ ..._0x5cafc4, name: _ephoneSpeaker }, _0x326f3d, _ephoneSpectatorReplyTimeMs, _0x47fd25++);
@@ -17836,6 +17924,7 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
             continue;
         }
         if (_0x14c18c) {
+          _0x14c18c = await _ephoneFundMoneyCard(_0x326f3d, _0x14c18c);
           _ephoneSpectatorTimeCommitted = true;
           _0x326f3d.history.push(_0x14c18c);
           await _0x24f906.chats.put(_0x326f3d);
@@ -17928,7 +18017,7 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
     const _0x25f1e5 = _0x3ce505;
     if (!_0x5ea3c1["activeChatId"]) return;
     const _0xephoneContinue = _0xephoneMode === "__ephone_continue__";
-    if (_0xephoneSpectatorGenerating) return;
+    if (_0xephoneSpectatorGenerating || window.EPhoneCharacterWallet?.isBusy()) return;
     if (_0xephoneGenerationController && !_0xephoneContinue) {
       _0xephoneGenerationController.abort();
       return;
@@ -20352,6 +20441,7 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
       _0x539674 +=
         "\n# 【回复长度与节奏（按情境灵活执行）】\n通常将内容拆分成约4到7条简短消息；简单回应可以更少，互动丰富或需要逐步展开时可以更多。此范围只是自然聊天的倾向，没有固定最低或最高条数。不要为凑数量添加空话，也不要把多个独立想法挤成一条。\n";
       _0x539674 += await _ephoneOrderPrompt(_0x5b16cb);
+      _0x539674 += await _ephoneFinancePrompt(_0x5b16cb, _ephoneReplyTimeMs);
       _0x539674 +=
         "\n# 【发送前最终时间校验】\n" +
         `本轮唯一有效的当前时间是 ${window.ephoneTimeMachine?.formatDateTime(_ephoneReplyTimeMs, { withWeekday: true }) || _0x369e74}。` +
@@ -20464,6 +20554,7 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
         throw new DOMException("回复已停止", "AbortError");
       }
       _0xephoneTimeCommitted = !![];
+      await window.EPhoneCharacterWallet?.sync(_ephoneReplyTimeMs);
       let _0x55b319 = [];
       if (_0x5b16cb[_0x25f1e5(0x17c5)]["isOfflineMode"]) {
         let _0x5c3e2b = { content: [], dialogue: [], description: [] };
@@ -20667,6 +20758,13 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
             "AI幻觉已被拦截！试图在群聊中发送一条没有“name”的消息。消息内容:",
             _0x58c66c,
           );
+          continue;
+        }
+        if (await _ephoneReceiveRoleCard({ ..._0x58c66c, name: _0x58c66c.name || _0x5b16cb.originalName || _0x5b16cb.name }, _0x5b16cb, _ephoneReplyTimeMs, _0x1b9d0b)) {
+          _0x1b9d0b = Math.max(_0x1b9d0b + 1, Number(_0x5b16cb.history.at(-1)?.timestamp || 0) + 1); continue;
+        }
+        if (window.ephoneCharacterWalletCore && ["wallet_income", "wallet_expense"].includes(_0x58c66c.type)) {
+          await _ephoneWalletAction({ ..._0x58c66c, name: _0x58c66c.name || _0x5b16cb.originalName || _0x5b16cb.name }, _0x5b16cb, _ephoneReplyTimeMs, _0x1b9d0b++);
           continue;
         }
         if (window.ephoneMarketOrders && _ephoneOrderActionTypes.includes(_0x58c66c.type)) {
@@ -22921,6 +23019,7 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
         if (_0x4c93fd) {
           if (!Number.isFinite(Number(_0x4c93fd.vts)))
             _0x4c93fd.vts = _ephoneReplyTimeMs;
+          _0x4c93fd = await _ephoneFundMoneyCard(_0x5b16cb, _0x4c93fd);
           _0x5b16cb[_0x25f1e5(0x8e6)][_0x25f1e5(0x3e6)](_0x4c93fd);
           const _0x172238 = document[_0x25f1e5(0x3d0)] === _0x25f1e5(0x10be);
           (!_0x51d2fa || _0x172238) &&
@@ -56525,7 +56624,7 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
           _0xspaceLabel.textContent = window.EPHONE_SPACE_NAME || "默认空间";
         await window.ephonePlayerIdentity?.render?.();
       }),
-      (window.isPersonaSpaceBusy = () => Boolean(_0xephoneGenerationController || _0xephoneSpectatorGenerating || _ephoneSpectatorMoneyBusy || _ephoneWalletPending || window.EPhoneLifeMarket?.isBusy() || window.ephonePlayerIdentity?.isBusy?.())),
+      (window.isPersonaSpaceBusy = () => Boolean(_0xephoneGenerationController || _0xephoneSpectatorGenerating || _ephoneSpectatorMoneyBusy || _ephoneWalletPending || window.EPhoneLifeMarket?.isBusy() || window.EPhoneCharacterWallet?.isBusy() || window.ephonePlayerIdentity?.isBusy?.())),
       (window.EPhoneMarketAdapter = {
         now: (chatId) => window.ephoneTimeMachine?.nowMs(chatId || _0x5ea3c1.activeChatId) || Date.now(),
         formatTime: (value) => window.ephoneTimeMachine?.formatDateTime(value, { withWeekday: true }) || new Date(value).toLocaleString("zh-CN"),

@@ -90,7 +90,7 @@
     return `<div class="ephone-spectator-money-card"><div>${escape(message.type === "transfer" ? "转账" : "红包")}</div>` +
       `<div class="transfer-amount">¥ ${escape(Number(message.amount ?? message.totalAmount).toFixed(2))}</div>` +
       `<div class="ephone-money-description">${escape(describe(message))}</div>` +
-      (!terminal && eligible(chat, message).length ? `<button type="button" class="ephone-money-receive">${action}</button><div class="ephone-money-wallet-note">手动领取后存入本空间的钱包</div>` : "") + "</div>";
+      (!terminal && eligible(chat, message).length ? `<button type="button" class="ephone-money-receive">${action}</button><div class="ephone-money-wallet-note">手动领取后存入收款角色钱包；绑定角色共用空间钱包</div>` : "") + (message.walletUntracked ? '<div class="ephone-money-wallet-note">付款角色未设置钱包，此笔未记付款方支出</div>' : "") + "</div>";
   }
   // Save a candidate before committing to in-memory state, so a failed write
   // never produces a phantom receipt. The caller serializes clicks/generation.

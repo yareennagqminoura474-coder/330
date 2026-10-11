@@ -1,0 +1,22 @@
+#character-wallet-screen { background: #f4f5f8; color: #242b3a; }
+#character-wallet-screen .header { flex: none; background: #fff; }
+#character-wallet-screen .header button { border: 0; background: transparent; color: #007aff; font: inherit; padding: 10px; }
+.cw-scroll { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; touch-action: pan-y; padding: 16px 16px 36px; }
+#character-wallet-screen * { box-sizing: border-box; }
+#cw-person { width: 100%; padding: 12px; border-radius: 12px; margin-bottom: 12px; }
+#cw-notice { font-size: 12px; line-height: 1.7; color: #4b617b; overflow-wrap: anywhere; }
+.cw-balance { border-radius: 20px; padding: 22px; background: linear-gradient(125deg,#18335b,#35648a); color: #fff; margin-top: 12px; }
+.cw-balance h2 { font-size: 34px; margin: 16px 0; overflow-wrap: anywhere; }
+.cw-balance small, .cw-panel small { display: block; line-height: 1.7; font-size: 12px; opacity: .8; }
+.cw-balance p, .cw-panel p { font-size: 13px; line-height: 1.7; }
+.cw-summary { display: flex; justify-content: space-around; background: #fff; margin: 12px 0; padding: 16px; border-radius: 14px; font-size: 14px; line-height: 1.8; }
+.cw-panel { background: #fff; padding: 16px; margin: 12px 0; border-radius: 16px; overflow-wrap: anywhere; }
+.cw-panel h3 { font-size: 15px; margin-top: 0; }
+.cw-panel button { background: #e7f0ff; color: #1763b6; border: 0; border-radius: 10px; padding: 10px 12px; margin: 4px 0; font: inherit; font-size: 12px; }
+.cw-panel button:disabled { opacity: .5; }
+.cw-form input:not([type=checkbox]), .cw-form select, .cw-book input, .cw-book select { width: 100%; min-width: 0; border: 1px solid #d9dfe7; border-radius: 9px; padding: 10px; margin: 5px 0 10px; background: #fff; color: #242b3a; font: inherit; font-size: 13px; }
+.cw-form label { font-size: 12px; line-height: 1.7; display: block; }
+.cw-rule { padding: 12px; margin: 12px 0; border: 1px solid #dce5f1; border-radius: 12px; }
+.cw-entry { display: flex; gap: 12px; justify-content: space-between; padding: 12px 0; border-bottom: 1px solid #edf0f5; font-size: 13px; }
+.cw-entry div { flex: 1; min-width: 0; } .cw-entry span { max-width: 40%; }
+.cw-entry .income { color: #168668; } .cw-entry .expense { color: #b65543; }

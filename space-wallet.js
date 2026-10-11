@@ -7,7 +7,9 @@
     const database = wallet.db;
     if (!database || database !== transactions.db || (chats && chats.db !== database))
       throw new Error("钱包和聊天不属于同一个空间，未进行入账。");
-    return { wallet, transactions, chats, database };
+    const financeTables = withChats && root.ephoneCharacterWalletCore && database.tables.some((t) => t.name === "characterWallets") ?
+      [database.table("characterWallets"), database.table("characterTransactions"), database.table("spaceProfiles")] : [];
+    return { wallet, transactions, chats, database, financeTables };
   }
   function moneyCents(value) {
     const number = Number(value), amount = Math.round(number * 100);
@@ -35,7 +37,7 @@
   }
   async function creditReceipt(db, candidate, receipt, spaceId) {
     const tables = tablesFor(db, true);
-    return tables.database.transaction("rw", tables.chats, tables.wallet, tables.transactions, async () => {
+    return tables.database.transaction("rw", tables.chats, tables.wallet, tables.transactions, ...tables.financeTables, async () => {
       const latest = await tables.chats.get(candidate.id);
       if (!latest) throw new Error("找不到原聊天，未进行入账。");
       const original = latest.history.find((message) => message.timestamp === receipt.forTimestamp);
@@ -46,7 +48,8 @@
           original.isReceived || original.isRefund || ["accepted", "declined"].includes(original.status) :
           Object.prototype.hasOwnProperty.call(original.claimedBy || {}, receipt.recipientName) || original.isFullyClaimed)
         throw new Error("已经领取过了，未重复入账。");
-      if (!root.ephoneSpectatorMoney.eligible(latest, original).includes(receipt.recipientName))
+      const eligibleChat = latest.isGroup || latest.isSpectatorGroup ? latest : { ...latest, members: [{ originalName: latest.originalName || latest.name, name: latest.name }] };
+      if (!root.ephoneSpectatorMoney.eligible(eligibleChat, original).includes(receipt.recipientName))
         throw new Error("收款身份或卡片状态已改变，请重新领取。");
       const previousClaims = Object.fromEntries(Object.entries(updated.claimedBy || {}).filter(([name]) => name !== receipt.recipientName));
       if (original.type === "red_packet" &&
@@ -58,7 +61,8 @@
         throw new Error("卡片金额或个数已修改，请重新领取。");
       const actualAmount = original.type === "transfer" ? updated.amount : updated.claimedBy?.[receipt.recipientName];
       if (moneyCents(actualAmount) !== moneyCents(receipt.amount)) throw new Error("领取金额不一致，未进行入账。");
-      const result = await addEntry(tables, receipt.amount, "income",
+      const destination = tables.financeTables.length ? await new root.ephoneCharacterWalletCore.Service(tables.database).creditReceived(latest, original, receipt) : null;
+      const result = destination || await addEntry(tables, receipt.amount, "income",
         `${original.type === "transfer" ? "转账" : "红包"}-${original.senderName || "角色"}（以${receipt.recipientName}身份领取）`,
         { timestamp: receipt.timestamp, vts: receipt.vts, chatId: candidate.id, forTimestamp: receipt.forTimestamp,
           recipientName: receipt.recipientName, walletSpaceId: spaceId, moneyReceipt: true });

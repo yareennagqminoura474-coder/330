@@ -51,6 +51,9 @@ function batch(prefix) {
   assert.match(economicsPrompt, /明确的购买者家庭条件优先/);
   assert.match(economicsPrompt, /不能因为同空间某个NPC或角色有钱/);
   assert.match(economicsPrompt, /同款同规格商品凭空加价/);
+  assert.match(economicsPrompt, /逐项检查price、deliveryFee/);
+  assert.match(economicsPrompt, /家庭资产丰厚但每月可支配零花钱少/);
+  assert.match(economicsPrompt, /不得给所有人物生成同一批同档次商品后只替换理由/);
   assert.match(economicsPrompt, /家庭条件未设置或档案相互矛盾/);
   const grounded = core.buildContext({ chats: [{ id: "plain", name: "普通朋友", settings: { aiPersona: "喜欢摄影。" } }], groupContext });
   assert.equal(grounded.characters[0].familyConditions, "");
