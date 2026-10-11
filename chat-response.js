@@ -91,7 +91,7 @@
 
   function hasBody(items, isRenderable) {
     return items.some((item) => {
-      if (!item || ["thought_chain", "update_thoughts", "update_status"].includes(item.type) || isTimeHeader(item) ||
+      if (!item || ["thought_chain", "update_thoughts", "update_status", "life_update", "relationship_event"].includes(item.type) || isTimeHeader(item) ||
         (isRenderable && !isRenderable(item))) return false;
       return [item.content, item.message, item.c, item.dialogue, item.description].some((value) =>
         typeof value === "string" ? value.trim().length > 0 : Array.isArray(value) && value.length > 0) ||

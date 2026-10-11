@@ -16,6 +16,9 @@
     "marketOrders",
     "characterWallets",
     "characterTransactions",
+    "characterRelations",
+    "characterLives",
+    "relationshipEvents",
     "spaceProfiles",
     "spaceClock",
   ]);
@@ -291,7 +294,7 @@
         ? ["authorId", "characterId", "chatId"]
         : ["chatId", "characterId", "contactId", "targetChatId", "authorId"];
     const matches = (value) => value != null && String(value) === id;
-    if (["characterWallets", "characterTransactions"].includes(tableName)) return record.key === "chat:" + id;
+    if (["characterWallets", "characterTransactions", "characterLives"].includes(tableName)) return record.key === "chat:" + id;
     if (relatedFields.some((field) => matches(record[field]))) return true;
     const content = record.content;
     return Boolean(
@@ -312,7 +315,7 @@
     const chat = await source.chats.get(chatId);
     if (!chat) throw new Error("找不到这个角色的聊天资料。");
 
-    const sideTableNames = ["memories", "callRecords", "qzonePosts", "characterWallets", "characterTransactions"];
+    const sideTableNames = ["memories", "callRecords", "qzonePosts", "characterWallets", "characterTransactions", "characterLives"];
     const relatedRows = {};
     for (const name of sideTableNames) {
       const table = source.table(name);

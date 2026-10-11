@@ -1,0 +1,73 @@
+const assert = require("node:assert/strict");
+require("fake-indexeddb/auto");
+const Dexie = require("dexie"), identity = require("./player-identity.js"), core = require("./character-social-core.js");
+const schema = { chats: "&id", npcs: "++id,name", characterRelations: "&id,a,b", characterLives: "&key", relationshipEvents: "&id,chatId,vts,status" };
+const at = (day, hour, min = 0) => new Date(2026, 2, day, hour, min).getTime();
+const routine = { job: "医生", home: "自己的住处", note: "拟定，可编辑", enabled: true, routine: [{ days: [1,2,3,4,5], start: "09:00", end: "18:00", activity: "门诊工作", place: "医院", reachability: "busy" }, { days: [0,1,2,3,4,5,6], start: "22:00", end: "07:00", activity: "睡觉", place: "家", reachability: "rest" }] };
+(async () => {
+  const db = new Dexie("social-test-" + Date.now()); db.version(54).stores(schema); await db.open();
+  const service = new core.Service(db, identity), key = "chat:a";
+  try {
+    const members = [{ id: "a", originalName: "甲" }, { id: "b", originalName: "乙" }];
+    const quote = "甲和乙是大学同学。";
+    await db.chats.bulkPut([
+      { id: "a", name: "甲", settings: { aiPersona: "甲是普通家庭的医生，住在自己的公寓，节俭，不喜欢热闹。" }, history: [{ role: "assistant", senderName: "甲", content: "工作后我想自己静一静。", timestamp: 1, vts: at(5, 8) }] },
+      { id: "b", name: "乙", settings: { aiPersona: "乙是甲的大学同学，教师。" }, history: [{ role: "user", content: "乙私聊里的秘密不可进入甲的生成输入。", timestamp: 2 }] },
+      { id: "g", name: "同学群", isGroup: true, members, history: [{ type: "narration", role: "system", content: quote, timestamp: 10, vts: at(5, 8) }], longTermMemory: [{ timestamp: 20, vts: at(4, 8), content: "甲与乙毕业后仍有联系。" }] },
+      { id: "hidden", name: "其他人的私聊", settings: {}, history: [{ content: "不在甲的关系或私密记忆里", timestamp: 3 }] }
+    ]);
+    const context = await service.context(key), prompt = core.generationPrompt(context);
+    assert.match(prompt, /工作后我想自己静一静/); assert.match(prompt, /甲和乙是大学同学/); assert.match(prompt, /甲与乙毕业后仍有联系/);
+    assert.doesNotMatch(prompt, /乙私聊里的秘密|不在甲的关系或私密记忆里/);
+    assert.match(prompt, /学生不要强行配下属/); assert.match(prompt, /新拟定关系evidence留空/);
+    const batch = { ownerKey: key, people: [{ ref: "colleague", name: "陈医生", persona: "陈医生，35岁，甲同科室的医生，温和细心，有自己的家庭和轮班生活。", life: { ...routine, home: "陈医生自己的家" } }, { ref: "classmate", name: "乙", existingKey: "chat:b" }],
+      relations: [{ a: key, b: "colleague", aToB: "同事", bToA: "同事", detail: "同科室合作，各自有独立生活", evidence: [] },
+        { a: key, b: "classmate", aToB: "大学同学", bToA: "大学同学", detail: "毕业后仍有联系", evidence: [{ chatId: "g", timestamp: 10, quote }] }], life: routine };
+    const result = await service.generate(key, batch, at(5, 8), context);
+    assert.equal(result.created.length, 1); assert.equal(result.linked, 2); assert.equal(await db.npcs.count(), 1);
+    const npc = (await db.npcs.toArray())[0]; assert.equal(npc.enableBackgroundActivity, false); assert.deepEqual(npc.associatedWith, ["a"]);
+    assert.equal((await db.characterLives.get("npc:" + npc.id)).home, "陈医生自己的家");
+    assert.equal((await db.chats.get("g")).members.length, 2, "new NPCs do not magically join a group");
+    assert.equal((await db.characterRelations.get(core.pairId(key, "chat:b"))).source, "history");
+    assert.equal((await db.characterRelations.get(core.pairId(key, "npc:" + npc.id))).source, "generated");
+    const second = await service.generate(key, batch, at(5, 8), context);
+    assert.equal(second.created.length, 0); assert.equal(second.kept, 2); assert.equal(await db.npcs.count(), 1);
+    let relation = await db.characterRelations.get(core.pairId(key, "chat:b"));
+    await service.saveRelation({ ...relation, aToB: "老朋友", bToA: "老朋友" }, at(5, 8), { revision: relation.revision });
+    await service.generate(key, batch, at(5, 8), context); assert.equal((await db.characterRelations.get(relation.id)).aToB, "老朋友", "generation cannot overwrite edited facts");
+    await assert.rejects(service.saveRelation(relation, at(5, 8), { revision: relation.revision }), /刚被更新/);
+    const bad = { ...batch, people: [{ ref: "bad", name: "不应留下的新角色", persona: "虚构的新角色，用于事务失败时必须完整回滚。" }], relations: [{ a: key, b: "bad", aToB: "朋友", bToA: "朋友", evidence: [{ chatId: "hidden", timestamp: 3, quote: "不在甲的关系" }] }] };
+    await assert.rejects(service.generate(key, bad, at(5, 8), context), /可参考聊天范围/);
+    assert.equal(await db.npcs.count(), 1); assert.equal(await db.characterRelations.count(), 2, "no orphan NPC or partial relations after a failed transaction");
+    const life = await db.characterLives.get(key);
+    assert.equal(core.activityAt(life, at(5, 10)).activity, "门诊工作");
+    assert.equal(core.activityAt(life, at(6, 2)).activity, "睡觉");
+    assert.equal(core.activityAt(life, at(7, 10)), null, "weekend is not a weekday shift");
+    assert.throws(() => core.normalizeLife({ routine: [routine.routine[0], { ...routine.routine[0], id: "overlap", start: "17:00", end: "20:00" }] }), /时间重叠/);
+    assert.throws(() => core.normalizeLife({ routine: [{ days: [1], start: "24:00", end: "07:00", activity: "休息", place: "家" }] }), /时刻无效/);
+    const chat = await db.chats.get("g");
+    chat.history.push({ role: "system", type: "narration", content: "甲到了自己的书房，开始读书。", timestamp: 30, vts: at(5, 10) }); await db.chats.put(chat);
+    const action = { type: "life_update", name: "甲", activity: "读书", place: "书房", minutes: 60, reachability: "available", quote: "甲到了自己的书房，开始读书。" };
+    await service.act(action, chat, at(5, 10), 31);
+    const actual = await db.characterLives.get(key); assert.equal(core.activityAt(actual, at(5, 10, 30)).source, "chat");
+    assert.equal(core.activityAt(actual, at(5, 11)).source, "routine"); assert.equal(core.activityAt(actual, at(5, 9)).source, "routine", "backwards clock cannot see future action");
+    await assert.rejects(service.act({ ...action, name: "乙" }, chat, at(5, 10), 32), /没有指向该角色/);
+    await assert.rejects(service.act({ ...action, activity: "开会", quote: "甲准备开会。" }, chat, at(5, 10), 32), /找不到对应聊天原文/);
+    await service.act({ type: "relationship_event", name: "甲", otherName: "乙", aToB: "朋友", bToA: "朋友", detail: "从旧同学恢复朋友关系", for_timestamp: 10, quote }, chat, at(5, 10), 33);
+    let events = await db.relationshipEvents.toArray(); assert.equal(events.length, 1); assert.equal(events[0].status, "pending");
+    assert.equal((await db.characterRelations.get(relation.id)).aToB, "老朋友", "proposals do not rewrite facts before user confirmation");
+    await service.act({ type: "relationship_event", name: "甲", otherName: "乙", aToB: "朋友", bToA: "朋友", for_timestamp: 10, quote }, chat, at(5, 10), 34);
+    assert.equal(await db.relationshipEvents.count(), 1, "same proposal dedupes across replies");
+    await service.review(events[0].id, true, at(5, 10)); assert.equal((await db.characterRelations.get(relation.id)).source, "confirmed_chat");
+    await assert.rejects(service.review(events[0].id, true, at(5, 10)), /已处理/);
+    const story = await service.prompt(chat, at(5, 10, 20));
+    assert.match(story, /陈医生/); assert.match(story, /不能默认全员一直陪/); assert.match(story, /当前聊天合法成员/); assert.match(story, /"source":"chat"/);
+    assert.match(story, /不会.*|不让其他角色凭空知道其行踪/);
+    // Generated names re-use exact existing names, and ambiguous names fail safely.
+    await db.npcs.add({ name: "乙", persona: "另一个同名人" });
+    await assert.rejects(service.generate(key, { ...batch, people: [{ ref: "ambiguous", name: "乙" }], relations: [{ a: key, b: "ambiguous", aToB: "同事", bToA: "同事" }] }, at(5, 10), context), /同名人物/);
+    // No automatic background activity, calls, chat edits or invented messages.
+    assert.equal((await db.chats.get("a")).history.length, 1); assert.equal((await db.chats.get("g")).history.length, 2);
+    console.log("PASS: persona and own-chat grounding, verified sources, atomic NPC/relation creation, reuse/duplicates, manual fact preservation, weekly/overnight life, source-owned actual states, time travel, pending reviewed relation changes and private prompt boundaries");
+  } finally { db.close(); await Dexie.delete(db.name); }
+})().catch((error) => { console.error(error); process.exitCode = 1; });

@@ -4,8 +4,8 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
   <title>EPhone</title>
-  <link rel="stylesheet" href="style.css?v=1.7.67">
-  <link rel="stylesheet" href="life-market.css?v=1.7.67">
+  <link rel="stylesheet" href="style.css?v=1.7.68">
+  <link rel="stylesheet" href="life-market.css?v=1.7.68">
   <link rel="apple-touch-icon" href="https://s3plus.meituan.net/opapisdk/op_ticket_885190757_1758510900942_qdqqd_djw0z2.jpeg">
   <link rel="manifest" href="manifest.json">
   <meta name="apple-mobile-web-app-capable" content="yes">
@@ -24,27 +24,30 @@
   <script src="https://cdnjs.cloudflare.com/ajax/libs/tone/14.8.49/Tone.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.6.0/mammoth.browser.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/crypto-js/4.1.1/crypto-js.min.js"></script>
-  <script src="holiday-calendar.js?v=1.7.67" defer="defer"></script>
-  <script src="time-machine.js?v=1.7.67" defer="defer"></script>
+  <script src="holiday-calendar.js?v=1.7.68" defer="defer"></script>
+  <script src="time-machine.js?v=1.7.68" defer="defer"></script>
   <script src="api-payload-guard.js?v=1.7.44" defer="defer"></script>
-  <script src="persona-spaces.js?v=1.7.67" defer="defer"></script>
-  <script src="group-context.js?v=1.7.67" defer="defer"></script>
-  <script src="spectator-money.js?v=1.7.67" defer="defer"></script>
-  <script src="space-wallet.js?v=1.7.67" defer="defer"></script>
-  <script src="life-market-core.js?v=1.7.67" defer="defer"></script>
-  <script src="player-identity.js?v=1.7.67" defer="defer"></script>
-  <script src="character-wallet-core.js?v=1.7.67" defer="defer"></script>
-  <script src="character-wallet.js?v=1.7.67" defer="defer"></script>
-  <link rel="stylesheet" href="character-wallet.css?v=1.7.67">
-  <script src="market-orders.js?v=1.7.67" defer="defer"></script>
-  <script src="life-market.js?v=1.7.67" defer="defer"></script>
-  <script src="chat-response.js?v=1.7.67" defer="defer"></script>
-  <script src="script.js?v=1.7.67" defer="defer"></script>
-  <script src="narration-mode.js?v=1.7.67" defer="defer"></script>
+  <script src="persona-spaces.js?v=1.7.68" defer="defer"></script>
+  <script src="group-context.js?v=1.7.68" defer="defer"></script>
+  <script src="spectator-money.js?v=1.7.68" defer="defer"></script>
+  <script src="space-wallet.js?v=1.7.68" defer="defer"></script>
+  <script src="life-market-core.js?v=1.7.68" defer="defer"></script>
+  <script src="player-identity.js?v=1.7.68" defer="defer"></script>
+  <script src="character-wallet-core.js?v=1.7.68" defer="defer"></script>
+  <script src="character-wallet.js?v=1.7.68" defer="defer"></script>
+  <link rel="stylesheet" href="character-wallet.css?v=1.7.68">
+  <script src="character-social-core.js?v=1.7.68" defer="defer"></script>
+  <script src="character-social.js?v=1.7.68" defer="defer"></script>
+  <link rel="stylesheet" href="character-social.css?v=1.7.68">
+  <script src="market-orders.js?v=1.7.68" defer="defer"></script>
+  <script src="life-market.js?v=1.7.68" defer="defer"></script>
+  <script src="chat-response.js?v=1.7.68" defer="defer"></script>
+  <script src="script.js?v=1.7.68" defer="defer"></script>
+  <script src="narration-mode.js?v=1.7.68" defer="defer"></script>
 </head>
 <body>
   <div id="phone-screen">
-    <span id="app-version-badge" aria-label="EPhone 版本 1.7.67">v1.7.67</span>
+    <span id="app-version-badge" aria-label="EPhone 版本 1.7.68">v1.7.68</span>
     <div id="status-bar"> <span id="status-bar-time">12:00</span>
       <div id="status-bar-battery" class="battery-container"> <span class="battery-text">--%</span>
         <div class="battery-icon">
@@ -1225,6 +1228,7 @@
             <button type="button" id="player-identity-save">保存绑定</button>
             <p id="player-identity-status" role="status">购物和外卖属于绑定角色；其他角色需要被告知、看到到货或查看手机后才知道。</p>
           </section>
+          <button type="button" id="me-character-social-button" class="me-menu-row"><span class="me-menu-icon" aria-hidden="true">♧</span><span class="me-menu-label">人物关系</span><span class="me-menu-arrow" aria-hidden="true">›</span></button>
 <button type="button" id="me-character-wallet-button" class="me-menu-row"><span class="me-menu-icon" aria-hidden="true">¥</span><span class="me-menu-label">角色钱包</span><span class="me-menu-arrow" aria-hidden="true">›</span></button>
           <button type="button" id="me-favorites-button" class="me-menu-row">
             <span class="me-menu-icon" aria-hidden="true">☆</span>
