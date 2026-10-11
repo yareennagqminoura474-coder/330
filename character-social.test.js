@@ -68,6 +68,15 @@ const routine = { job: "医生", home: "自己的住处", note: "拟定，可编
     await assert.rejects(service.generate(key, { ...batch, people: [{ ref: "ambiguous", name: "乙" }], relations: [{ a: key, b: "ambiguous", aToB: "同事", bToA: "同事" }] }, at(5, 10), context), /同名人物/);
     // No automatic background activity, calls, chat edits or invented messages.
     assert.equal((await db.chats.get("a")).history.length, 1); assert.equal((await db.chats.get("g")).history.length, 2);
+    const freshContext = await service.context(key), full = "普通家庭成长的成年人，在本地从事教师工作，收入稳定但并不富裕。性格温和认真，有时过于坚持原则，平时喜欢跑步和阅读，周末会见自己的朋友。说话简洁，有独立的工作、住处和烦恼，重视隐私与相处界限，不会全天围着甲转，遇到矛盾会先解释再坚持自己的意见。";
+    const newBatch = { npcs: ["韩老师", "李同事", "赵邻居"].map((name) => ({ name, persona: full, relation: { toOwner: "朋友", fromOwner: "朋友", detail: "共同兴趣结识，各有自己的工作生活" }, life: { ...routine, routine: [routine.routine[0], routine.routine[0]] } })) };
+    const newResult = await service.generateNew(key, "这是结果：\n```json\n" + JSON.stringify(newBatch) + "\n```", at(5, 10), freshContext);
+    assert.equal(newResult.created.length, 3); assert.equal(newResult.linked, 3); assert.equal(newResult.warnings.length, 3, "bad optional schedules never discard complete NPCs or bindings");
+    for (const p of newResult.created) { const row = await db.npcs.get(Number(p.key.slice(4))); assert.ok(row.persona.length >= 100); assert.ok(await db.characterRelations.get(core.pairId(key, p.key))); }
+    for (const raw of [{ npcs: [] }, { npcs: [{ name: "只有一个人", persona: full, relation: { toOwner: "朋友", fromOwner: "朋友" } }] }, { npcs: [{ name: "缺人设" }, { name: "也缺人设" }] }, '{"npcs":['])
+      await assert.rejects(service.generateNew(key, raw, at(5, 10), freshContext), (e) => e.code === "SOCIAL_GENERATION_INVALID");
+    const countNew = await db.npcs.count(); await assert.rejects(service.generateNew(key, newBatch, at(5, 10), await service.context(key)), /至少2位/); assert.equal(await db.npcs.count(), countNew);
+    assert.match(core.newCirclePrompt(freshContext), /先生成.*全新的完整NPC/); assert.match(core.newCirclePrompt(freshContext), /外貌.*家庭经济条件/);
     console.log("PASS: persona and own-chat grounding, verified sources, atomic NPC/relation creation, reuse/duplicates, manual fact preservation, weekly/overnight life, source-owned actual states, time travel, pending reviewed relation changes and private prompt boundaries");
   } finally { db.close(); await Dexie.delete(db.name); }
 })().catch((error) => { console.error(error); process.exitCode = 1; });

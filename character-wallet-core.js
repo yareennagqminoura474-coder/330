@@ -1,5 +1,6 @@
 (function (root) {
   "use strict";
+  const storyExpenses = root.ephoneStoryExpenses || (typeof require === "function" ? require("./story-expenses.js") : null);
   const text = (v, n = 160) => typeof v === "string" ? v.trim().slice(0, n) : "";
   const amount = (v, zero = true) => {
     const n = Number(v), cents = Math.round(n * 100);
@@ -45,13 +46,14 @@
       const bound = binding?.key === key;
       return { ...data, bound, storedBalance: Number(data.balance || 0), balance: bound ? Number((await this.userWallet.get("main"))?.balance || 0) : Number(data.balance || 0) };
     }
-    async change(key, value, direction, { id, vts, category = "other", description = "角色收支", source = "manual", adjustment = false } = {}) {
+    async change(key, value, direction, { id, vts, category = "other", description = "角色收支", source = "manual", adjustment = false, evidence, storyFingerprint } = {}) {
       if (!id || !Number.isFinite(vts) || !["income", "expense"].includes(direction)) throw new Error("记账参数无效。");
       const existing = await this.characterTransactions.get(id); if (existing) return existing;
       const cents = amount(value, false), account = await this.account(key), balance = amount(account.balance);
       if (direction === "expense" && balance < cents) throw new Error("角色余额不足，未扣款。");
       const next = balance + (direction === "income" ? cents : -cents); if (!Number.isSafeInteger(next)) throw new Error("余额超出保存范围。");
-      const entry = { id, key, direction, amount: cents / 100, vts, timestamp: Date.now(), category: text(category, 30), description: text(description, 600), source, status: "posted", adjustment };
+      const entry = { id, key, direction, amount: cents / 100, vts, timestamp: Date.now(), category: text(category, 30), description: text(description, 600), source, status: "posted", adjustment,
+        ...(evidence ? { evidence } : {}), ...(storyFingerprint ? { storyFingerprint } : {}) };
       if (account.bound) {
         const wallet = await this.userWallet.get("main") || { id: "main", balance: 0 };
         await this.userWallet.put({ ...wallet, balance: next / 100 });
@@ -64,6 +66,49 @@
     async book(key, value, direction, data) {
       if (!(await this.people()).some((p) => p.key === key)) throw new Error("角色已移走或删除。");
       return this.db.transaction("rw", ...this.tables(), () => this.change(key, value, direction, data));
+    }
+    async expenseDuplicate(key, value, category, vts, quote) {
+      const rows = await this.characterTransactions.where("key").equals(key).toArray();
+      return rows.find((r) => r.direction === "expense" && r.status === "posted" && amount(r.amount) === amount(value) &&
+        ["story", "story_text"].includes(r.source) && (quote ? r.evidence?.quote?.replace(/[。！!？?]$/, "") === quote.replace(/[。！!？?]$/, "") : r.vts === vts && (r.category === category || category === "other")));
+    }
+    async captureExpenses(chat, messages, vts) {
+      if (!storyExpenses || !Number.isFinite(vts)) return { notices: [], entries: [], chat };
+      const people = this.identity.participants(chat, await this.chats.toArray()), claims = messages.flatMap((m) => storyExpenses.extract(m, people, this.identity.resolve));
+      if (!claims.length) return { notices: [], entries: [], chat };
+      const orderTable = this.db.tables.find((t) => t.name === "marketOrders"), orders = orderTable ? await orderTable.toArray() : [];
+      return this.db.transaction("rw", ...this.tables(), this.chats, async () => {
+        const saved = await this.chats.get(chat.id); if (!saved) throw new Error("聊天已不存在，未记账。");
+        const notices = [], entries = []; let timestamp = saved.history.reduce((max, m) => Math.max(max, Number(m.timestamp) || 0), Date.now()) + 1;
+        for (const claim of claims) {
+          const source = saved.history.find((m) => m.timestamp === claim.sourceTimestamp && typeof m.content === "string" && m.content.includes(claim.quote)); if (!source) continue;
+          if (Number.isFinite(source.vts) && source.vts > vts) continue;
+          const id = "story-expense:" + JSON.stringify([chat.id, claim.sourceTimestamp, claim.key, claim.quote]);
+          if (await this.characterTransactions.get(id)) continue;
+          const recent = await this.characterTransactions.where("key").equals(claim.key).toArray(), mark = storyExpenses.fingerprint(claim);
+          const sameDay = (r) => r.vts <= vts && dayKey(r.vts) === dayKey(vts);
+          if (!claim.repeat && recent.some((r) => sameDay(r) && r.status === "posted" && r.storyFingerprint === mark)) continue;
+          // Explicit wallet commands and plain-language descriptions of the same payment share one debit.
+          if (recent.some((r) => r.source === "story" && r.direction === "expense" && r.status === "posted" && r.vts === vts && amount(r.amount) === amount(claim.amount) && (r.category === claim.category || r.category === "other"))) continue;
+          if (!claim.repeat && recent.some((r) => sameDay(r) && r.source === "scheduled" && r.direction === "expense" && r.status === "posted" && r.category === claim.category)) continue;
+          const account = await this.account(claim.key);
+          if (account.bound && orders.some((o) => o.ownerKey === claim.key && !["cancelled", "canceled"].includes(o.status) && dayKey(o.vts || o.createdVts || 0) === dayKey(vts) && amount(o.total || o.totalAmount || 0) === amount(claim.amount))) continue;
+          const evidence = { chatId: chat.id, timestamp: source.timestamp, quote: claim.quote }, failed = !account.configured && !account.bound ? "unconfigured" : amount(account.balance) < amount(claim.amount) ? "insufficient" : "";
+          let entry;
+          if (failed) {
+            entry = { id, key: claim.key, direction: "expense", amount: 0, plannedAmount: claim.amount, vts, timestamp: Date.now(), category: claim.category,
+              description: claim.quote, source: "story_text", status: failed, evidence, storyFingerprint: mark };
+            await this.characterTransactions.add(entry);
+          } else entry = await this.change(claim.key, claim.amount, "expense", { id, vts, category: claim.category, description: claim.quote, source: "story_text", evidence, storyFingerprint: mark });
+          entries.push(entry);
+          const notice = { role: "system", type: "pat_message", walletEntry: true, senderName: claim.name, timestamp: timestamp++, vts,
+            content: failed ? "【" + claim.name + "的支出未入账】¥" + claim.amount.toFixed(2) + " · " + (failed === "unconfigured" ? "请先在我 → 角色钱包设置资产" : "余额不足") + "，未扣款。" :
+              "【" + claim.name + "的钱包】支出 ¥" + claim.amount.toFixed(2) + " · " + claim.quote };
+          saved.history.push(notice); notices.push(notice);
+        }
+        if (notices.length) await this.chats.put(saved);
+        return { notices, entries, chat: saved };
+      });
     }
     async save(key, raw, vts, revision, { preserveBalance = false } = {}) {
       if (!Number.isFinite(vts)) throw new Error("保存时间无效。");
@@ -138,13 +183,13 @@
       const records = [];
       for (const p of people) {
         const a = await this.account(p.key), ledger = await this.ledger(p.key, 12);
-        records.push({ name: p.name, configured: a.configured, balance: preview.projected[p.key] ?? a.balance, otherAssets: a.otherAssets || 0,
+        records.push({ name: p.name, configured: Boolean(a.configured || a.bound), boundToPlayer: a.bound, balance: preview.projected[p.key] ?? a.balance, otherAssets: a.otherAssets || 0,
           job: a.job || "未设置", family: a.family || "以人设为准", rules: a.rules || [], recent: [...preview.entries.filter((e) => e.key === p.key), ...ledger].sort((a, b) => b.vts - a.vts).slice(0, 18) });
       }
       return "\n# 角色独立资产与实际收支（私有账本，高优先级）\n" +
         "以下是作者后台记账资料，不是群公告。每个角色只直接知道自己的资产、工资和支出；其他角色只有实际被告知或查看其钱包才可能知道，不得全员凭空知道余额。绑定为我的角色与本空间钱包共用一个余额，其他角色独立。房产/投资等其他资产不是可用余额，不可凭空变现。未设置的余额只是待设置，不代表人物贫穷或富裕，不得编造实际入账。\n" +
-        "工资、零花钱及日常开销由收支计划按所选真实/虚拟时间自动结算，账本含本轮时间的确定性预估；已列入的收支不能因为角色说‘上班了’‘发工资了’再次入账。普通实际额外收入/消费可以用wallet_income/wallet_expense指令记账（不要重复购物订单、转账红包和周期计划）。按发生顺序，只有系统确认成功才能声称完成；余额不足不能声称已成功支付。\n" +
-        '{"type":"wallet_income","name":"实际收款角色本名","amount":100,"category":"bonus","content":"实际收到的额外报酬原因"} 或 {"type":"wallet_expense","name":"实际付款角色本名","amount":25,"category":"food","content":"剧情中实际发生的额外消费"}。\n' + JSON.stringify(records) + "\n";
+        "工资、零花钱及日常开销由收支计划按所选真实/虚拟时间自动结算，账本含本轮时间的确定性预估；已列入的收支不能因为角色说‘上班了’‘发工资了’再次入账。每次聊天明确发生且有确定金额的额外消费都应关联角色钱包；不要只说文字而漏记账。系统会从明确付款、花费、买了等当下文字识别支出；每段只描述一笔确定的付款，有多个金额或复杂分摊时先分段明确叙述每人的实际付款及最终金额，再分别用wallet_expense指令。计划、报价、假设、回忆旧支出、取消退款不可当新支出。普通实际额外收入/消费使用wallet_income/wallet_expense指令记账（不要重复购物订单、转账红包和周期计划）。消费指令放在相应付款旁白/台词之后，并用quote逐字引用该段，便于和自动识别去重；既有流水里的付款重提不可再记，余额未设置时提示设置资产而非编造余额。按发生顺序，只有系统确认成功才能声称完成；余额不足不能声称已成功支付。\n" +
+        '{"type":"wallet_income","name":"实际收款角色本名","amount":100,"category":"bonus","content":"实际收到的额外报酬原因"} 或 {"type":"wallet_expense","name":"实际付款角色本名","amount":25,"category":"food","content":"剧情中实际发生的额外消费","quote":"逐字引用本轮已发出的实际付款原文"}。\n' + JSON.stringify(records) + "\n";
     }
     async reserveCard(chat, message) {
       if (!["transfer", "red_packet"].includes(message.type) || message.isReceived || message.isRefund ||

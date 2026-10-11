@@ -14934,6 +14934,7 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
         persisted = true;
         input.value = "";
         await _0xbb356a(message, chat);
+        await _ephoneCaptureChatExpenses(chat, [message], message.vts);
         await _0x4bb316();
         input.focus();
       } catch (error) {
@@ -17541,6 +17542,23 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
     if (!window.ephoneCharacterWalletCore || !_0x24f906.characterWallets) return "";
     return new window.ephoneCharacterWalletCore.Service(_0x24f906).prompt(chat, vts);
   }
+  async function _ephoneCaptureChatExpenses(chat, messages, vts) {
+    if (!window.ephoneCharacterWalletCore || !messages.length) return;
+    const participants = window.ephonePlayerIdentity.participants(chat, Object.values(_0x5ea3c1.chats));
+    if (!messages.some((m) => window.ephoneStoryExpenses?.extract(m, participants, window.ephonePlayerIdentity.resolve).length)) return;
+    _ephoneWalletPending++;
+    try {
+      const service = new window.ephoneCharacterWalletCore.Service(_0x24f906);
+      await service.chats.put(chat);
+      const result = await service.captureExpenses(chat, messages, vts);
+      if (result.notices.length) {
+        chat.history = result.chat.history;
+        for (const notice of result.notices) if (_0x5ea3c1.activeChatId === chat.id) await _0xbb356a(notice, chat);
+        await window.EPhoneMarketAdapter?.onPaid({ balance: Number((await service.userWallet.get("main"))?.balance || 0) });
+      }
+    } catch (error) { console.warn("聊天支出记账失败", error); }
+    finally { _ephoneWalletPending--; }
+  }
   async function _ephoneWalletAction(action, chat, vts, timestamp) {
     const service = new window.ephoneCharacterWalletCore.Service(_0x24f906);
     const people = window.ephonePlayerIdentity.participants(chat, Object.values(_0x5ea3c1.chats));
@@ -17548,7 +17566,14 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
     let notice;
     try {
       if (!person) throw new Error("收支角色身份不明确。");
-      if (!(await service.account(person.key)).configured) throw new Error("请先在“我 → 角色钱包”设置该角色资产，未凭空记账。");
+      const account = await service.account(person.key);
+      if (!account.configured && !account.bound) throw new Error("请先在“我 → 角色钱包”设置该角色资产，未凭空记账。");
+      if (action.type === "wallet_expense" && action.quote) {
+        const source = chat.history.findLast((m) => (!action.for_timestamp || String(m.timestamp) === String(action.for_timestamp)) && typeof m.content === "string" && m.content.includes(action.quote));
+        const proof = source && window.ephoneStoryExpenses?.extract(source, people, window.ephonePlayerIdentity.resolve).find((p) => p.key === person.key && Math.round(p.amount * 100) === Math.round(Number(action.amount) * 100));
+        if (!proof || Number(source.vts) > vts) throw new Error("消费指令的原文没有明确发生这笔付款，未扣款。");
+      }
+      if (action.type === "wallet_expense" && await service.expenseDuplicate(person.key, action.amount, action.category || "other", vts, action.quote)) return;
       const direction = action.type === "wallet_income" ? "income" : "expense";
       notice = { role: "system", type: "pat_message", walletEntry: true, senderName: person.name, timestamp, vts,
         content: "【" + person.name + "的钱包】" + (direction === "income" ? "收入" : "支出") + " ¥" + Number(action.amount).toFixed(2) + " · " + String(action.content || "剧情收支").slice(0, 600) };
@@ -17953,6 +17978,8 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
           _0x326f3d.history.push(_0x14c18c);
           await _0x24f906.chats.put(_0x326f3d);
           if (_0x5ea3c1.activeChatId === _0x4203ee) await _0xbb356a(_0x14c18c, _0x326f3d);
+          await _ephoneCaptureChatExpenses(_0x326f3d, [_0x14c18c], _ephoneSpectatorReplyTimeMs);
+          _0x47fd25 = Math.max(_0x47fd25, Number(_0x326f3d.history.at(-1)?.timestamp || 0) + 1);
           await new Promise((resolve) => setTimeout(resolve, Math.random() * 0x4b0 + 0x320));
         }
       }
@@ -23099,6 +23126,8 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
             await new Promise((_0x1089b6) =>
               setTimeout(_0x1089b6, Math[_0x25f1e5(0x862)]() * 0x708 + 0x3e8),
             ));
+          await _ephoneCaptureChatExpenses(_0x5b16cb, [_0x4c93fd], _ephoneReplyTimeMs);
+          _0x1b9d0b = Math.max(_0x1b9d0b, Number(_0x5b16cb.history.at(-1)?.timestamp || 0) + 1);
         }
       }
       _0x7b38f8 &&
@@ -56676,7 +56705,7 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
             ? { proxyUrl: config.secondaryProxyUrl, apiKey: config.secondaryApiKey, model: config.secondaryModel } : config;
           if (!proxyUrl || !apiKey || !model) throw new Error("请先在设置里选择API预设和模型。");
           signal?.throwIfAborted();
-          const user = [{ role: "user", content: "生成这次手动刷新所需的完整JSON。" }];
+          const user = [{ role: "user", content: "请按系统说明完成本次手动操作，返回完整JSON；不要解释或省略必填资料。" }];
           const native = String(proxyUrl).includes("generativelanguage.googleapis.com");
           const gemini = native ? _0x20e281(model, apiKey, prompt, user) : null;
           const response = native ? await fetch(gemini.url, { ...gemini.data, signal }) : await _ephoneApiFetch(_ephoneBuildApiEndpoint(proxyUrl, "chat/completions"), {
@@ -57203,6 +57232,7 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
             (async () => {
               _0x3fc5c8.history.push(_0xephoneCharacterMessage);
               await _0x24f906.chats.put(_0x3fc5c8);
+              await _ephoneCaptureChatExpenses(_0x3fc5c8, [_0xephoneCharacterMessage], _0xephoneCharacterMessage.vts);
               _0x4bb316();
             })(),
             (_0x2f0fb4.value = ""),

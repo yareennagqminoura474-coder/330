@@ -108,6 +108,22 @@ const { chromium } = require("playwright-core");
     await generate("r1", [{ type: "accept_transfer", name: "乙", for_timestamp: 9000 }, { type: "text", name: "乙", content: "钱已收到。" }]);
     assert.equal(await page.evaluate(async () => (await window.db.characterWallets.get("chat:r1")).balance), 402);
     assert.equal(await page.evaluate(async () => (await window.db.userWallet.get("main")).balance), 188);
+    // Plain-language payments are booked even if the model forgets wallet_expense; metadata then dedupes.
+    const expenseQuote = "乙买了本书，花了35元。";
+    await generate("wallet-watch", [{ type: "narration", name: "乙", content: expenseQuote }, { type: "wallet_expense", name: "乙", amount: 35, category: "shopping", content: "买书", quote: expenseQuote }, { type: "text", name: "乙", content: "晚点看书。" }]);
+    assert.equal(await page.evaluate(async () => (await window.db.characterWallets.get("chat:r1")).balance), 367);
+    await generate("wallet-group", [{ type: "text", name: "乙", content: "我付了12元车费。" }]);
+    assert.equal(await page.evaluate(async () => (await window.db.characterWallets.get("chat:r1")).balance), 355);
+    await generate("r1", [{ type: "text", name: "乙", content: "我买了文具花了10元。" }]);
+    assert.equal(await page.evaluate(async () => (await window.db.characterWallets.get("chat:r1")).balance), 345);
+    await generate("wallet-watch", [{ type: "text", name: "甲", content: "我买了早餐，花了8元。" }, { type: "text", name: "乙", content: "我打算买一件衣服花50元。" }]);
+    assert.equal(await page.evaluate(async () => (await window.db.userWallet.get("main")).balance), 180);
+    assert.equal(await page.evaluate(async () => (await window.db.characterWallets.get("chat:r1")).balance), 345);
+    await page.locator('[data-spectator-action="identity"]').click();
+    await page.getByRole("button", { name: "以 乙 的身份说话", exact: true }).click();
+    await page.locator(".ephone-spectator-controls textarea").fill("我买了衣服，花了40元。");
+    await page.locator('[data-spectator-action="send"]').click();
+    await page.waitForFunction(async () => (await window.db.characterWallets.get("chat:r1")).balance === 305);
     await chat("wallet-watch"); await page.evaluate(() => window.ephoneTimeMachine.jumpTo(new Date(2026, 3, 6, 8, 59).getTime(), "frozen"));
     await generate("wallet-watch", [{ type: "text", name: "乙", content: "还没到工资时间。" }]); // consumes exact manual-time round
     const financeBefore = await page.evaluate(async () => ({ main: (await window.db.userWallet.get("main")).balance, role: (await window.db.characterWallets.get("chat:r1")).balance, time: window.ephoneTimeMachine.nowMs() }));

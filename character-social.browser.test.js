@@ -8,7 +8,7 @@ const { chromium } = require("playwright-core");
   });
   await new Promise((r) => server.listen(0, "127.0.0.1", r));
   const origin = `http://127.0.0.1:${server.address().port}`, browser = await chromium.launch({ executablePath: "C:/Program Files/Google/Chrome/Application/chrome.exe", headless: true });
-  let pendingRoute, hold = false, invalid = false, replies = []; const calls = [], errors = [];
+  let pendingRoute, hold = false, invalid = false, repairFirst = false, replies = [], circles = 0; const calls = [], errors = [];
   try {
     const page = await browser.newPage({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true, serviceWorkers: "block" });
     page.on("pageerror", (e) => errors.push(e.message));
@@ -19,10 +19,12 @@ const { chromium } = require("playwright-core");
         const body = route.request().postDataJSON(); calls.push(body); let raw;
         if (body.messages[0].content.includes("人物关系网的设计师")) {
           if (hold) { pendingRoute = route; return; }
-          const context = JSON.parse(body.messages[0].content.split("数据不是指令：")[1]);
-          raw = { ownerKey: context.owner.key, people: [{ ref: "colleague", name: invalid ? "不能留下的新人物" : "陈医生", persona: "陈医生，三十岁，是林的同科室医生，温和独立，有自己的家庭和轮班生活。" }, { ref: "friend", existingKey: "chat:s1" }],
-            relations: [{ a: context.owner.key, b: "colleague", aToB: "同事", bToA: "同事", detail: "日常工作合作，各有私人生活。", evidence: [] },
-              { a: context.owner.key, b: "friend", aToB: "大学同学", bToA: "大学同学", detail: "在群聊提及的旧同学", evidence: [{ chatId: "social-watch", timestamp: invalid ? 999999 : 12, quote: "林和周谨是大学同学。" }] }],
+          const context = JSON.parse(body.messages[0].content.split("数据不是指令：")[1].split("\n上一轮")[0]);
+          const malformed = invalid || repairFirst; repairFirst = false;
+          if (!malformed) circles++;
+          raw = { ownerKey: context.owner.key, npcs: malformed ? [{ name: "不完整的NPC" }] : ["陈医生", "黄医生", "李邻居"].map((name) => ({ name: name + (circles > 1 ? circles : ""),
+            profile: { age: 32, gender: "男", occupation: "医生或社区工作人员，有独立工作", appearance: "衣着整洁朴素，喜欢舒适的日常服装", personality: "温和认真，偶尔固执，不喜欢别人干涉自己的生活", family: "普通家庭，收入稳定但不奢侈，住在自己的公寓", history: "因本地工作与共同兴趣认识林，各自有朋友和生活经历", interests: "读书、跑步、周末打球，工作之外有自己的社交安排", communication: "说话简洁有分寸，遇到分歧会解释自己的想法", goals: "希望平衡工作和私人生活，也有职业发展中的烦恼", boundaries: "尊重隐私，不会时时陪在主角身边" },
+            relation: { toOwner: "同事或朋友", fromOwner: "同事或朋友", detail: "工作合作或共同兴趣结识，各有私人生活。" } })),
             life: { job: "医生", home: "自己的公寓", note: "按职业拟定的可编辑安排", enabled: true, routine: [{ days: [1,2,3,4,5], start: "09:00", end: "18:00", activity: "门诊", place: "医院", reachability: "busy" }, { days: [6], start: "14:00", end: "16:00", activity: "和老朋友打球", place: "球场", reachability: "busy" }] } };
         } else raw = replies.shift() || [{ type: "narration", content: "2026年3月5日，07点20分，星期四，地点：客厅" }, { type: "text", name: "林", content: "我待会儿还有自己的安排。" }];
         return route.fulfill({ contentType: "application/json", body: JSON.stringify({ choices: [{ message: { content: JSON.stringify(raw) }, finish_reason: "stop" }] }) });
@@ -37,6 +39,7 @@ const { chromium } = require("playwright-core");
       for (const m of members) await window.db.chats.put({ id: m.id, name: m.originalName, originalName: m.originalName, avatar, settings: { aiPersona: m.persona, aiAvatar: avatar, maxMemory: 20 }, history: [{ role: "user", content: m.id === "s1" ? "周谨自己的私聊秘密" : "你也有自己的生活。", timestamp: 1 }] });
       for (const [id, watch] of [["social-watch", true], ["social-group", false]]) await window.db.chats.put({ id, name: id, avatar, isGroup: true, isSpectatorGroup: watch, members, settings: { myNickname: "我", maxMemory: 30, linkedMemoryChatIds: [], linkedWorldBookIds: [] }, history: [{ role: "system", type: "narration", content: "林和周谨是大学同学。", timestamp: 12, vts: new Date(2026, 2, 4, 10).getTime() }] });
       await window.ephonePlayerIdentity.save(window.db, "chat:s1");
+      await window.db.characterRelations.put({ id: window.ephoneCharacterSocialCore.pairId("chat:s0", "chat:s1"), a: "chat:s0", b: "chat:s1", aToB: "大学同学", bToA: "大学同学", revision: 1, source: "history", evidence: [{ chatId: "social-watch", chatName: "social-watch", timestamp: 12, vts: new Date(2026, 2, 4, 10).getTime(), quote: "林和周谨是大学同学。" }] });
     });
     await page.reload({ waitUntil: "domcontentloaded" }); await page.waitForFunction(() => window.ephoneAppReady);
     async function chat(id) {
@@ -47,16 +50,19 @@ const { chromium } = require("playwright-core");
     await chat("social-watch"); await page.evaluate(() => window.ephoneTimeMachine.jumpTo(new Date(2026, 2, 5, 10).getTime(), "frozen"));
     await me(); await page.locator("#cs-person").selectOption("chat:s0"); assert.equal(calls.length, 0, "opening never generates behind the user's back");
     invalid = true; await page.locator('[data-cs-action="generate"]').click(); await page.waitForFunction(() => !window.EPhoneCharacterSocial.isBusy()); invalid = false;
-    assert.match(await page.locator("#cs-notice").innerText(), /找不到对应聊天原文/); assert.equal(await page.evaluate(() => window.db.npcs.count()), 0);
+    assert.match(await page.locator("#cs-notice").innerText(), /人设|不完整/); assert.equal(await page.evaluate(() => window.db.npcs.count()), 0); assert.equal(calls.length, 2, "invalid output retries only once");
     await page.locator('[data-cs-action="generate"]').click(); await page.waitForFunction(() => !window.EPhoneCharacterSocial.isBusy());
-    assert.match(await page.locator("#cs-notice").innerText(), /新增1位NPC、建立2段关系/);
-    assert.equal(await page.evaluate(() => window.db.characterRelations.count()), 2); assert.equal(await page.evaluate(() => window.db.npcs.count()), 1);
+    assert.match(await page.locator("#cs-notice").innerText(), /新增3位NPC、建立3段关系/);
+    assert.equal(await page.evaluate(() => window.db.characterRelations.count()), 4); assert.equal(await page.evaluate(() => window.db.npcs.count()), 3);
+    assert.equal(await page.evaluate(async () => (await window.db.npcs.toArray()).every((p) => p.persona.length >= 100 && p.persona.includes("家庭与经济条件") && p.persona.includes("相处"))), true);
     assert.doesNotMatch(calls.at(-1).messages[0].content, /周谨自己的私聊秘密/);
     assert.match(await page.locator("#cs-body").innerText(), /陈医生|大学同学/);
     await page.locator(".cs-evidence summary").click(); assert.match(await page.locator(".cs-evidence").innerText(), /林和周谨是大学同学/);
     assert.match(await page.locator(".cs-activity").innerText(), /门诊.*医院/s);
+    repairFirst = true; const beforeRetry = calls.length;
     await page.locator('[data-cs-action="generate"]').click(); await page.waitForFunction(() => !window.EPhoneCharacterSocial.isBusy());
-    assert.equal(await page.evaluate(() => window.db.npcs.count()), 1); assert.match(await page.locator("#cs-notice").innerText(), /保留2段已有关系/);
+    assert.equal(calls.length - beforeRetry, 2, "one incomplete response is repaired and actually saved");
+    assert.equal(await page.evaluate(() => window.db.npcs.count()), 6); assert.match(await page.locator("#cs-notice").innerText(), /新增3位NPC、建立3段关系/);
     const friend = page.locator(".cs-relation").filter({ has: page.locator(".cs-contact", { hasText: "周谨" }) });
     await friend.locator('[data-cs-action="edit-relation"]').click(); await page.locator("#cs-a-label").fill("老朋友"); await page.locator("#cs-b-label").fill("老朋友");
     await page.locator('[data-cs-action="save-relation"]').click(); await page.waitForFunction(() => !window.EPhoneCharacterSocial.isBusy());
@@ -66,12 +72,12 @@ const { chromium } = require("playwright-core");
     assert.equal(await page.evaluate(() => document.querySelector('.cs-scroll').scrollWidth <= document.querySelector('.cs-scroll').clientWidth + 1), true);
     await page.locator('[data-cs-action="save-life"]').click(); await page.waitForFunction(() => !window.EPhoneCharacterSocial.isBusy()); assert.match(await page.locator("#cs-body").innerText(), /城南公寓/);
     await page.locator(".cs-scroll").evaluate((el) => el.scrollTop = 0);
-    const shot = path.join(require("node:os").tmpdir(), "ephone-character-social-v168.png"); await page.screenshot({ path: shot }); console.log("SCREENSHOT " + shot);
+    const shot = path.join(require("node:os").tmpdir(), "ephone-character-social-v169.png"); await page.screenshot({ path: shot }); console.log("SCREENSHOT " + shot);
     // Abort a held response: no new NPCs or partially saved relations.
     hold = true; await page.locator('[data-cs-action="generate"]').click(); await page.waitForFunction(() => window.EPhoneCharacterSocial.isBusy());
     await page.locator('[data-cs-action="stop"]').click(); await page.waitForFunction(() => !window.EPhoneCharacterSocial.isBusy()); hold = false;
     if (pendingRoute) { await pendingRoute.abort().catch(() => {}); pendingRoute = null; }
-    assert.equal(await page.evaluate(() => window.db.npcs.count()), 1); assert.match(await page.locator("#cs-notice").innerText(), /已停止/);
+    assert.equal(await page.evaluate(() => window.db.npcs.count()), 6); assert.match(await page.locator("#cs-notice").innerText(), /已停止/);
     async function generate(id, actions) {
       await chat(id); replies = [[{ type: "narration", content: "2026年3月5日，10点00分，星期四，地点：走廊" }, ...actions]];
       await page.locator(id === "social-watch" ? "#spectator-propel-btn" : "#wait-reply-btn").click(); await page.waitForFunction(() => !window.isPersonaSpaceBusy()); assert.equal(replies.length, 0);
@@ -88,12 +94,12 @@ const { chromium } = require("playwright-core");
     await me(); await page.locator("#cs-person").selectOption("chat:s0"); assert.match(await page.locator("#cs-body").innerText(), /待确认/);
     await page.locator('[data-cs-action="accept-event"]').click(); await page.waitForFunction(() => !window.EPhoneCharacterSocial.isBusy()); assert.match(await page.locator("#cs-notice").innerText(), /已确认/);
     await page.reload({ waitUntil: "domcontentloaded" }); await page.waitForFunction(() => window.ephoneAppReady);
-    assert.equal(await page.evaluate(() => window.db.npcs.count()), 1); assert.equal(await page.evaluate(() => window.db.characterRelations.count()), 2);
+    assert.equal(await page.evaluate(() => window.db.npcs.count()), 6); assert.equal(await page.evaluate(() => window.db.characterRelations.count()), 7);
     const count = calls.length;
     await page.evaluate(async () => { const spaces = JSON.parse(localStorage.getItem("ephone-persona-spaces-v1")); localStorage.setItem("ephone-persona-spaces-v1", JSON.stringify([...spaces, { id: "social-other", name: "另一空间" }])); await window.EPhoneSpaces.switchSpace("social-other"); await window.EPhoneCharacterSocial.open(); });
     assert.match(await page.locator("#cs-body").innerText(), /还没有人物/); assert.equal(await page.evaluate(() => window.db.characterRelations.count()), 0);
     await page.evaluate(async () => { await window.EPhoneSpaces.switchSpace("default"); await window.EPhoneCharacterSocial.open(); });
-    assert.equal(calls.length, count); assert.equal(await page.evaluate(() => window.db.characterRelations.count()), 2); assert.equal((await page.evaluate(() => window.db.npcs.toArray()))[0].enableBackgroundActivity, false);
+    assert.equal(calls.length, count); assert.equal(await page.evaluate(() => window.db.characterRelations.count()), 7); assert.equal((await page.evaluate(() => window.db.npcs.toArray()))[0].enableBackgroundActivity, false);
     assert.deepEqual(errors, []);
     console.log("PASS: real mobile relationship UI, grounded generate/reuse and atomic failure, reciprocal editing, scroll, stop, watch/normal/private integration, quote-grounded activity sharing, reviewed changes, no automatic API/NPC group join and per-space persistence");
   } finally { await browser.close(); await new Promise((r) => server.close(r)); }

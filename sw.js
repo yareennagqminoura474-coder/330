@@ -1,33 +1,34 @@
 // Service Worker 文件 (sw.js) - 强力保活版
 
 // 缓存版本号
-const CACHE_VERSION = "v1.7.68"; // 版本号+1
+const CACHE_VERSION = "v1.7.69"; // 版本号+1
 const CACHE_NAME = `ephone-cache-${CACHE_VERSION}`;
 
 const CORE_URLS_TO_CACHE = [
-  "./life-market-core.js?v=1.7.68",
-  "./player-identity.js?v=1.7.68",
-  "./character-wallet-core.js?v=1.7.68",
-  "./character-wallet.js?v=1.7.68",
-  "./character-wallet.css?v=1.7.68",
-  "./character-social-core.js?v=1.7.68",
-  "./character-social.js?v=1.7.68",
-  "./character-social.css?v=1.7.68",
-  "./market-orders.js?v=1.7.68",
-  "./life-market.js?v=1.7.68",
-  "./life-market.css?v=1.7.68",
+  "./life-market-core.js?v=1.7.69",
+  "./player-identity.js?v=1.7.69",
+  "./story-expenses.js?v=1.7.69",
+  "./character-wallet-core.js?v=1.7.69",
+  "./character-wallet.js?v=1.7.69",
+  "./character-wallet.css?v=1.7.69",
+  "./character-social-core.js?v=1.7.69",
+  "./character-social.js?v=1.7.69",
+  "./character-social.css?v=1.7.69",
+  "./market-orders.js?v=1.7.69",
+  "./life-market.js?v=1.7.69",
+  "./life-market.css?v=1.7.69",
   "./index.html",
-  "./style.css?v=1.7.68",
-  "./persona-spaces.js?v=1.7.68",
-  "./group-context.js?v=1.7.68",
-  "./spectator-money.js?v=1.7.68",
-  "./space-wallet.js?v=1.7.68",
-  "./chat-response.js?v=1.7.68",
-  "./script.js?v=1.7.68",
+  "./style.css?v=1.7.69",
+  "./persona-spaces.js?v=1.7.69",
+  "./group-context.js?v=1.7.69",
+  "./spectator-money.js?v=1.7.69",
+  "./space-wallet.js?v=1.7.69",
+  "./chat-response.js?v=1.7.69",
+  "./script.js?v=1.7.69",
   "./api-payload-guard.js?v=1.7.44",
-  "./narration-mode.js?v=1.7.68",
-  "./time-machine.js?v=1.7.68",
-  "./holiday-calendar.js?v=1.7.68",
+  "./narration-mode.js?v=1.7.69",
+  "./time-machine.js?v=1.7.69",
+  "./holiday-calendar.js?v=1.7.69",
 ];
 
 const OPTIONAL_URLS_TO_CACHE = [

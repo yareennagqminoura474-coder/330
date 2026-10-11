@@ -44,7 +44,7 @@
     if (!owner) { body.innerHTML = "<p>本空间还没有人物，请先建立角色或NPC。</p>"; return; }
     const relations = data.relations.filter((r) => (r.a === key || r.b === key) && person(r.a) && person(r.b)), life = data.lives.find((l) => l.key === key), activity = core.activityAt(life, now());
     const pending = data.events.filter((e) => e.status === "pending" && (e.a === key || e.b === key));
-    body.innerHTML = `<section class="cs-hero"><small>${esc(window.EPHONE_SPACE_NAME || "默认空间")} · 本空间人物关系</small><h2>${esc(owner.name)}的生活圈</h2><p>关系不等于在场。朋友、同事各自有生活，不会默认一直陪着你或绑定角色。</p><button data-cs-action="generate">${relations.length ? "一键补全社交圈" : "一键生成人物关系"}</button>${busy && controller ? '<button data-cs-action="stop">停止生成</button>' : ""}<small>按人设与本人参与的聊天生成；自动建立NPC和关系，不自动进群、不后台消耗API。重复生成保留已有关系和作息。</small></section>` +
+    body.innerHTML = `<section class="cs-hero"><small>${esc(window.EPHONE_SPACE_NAME || "默认空间")} · 本空间人物关系</small><h2>${esc(owner.name)}的生活圈</h2><p>关系不等于在场。朋友、同事各自有生活，不会默认一直陪着你或绑定角色。</p><button data-cs-action="generate">一键生成NPC并绑定关系</button>${busy && controller ? '<button data-cs-action="stop">停止生成</button>' : ""}<small>每次点击调用已配置API，新建约3至5位有完整人设的NPC，再自动绑定双向关系。保留已有设定，不自动进群；格式不完整时最多重试一次。</small></section>` +
       `<section class="cs-panel"><div class="cs-title"><h3>独立生活</h3><button data-cs-action="edit-life">编辑作息</button></div><p>${esc(life?.job || "身份 / 工作依人设")} · ${esc(life?.home || "常住处未设置")}</p><div class="cs-activity"><strong>${activity ? esc(activity.activity) : "暂无当前安排"}</strong><span>${activity ? esc(activity.place) + " · " + reach[activity.reachability] : "依当前情节自然行动"}</span><small>${activity?.source === "chat" ? "来自实际聊天，短时状态" : activity ? "作息预期，不代表此刻一定在场；当前聊天情节和假期优先" : "不会因没设置计划就凭空离场"}</small></div><small>空间时间：${esc(time(now()))}${life?.enabled === false ? " · 作息已暂停" : ""}</small><p>${esc(life?.note || "一键生成时会拟定工作、休息和个人社交安排，可修改。")}</p><details><summary>一周安排 · ${(life?.routine || []).length}项</summary>${(life?.routine || []).map((r) => `<p>${r.days.map((d) => "周" + "日一二三四五六"[d]).join("、")} ${esc(r.start)}–${esc(r.end)}<br>${esc(r.activity)} · ${esc(r.place)} · ${reach[r.reachability]}</p>`).join("")}</details></section><div id="cs-life-editor"></div>` +
       `<section class="cs-panel"><div class="cs-title"><h3>人物关系 · ${relations.length}</h3><button data-cs-action="add-relation">添加关系</button></div><p class="cs-help">双方关系分别保存，例如：对你而言是下属，对他而言你是上司。新拟定设定不会伪装成旧聊天事实。</p>${relations.map((r) => { const from = r.a === key, other = person(from ? r.b : r.a); return `<article class="cs-relation"><button class="cs-contact" data-cs-action="person" data-key="${esc(other.key)}">${esc(other.name)} <small>查看TA的关系 ›</small></button><div class="cs-labels"><span>TA是你的${esc(from ? r.aToB : r.bToA)}</span><span>你是TA的${esc(from ? r.bToA : r.aToB)}</span></div><p>${esc(r.detail)}</p><small>${sourceLabel(r)}</small>${evidenceHtml(r.evidence)}<details><summary>人物档案</summary><p class="cs-persona">${esc(other.persona || "未设置")}</p></details><div><button data-cs-action="edit-relation" data-id="${esc(r.id)}">编辑</button> <button data-cs-action="delete-relation" data-id="${esc(r.id)}">解除关系</button></div></article>`; }).join("") || "<p>还没有关系，可以一键生成或手动连接已有角色。</p>"}</section><div id="cs-relation-editor"></div>` +
       (pending.length ? `<section class="cs-panel"><h3>聊天中的关系变化 · 待确认</h3><small>聊天会提取有原文依据的变化，先由你确认，不自动改掉人设和辈分。</small>${pending.map((e) => `<article class="cs-relation"><strong>${esc(person(e.a)?.name || "已移走的人物")} ↔ ${esc(person(e.b)?.name || "已移走的人物")}</strong><p>${esc(e.aToB)} / ${esc(e.bToA)} · ${esc(e.detail)}</p>${evidenceHtml(e.evidence)}<button data-cs-action="accept-event" data-id="${esc(e.id)}">确认这段关系</button> <button data-cs-action="dismiss-event" data-id="${esc(e.id)}">忽略</button></article>`).join("")}</section>` : "");
@@ -88,12 +88,20 @@
     if (action === "save-life") await operate(async () => { await service.saveLife(key, readLife(), now(), editLife.revision); editLife = null; message = "日常安排已保存，所有聊天按本空间时间参考，不会强行打断当前剧情。"; await reload(); });
     if (["accept-event", "dismiss-event"].includes(action)) await operate(async () => { await service.review(id, action === "accept-event", now()); message = action === "accept-event" ? "已确认，人物关系已更新。" : "已忽略，原关系未改变。"; await reload(); });
     if (action === "generate") await operate(async () => {
-      controller = new AbortController(); message = "正在结合人设与本人参与的聊天，补全社交圈和独立生活…"; editRelation = null; editLife = null; render();
+      controller = new AbortController(); message = "第1步：正在调用API生成完整NPC人设（含职业、性格、家庭和双向关系）…"; editRelation = null; editLife = null; render();
       try {
         const context = await service.context(key); controller.signal.throwIfAborted();
-        const raw = await window.EPhoneMarketAdapter.generate(core.generationPrompt(context), controller.signal); controller.signal.throwIfAborted();
-        const result = await service.generate(key, raw, now(), context);
-        message = `已新增${result.created.length}位NPC、建立${result.linked}段关系${result.kept ? "，保留" + result.kept + "段已有关系" : ""}。可在下方编辑；新人物也已保存到本空间NPC列表。`;
+        const prompt = core.newCirclePrompt(context); let result;
+        for (let attempt = 0; attempt < 2; attempt++) {
+          const raw = await window.EPhoneMarketAdapter.generate(prompt + (attempt ? "\n上一轮格式不完整，原因：" + message + "。本次必须返回至少2位全新、完整人设且包含双向关系的NPC。" : ""), controller.signal); controller.signal.throwIfAborted();
+          message = "第2步：正在保存NPC，并自动绑定人物关系…"; render();
+          try { result = await service.generateNew(key, raw, now(), context); break; }
+          catch (error) {
+            if (attempt || error.code !== "SOCIAL_GENERATION_INVALID") throw error;
+            message = error.message + " 正在重新调用API补全（最多一次）…"; render();
+          }
+        }
+        message = `已新增${result.created.length}位NPC、建立${result.linked}段关系：${result.created.map((p) => p.name).join("、")}。完整人设已保存到NPC列表和下方人物档案。` + (result.warnings.length ? "\n" + result.warnings.join("\n") : "");
         await reload(); await window.refreshPersonaSpaceData?.();
       } finally { controller = null; }
     });
