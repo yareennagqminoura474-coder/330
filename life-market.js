@@ -3,7 +3,7 @@
   const core = window.ephoneLifeMarketCore;
   const esc = (value) => String(value ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
   const money = (value) => Number(value || 0).toFixed(2);
-  let screen, state = core.blank(), orders = [], balance = 0, chats = [], store, spaceId, spaceName;
+  let screen, state = core.blank(), orders = [], balance = 0, chats = [], store, spaceId, spaceName, bindingName = "";
   let tab = "goods", category = "全部", search = "", busy = false, controller, message = "", confirmation = false, recipient = "", openToken = 0;
   function create() {
     if (screen) return;
@@ -42,7 +42,7 @@
     screen.querySelector(".market-message").textContent = message;
   }
   function recipientOptions() {
-    const options = [{ label: "给自己下单", value: "" }];
+    const options = [{ label: bindingName ? `给${bindingName}下单（充当我）` : "给自己下单", value: "" }];
     for (const chat of chats) {
       const names = chat.isGroup || chat.isSpectatorGroup ? (chat.members || []).map((member) => member.originalName) : [chat.originalName || chat.name];
       for (const name of [...new Set(names)].filter(Boolean)) options.push({ label: `${name} · ${chat.name}`, value: JSON.stringify({ chatId: chat.id, recipientName: name }) });
@@ -56,7 +56,7 @@
   }
   function render() {
     create();
-    screen.querySelector(".market-account").textContent = `${spaceName || "默认空间"} · 钱包 ¥${money(balance)}`;
+    screen.querySelector(".market-account").textContent = `${spaceName || "默认空间"}${bindingName ? " · 我：" + bindingName : ""} · 钱包 ¥${money(balance)}`;
     screen.querySelector(".market-nav").innerHTML = [["goods", "🛍", "购物"], ["food", "🍱", "外卖"], ["cart", "🛒", `购物车${state.cart.length ? " · " + state.cart.reduce((n, line) => n + line.quantity, 0) : ""}`], ["orders", "🧾", "订单"]].map(([id, icon, label]) => `<button type="button" data-tab="${id}" class="${tab === id ? "selected" : ""}" aria-current="${tab === id ? "page" : "false"}"><span>${icon}</span>${label}</button>`).join("");
     const content = screen.querySelector(".market-content");
     if (tab === "goods" || tab === "food") {
@@ -64,13 +64,13 @@
       renderProducts();
     } else if (tab === "cart") {
       const totals = core.quote(state.cart);
-      content.innerHTML = '<h2 class="market-section-title">购物车</h2>' + (state.cart.length ? state.cart.map((line) => `<article class="market-cart-line"><span class="market-cart-emoji">${esc(line.item.emoji)}</span><div><h3>${esc(line.item.name)}</h3><small>${esc(line.item.merchant)} · ¥${money(line.item.price)}</small><div class="market-quantity"><button type="button" data-item="${esc(line.item.id)}" data-delta="-1" aria-label="减少：${esc(line.item.name)}">−</button><span>${line.quantity}</span><button type="button" data-item="${esc(line.item.id)}" data-delta="1" aria-label="增加：${esc(line.item.name)}">＋</button></div></div></article>`).join("") + `<div class="market-checkout"><label for="market-recipient">收货角色</label><select id="market-recipient">${recipientOptions()}</select><p>商品 ¥${money(totals.subtotal)} · 配送 ¥${money(totals.delivery)}</p><strong>合计 ¥${money(totals.total)}</strong><p class="market-disclaimer">仅小手机内的虚拟购买，不产生现实订单。为角色下单会在对应聊天留下可被角色感知的订单记录。</p>${confirmation ? '<p>确认从当前空间钱包付款？</p><div class="market-confirm"><button type="button" data-action="cancel">取消</button><button type="button" data-action="pay" class="market-primary">确认付款</button></div>' : '<button type="button" data-action="checkout" class="market-primary">去下单</button>'}</div>` : '<div class="market-empty">购物车还是空的。刷新不会清空已加入的商品。</div>');
+      content.innerHTML = '<h2 class="market-section-title">购物车</h2>' + (state.cart.length ? state.cart.map((line) => `<article class="market-cart-line"><span class="market-cart-emoji">${esc(line.item.emoji)}</span><div><h3>${esc(line.item.name)}</h3><small>${esc(line.item.merchant)} · ¥${money(line.item.price)}</small><div class="market-quantity"><button type="button" data-item="${esc(line.item.id)}" data-delta="-1" aria-label="减少：${esc(line.item.name)}">−</button><span>${line.quantity}</span><button type="button" data-item="${esc(line.item.id)}" data-delta="1" aria-label="增加：${esc(line.item.name)}">＋</button></div></div></article>`).join("") + `<div class="market-checkout"><label for="market-recipient">收货角色</label><select id="market-recipient">${recipientOptions()}</select><p>商品 ¥${money(totals.subtotal)} · 配送 ¥${money(totals.delivery)}</p><strong>合计 ¥${money(totals.total)}</strong><p class="market-disclaimer">仅小手机内的虚拟购买，不产生现实订单。绑定后，订单只属于绑定角色；聊天卡片不是全群公告，其他角色需被告知、看到到货或实际查看手机才知情。</p>${confirmation ? '<p>确认从当前空间钱包付款？</p><div class="market-confirm"><button type="button" data-action="cancel">取消</button><button type="button" data-action="pay" class="market-primary">确认付款</button></div>' : '<button type="button" data-action="checkout" class="market-primary">去下单</button>'}</div>` : '<div class="market-empty">购物车还是空的。刷新不会清空已加入的商品。</div>');
     } else {
-      content.innerHTML = '<h2 class="market-section-title">我的订单</h2>' + (orders.length ? orders.map((order) => `<article class="market-order"><div><strong>${esc(order.recipientName)}</strong><span>已支付 · 虚拟订单</span></div><small>${esc(window.EPhoneMarketAdapter?.formatTime(order.vts) || new Date(order.timestamp).toLocaleString("zh-CN"))}</small>${order.items.map((line) => `<p>${esc(line.item.emoji)} ${esc(line.item.name)} × ${line.quantity}</p>`).join("")}<strong>¥${money(order.total)}</strong><small> 含配送 ¥${money(order.delivery)}</small></article>`).join("") : '<div class="market-empty">还没有订单。手动刷新不会删除已付订单。</div>');
+      content.innerHTML = '<h2 class="market-section-title">我的订单</h2>' + (orders.length ? orders.map((order) => `<article class="market-order"><div><strong>${esc(order.recipientName)}</strong><span>${esc(window.ephoneMarketOrders.statusText(order))}</span></div><small>${esc(window.EPhoneMarketAdapter?.formatTime(order.vts) || new Date(order.timestamp).toLocaleString("zh-CN"))}</small>${order.items.map((line) => `<p>${esc(line.item.emoji)} ${esc(line.item.name)} × ${line.quantity}</p>`).join("")}${order.cancelledBy ? `<p>${esc(order.cancelledBy)}取消 · 已退款¥${money(order.refundedAmount)}</p>` : ""}<strong>¥${money(order.total)}</strong><small> 含配送 ¥${money(order.delivery)}</small></article>`).join("") : '<div class="market-empty">还没有订单。手动刷新不会删除已付订单。</div>');
     }
     renderBusy();
   }
-  async function open() {
+  async function open(options = {}) {
     create(); window.showScreen?.("life-market-screen");
     if (busy) { render(); return; }
     const token = ++openToken;
@@ -78,10 +78,12 @@
       if (!window.EPhoneMarketAdapter || !window.db?.marketState) throw new Error("应用还在启动，请稍后重新打开。");
       const nextSpace = window.EPHONE_SPACE_ID || "default";
       const nextStore = new core.Store(window.db);
-      const [loaded, wallet, records, characters] = await Promise.all([nextStore.load(), nextStore.wallet.get("main"), nextStore.orders.orderBy("timestamp").reverse().limit(100).toArray(), nextStore.chats.toArray()]);
+      const [loaded, wallet, records, characters, binding] = await Promise.all([nextStore.load(), nextStore.wallet.get("main"), nextStore.orders.orderBy("timestamp").reverse().limit(100).toArray(), nextStore.chats.toArray(), window.ephonePlayerIdentity?.load(window.db)]);
       if (token !== openToken || nextSpace !== (window.EPHONE_SPACE_ID || "default")) return;
       if (spaceId !== nextSpace) { tab = "goods"; category = "全部"; search = ""; recipient = ""; }
+      if (options.tab === "orders") tab = "orders";
       store = nextStore; spaceId = nextSpace; spaceName = window.EPHONE_SPACE_NAME; state = loaded;
+      bindingName = binding?.valid ? binding.name : "";
       balance = Number(wallet?.balance || 0); orders = records; chats = characters; confirmation = false; message = "";
     } catch (error) { message = error.message; }
     render();
@@ -104,8 +106,10 @@
     busy = true; message = "正在付款…"; renderBusy();
     try {
       const adapter = window.EPhoneMarketAdapter;
-      const target = recipient ? JSON.parse(recipient) : null;
-      const result = await store.checkout({ orderId: crypto.randomUUID(), expectedCart: state.cart, target, vts: adapter.now(target?.chatId), spaceId });
+      const binding = await window.ephonePlayerIdentity?.load(window.db);
+      if (binding && !binding.valid) throw new Error("绑定角色已移走或删除，请到“我”重新绑定。");
+      const target = recipient ? JSON.parse(recipient) : await adapter.orderTarget?.(binding);
+      const result = await store.checkout({ orderId: crypto.randomUUID(), expectedCart: state.cart, target, owner: binding, vts: adapter.now(target?.chatId), spaceId });
       balance = result.balance; confirmation = false;
       state = await store.load(); orders = await store.orders.orderBy("timestamp").reverse().limit(100).toArray();
       // The transaction already committed. Display/cache synchronization must
@@ -115,5 +119,30 @@
     } catch (error) { message = error.message; }
     finally { busy = false; render(); }
   }
-  window.EPhoneLifeMarket = { open, isBusy: () => busy };
+  function fillOrderCard(card, message, order) {
+    const snapshot = order ? { ownerName: order.ownerName, recipientName: order.recipientName, items: window.ephoneMarketOrders.itemsText(order),
+      total: order.total, status: order.status, knownBy: order.knownBy || [], cancelledBy: order.cancelledBy } : message.orderSnapshot;
+    const status = window.ephoneMarketOrders.statusText(snapshot || {});
+    card.innerHTML = `<h4>${message.orderEvent === "cancelled" ? "↩ 订单取消与退款" : message.orderEvent === "inspected" ? "📱 查看手机订单" : message.orderEvent === "shared" ? "💬 订单已告知" : message.orderEvent === "delivered" ? "📦 订单到货" : "🛍 购物 / 外卖订单"}</h4>` +
+      `<p>${esc(snapshot?.items || message.content || "订单详情")}</p><p>${esc(status)} · ¥${money(snapshot?.total)}</p>` +
+      `<small>${esc(snapshot?.ownerName ? "订单主人：" + snapshot.ownerName + "；收货：" + snapshot.recipientName : "收货：" + (snapshot?.recipientName || "自己"))}</small>` +
+      (snapshot?.cancelledBy ? `<small>${esc(snapshot.cancelledBy)}已取消，款项已退回本空间钱包</small>` : "") +
+      `<small>${snapshot?.ownerName ? "私有记忆，仅主人和已知情角色知道；卡片可见不代表全群知情。" : "虚拟订单，不产生现实购物"}</small>` +
+      `<button type="button">查看商城订单</button>`;
+    card.querySelector("button").onclick = (event) => { event.stopPropagation(); open({ tab: "orders" }); };
+  }
+  async function renderOrderMessage(message) {
+    const wrapper = document.createElement("div"); wrapper.className = "message-wrapper market-order-wrapper";
+    wrapper.dataset.timestamp = message.timestamp;
+    const card = document.createElement("article"); card.className = "market-chat-card"; card.dataset.orderId = message.orderId;
+    card.dataset.event = message.orderEvent || "placed"; card.dataset.timestamp = message.timestamp;
+    let order;
+    try { order = await window.db.marketOrders.get(message.orderId); } catch {}
+    fillOrderCard(card, message, order); wrapper.append(card); return wrapper;
+  }
+  function refreshOrderCards(order) {
+    for (const card of document.querySelectorAll(".market-chat-card")) if (card.dataset.orderId === order.id)
+      fillOrderCard(card, { orderEvent: card.dataset.event }, order);
+  }
+  window.EPhoneLifeMarket = { open, renderOrderMessage, refreshOrderCards, isBusy: () => busy };
 })();

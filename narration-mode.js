@@ -119,6 +119,9 @@
 
       const rawType = String(item.type || item.t || "").trim();
       const normalizedType = rawType.toLowerCase();
+      // Operational events may contain parenthesized actions, but must not be
+      // converted into display-only narration or their side effects are lost.
+      if (["market_order_share", "market_phone_check", "market_order_arrived", "cancel_market_order"].includes(normalizedType)) return [item];
       const text = getMessageText(item).trim();
 
       if (narrationTypeAliases.has(normalizedType) || isMarkedNarration(text)) {

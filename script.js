@@ -10063,7 +10063,7 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
         : `${_0xspaceBaseName}__space_${_0xspaceId}`,
     );
     ((_0x24f906 = _0xpersonaDb),
-      _0x24f906[_0x205142(0x1318)](0x33)
+      _0x24f906[_0x205142(0x1318)](0x34)
         [_0x205142(0x146d)]({
           doubanPosts: _0x205142(0x220),
           chats:
@@ -10088,6 +10088,7 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
           marketState: "&id",
           marketOrders: "&id,timestamp,status",
           spaceClock: "&id",
+          spaceProfiles: "&id",
           apiPresets: "++id,\x20name",
           renderingRules: _0x205142(0xa18),
           appearancePresets: _0x205142(0xd4e),
@@ -11426,7 +11427,7 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
         presetCategories: _0x29b98f,
         npcs: _0x1349a6,
       });
-      for (const tableName of ["marketState", "marketOrders", "userWallet", "userTransactions", "spaceClock"])
+      for (const tableName of ["marketState", "marketOrders", "userWallet", "userTransactions", "spaceClock", "spaceProfiles"])
         _0x1cbf58[tableName] = await _0x24f906.table(tableName).toArray();
       const _0x23cf5f = new Blob([JSON["stringify"](_0x1cbf58, null, 0x2)], {
           type: _0x39250e(0x1206),
@@ -11544,6 +11545,7 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
       memories: "回忆",
       callRecords: _0x30ebd8(0x1a17),
       shoppingProducts: "商品",
+      spaceProfiles: "本空间角色绑定",
       marketState: "逛逛商品与购物车",
       marketOrders: "逛逛订单",
       spaceClock: "本空间时间",
@@ -11697,6 +11699,7 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
       memories: "回忆",
       callRecords: _0x322e48(0x1a17),
       shoppingProducts: "商品",
+      spaceProfiles: "本空间角色绑定",
       marketState: "逛逛商品与购物车",
       marketOrders: "逛逛订单",
       spaceClock: "本空间时间",
@@ -11960,7 +11963,7 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
             await _0x24f906["npcs"][_0x49b300(0x97c)](
               _0xd5cb09[_0x49b300(0x94f)],
             );
-          for (const tableName of ["marketState", "marketOrders", "userWallet", "userTransactions", "spaceClock"])
+          for (const tableName of ["marketState", "marketOrders", "userWallet", "userTransactions", "spaceClock", "spaceProfiles"])
             if (Array.isArray(_0xd5cb09[tableName])) await _0x24f906.table(tableName).bulkPut(_0xd5cb09[tableName]);
         },
       );
@@ -16238,6 +16241,13 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
       : alert(_0x147a7e(0x98c));
   }
   async function _0x426585(_0x45add0, _0x481875) {
+    if (_0x45add0.marketOrder && window.EPhoneLifeMarket?.renderOrderMessage) {
+      if (_0x45add0.isHidden && !_0x481875.settings?.showHiddenMessages) return null;
+      const card = await window.EPhoneLifeMarket.renderOrderMessage(_0x45add0);
+      _0x100ddd(card, () => _0x3b7f66(_0x45add0.timestamp));
+      card.addEventListener("click", () => { if (_0x229236) _0x2bf69a(_0x45add0.timestamp); });
+      return card;
+    }
     const _0x200523 = _0x3ce505;
     if (window.ephoneTimeMachine?.normalizeChatMessageWeekday)
       _0x45add0 = window.ephoneTimeMachine.normalizeChatMessageWeekday(
@@ -17487,6 +17497,39 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
       ) || _0x4a3960(timestamp),
     });
   }
+  const _ephoneOrderActionTypes = ["market_order_share", "market_phone_check", "market_order_arrived", "cancel_market_order"];
+  async function _ephoneSyncOrderResult(result) {
+    await window.EPhoneMarketAdapter.onPaid(result);
+    for (const notice of result.notifications || []) {
+      if (_0x5ea3c1.activeChatId === notice.chatId)
+        await _0xbb356a(notice.message, _0x5ea3c1.chats[notice.chatId]);
+    }
+  }
+  async function _ephoneOrderPrompt(chat) {
+    if (!window.ephoneMarketOrders || !_0x24f906.marketOrders) return "";
+    const service = new window.ephoneMarketOrders.Service(_0x24f906);
+    for (const result of await service.captureDisclosures(chat)) await _ephoneSyncOrderResult(result);
+    return service.prompt(chat);
+  }
+  async function _ephoneRunOrderAction(action, chat, vts, timestamp) {
+    // Preserve reply bubbles not yet saved by the normal generation loop.
+    await _0x24f906.chats.put(chat);
+    let result;
+    try {
+      result = await new window.ephoneMarketOrders.Service(_0x24f906).act(action, { chatId: chat.id, vts, timestamp });
+    } catch (error) {
+      const notice = { role: "system", type: "pat_message", orderOperationFailed: true,
+        timestamp: Math.max(timestamp, Number(chat.history.at(-1)?.timestamp || 0) + 1), vts,
+        content: "【订单操作未生效】" + error.message + " 未按本次指令扣款或退款，不能在剧情里视为已完成。" };
+      chat.history.push(notice);
+      await _0x24f906.chats.put(chat);
+      if (_0x5ea3c1.activeChatId === chat.id) await _0xbb356a(notice, chat);
+      return;
+    }
+    // A display error after commit must never report a real refund as failed.
+    try { if (result) await _ephoneSyncOrderResult(result); }
+    catch (error) { console.warn("订单已保存，卡片显示同步失败", error); }
+  }
   async function _0x135d5c(_ephoneSpectatorOptions = {}) {
     const _0xd07074 = _0x3ce505;
     if (!_0x5ea3c1[_0xd07074(0x1aba)]) return;
@@ -17610,6 +17653,7 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
           ) || "") +
           window.ephoneSpectatorMoney.prompt +
           window.ephoneSpectatorMoney.ledger(_0x326f3d) +
+          (await _ephoneOrderPrompt(_0x326f3d)) +
           "\n# 围观模式的旁白与台词\n" +
           "第一个可见 JSON 对象必须是 narration 时间地点旁白。角色真正说出口或打出的内容用 text；动作、心理、神态、环境、场景和时间一律用 narration。每位发言角色的动作按情境穿插旁白。旁白对象格式为 {\"type\":\"narration\",\"name\":\"角色名或旁白\",\"content\":\"内容\"}。不要把动作放进 text，也不要以旁白代替角色说话。\n" +
           "无论最后一条是谁发送的，均从其内容继续往后推进。用户以角色身份输入的台词属于该角色，不属于额外的‘用户’，不要重写或忽略。根据剧情安排必要的多轮互动，条数不固定，不要每人只说一句就停止；同一条 text 只放一段自然发言，动作另用 narration。\n" +
@@ -17690,6 +17734,12 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
         );
         if (_0x5cafc4.type !== "narration" && !_ephoneSpeaker) {
           console.warn("观看群聊忽略非群成员或身份不明确的发言：", _0x5cafc4.name);
+          continue;
+        }
+        if (window.ephoneMarketOrders && _ephoneOrderActionTypes.includes(_0x5cafc4.type)) {
+          await _ephoneRunOrderAction({ ..._0x5cafc4, name: _ephoneSpeaker }, _0x326f3d, _ephoneSpectatorReplyTimeMs, _0x47fd25++);
+          _0x47fd25 = Math.max(_0x47fd25, Number(_0x326f3d.history.at(-1)?.timestamp || 0) + 1);
+          _ephoneSpectatorTimeCommitted = true;
           continue;
         }
         let _0x14c18c = null;
@@ -20301,6 +20351,7 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
       }
       _0x539674 +=
         "\n# 【回复长度与节奏（按情境灵活执行）】\n通常将内容拆分成约4到7条简短消息；简单回应可以更少，互动丰富或需要逐步展开时可以更多。此范围只是自然聊天的倾向，没有固定最低或最高条数。不要为凑数量添加空话，也不要把多个独立想法挤成一条。\n";
+      _0x539674 += await _ephoneOrderPrompt(_0x5b16cb);
       _0x539674 +=
         "\n# 【发送前最终时间校验】\n" +
         `本轮唯一有效的当前时间是 ${window.ephoneTimeMachine?.formatDateTime(_ephoneReplyTimeMs, { withWeekday: true }) || _0x369e74}。` +
@@ -20616,6 +20667,12 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
             "AI幻觉已被拦截！试图在群聊中发送一条没有“name”的消息。消息内容:",
             _0x58c66c,
           );
+          continue;
+        }
+        if (window.ephoneMarketOrders && _ephoneOrderActionTypes.includes(_0x58c66c.type)) {
+          await _ephoneRunOrderAction({ ..._0x58c66c, name: _0x58c66c.name || _0x5b16cb.originalName || _0x5b16cb.name }, _0x5b16cb, _ephoneReplyTimeMs, _0x1b9d0b++);
+          _0x1b9d0b = Math.max(_0x1b9d0b, Number(_0x5b16cb.history.at(-1)?.timestamp || 0) + 1);
+          _0xephoneTimeCommitted = true;
           continue;
         }
         let _0x4c93fd = null;
@@ -56466,8 +56523,9 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
         const _0xspaceLabel = document.getElementById("me-space-name");
         if (_0xspaceLabel)
           _0xspaceLabel.textContent = window.EPHONE_SPACE_NAME || "默认空间";
+        await window.ephonePlayerIdentity?.render?.();
       }),
-      (window.isPersonaSpaceBusy = () => Boolean(_0xephoneGenerationController || _0xephoneSpectatorGenerating || _ephoneSpectatorMoneyBusy || _ephoneWalletPending || window.EPhoneLifeMarket?.isBusy())),
+      (window.isPersonaSpaceBusy = () => Boolean(_0xephoneGenerationController || _0xephoneSpectatorGenerating || _ephoneSpectatorMoneyBusy || _ephoneWalletPending || window.EPhoneLifeMarket?.isBusy() || window.ephonePlayerIdentity?.isBusy?.())),
       (window.EPhoneMarketAdapter = {
         now: (chatId) => window.ephoneTimeMachine?.nowMs(chatId || _0x5ea3c1.activeChatId) || Date.now(),
         formatTime: (value) => window.ephoneTimeMachine?.formatDateTime(value, { withWeekday: true }) || new Date(value).toLocaleString("zh-CN"),
@@ -56478,6 +56536,10 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
           if (spaceId !== (window.EPHONE_SPACE_ID || "default")) throw new Error("空间已切换，请重新打开商城。");
           const context = window.ephoneLifeMarketCore.buildContext({ chats, npcs,
             nickname: _0x5ea3c1.qzoneSettings?.nickname, groupContext: window.ephoneGroupContext });
+          const binding = await window.ephonePlayerIdentity.load(store.database);
+          if (binding && !binding.valid) throw new Error("绑定角色已移走或删除，请到“我”重新绑定。");
+          if (binding?.valid) { context.boundPlayer = binding; context.player = binding.name; }
+          if (spaceId !== (window.EPHONE_SPACE_ID || "default")) throw new Error("空间已切换，请重新打开商城。");
           return { context, walletBalance: Number(wallet?.balance || 0), vts: window.EPhoneMarketAdapter.now() };
         },
         generate: async (prompt, signal) => {
@@ -56496,14 +56558,26 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
           if (!response.ok) throw new Error(`API 请求失败：${response.status} - ${(await response.text()).slice(0, 300)}`);
           return getGeminiResponseText(await response.json());
         },
+        orderTarget: (binding) => new window.ephoneMarketOrders.Service(_0x24f906).target(binding, _0x5ea3c1.activeChatId),
+        adoptOrders: async () => {
+          const concrete = _0x24f906.marketOrders.db;
+          const binding = await window.ephonePlayerIdentity.load(concrete);
+          const result = await new window.ephoneMarketOrders.Service(concrete).adopt(binding);
+          await window.EPhoneMarketAdapter.onPaid(result);
+        },
         onPaid: async (result) => {
-          _0x57a126 = result.balance; window.userBalance = result.balance;
-          const display = document.getElementById("alipay-balance-display"); if (display) display.textContent = result.balance.toFixed(2);
-          if (result.chat) {
-            const current = _0x5ea3c1.chats[result.chat.id];
-            if (current) current.history = result.chat.history; else _0x5ea3c1.chats[result.chat.id] = result.chat;
-            await _0x4bb316();
+          if (Number.isFinite(result.balance)) {
+            _0x57a126 = result.balance; window.userBalance = result.balance;
+            const display = document.getElementById("alipay-balance-display");
+            if (display) display.textContent = result.balance.toFixed(2);
           }
+          const chats = result.chats || (result.chat ? [result.chat] : []);
+          for (const chat of chats) {
+            const current = _0x5ea3c1.chats[chat.id];
+            if (current) current.history = chat.history; else _0x5ea3c1.chats[chat.id] = chat;
+          }
+          if (result.order) window.EPhoneLifeMarket?.refreshOrderCards(result.order);
+          if (chats.length) await _0x4bb316();
         },
       }),
       (window["renderWorldBookScreenProxy"] = _0x5dd041),

@@ -97,7 +97,8 @@
         typeof value === "string" ? value.trim().length > 0 : Array.isArray(value) && value.length > 0) ||
         ["transfer", "accept_transfer", "decline_transfer", "red_packet", "open_red_packet", "sticker", "ai_image", "voice_message", "quote_reply",
           "pat_user", "friend_request_response", "gift", "poll", "vote", "waimai_order", "waimai_response", "waimai_request",
-          "video_call_request", "video_call_response", "group_call_request", "group_call_response", "gomoku_move"].includes(item.type);
+          "video_call_request", "video_call_response", "group_call_request", "group_call_response", "gomoku_move",
+          "market_order_share", "market_phone_check", "market_order_arrived", "cancel_market_order"].includes(item.type);
     });
   }
 

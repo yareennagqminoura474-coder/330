@@ -1,25 +1,27 @@
 // Service Worker 文件 (sw.js) - 强力保活版
 
 // 缓存版本号
-const CACHE_VERSION = "v1.7.65"; // 版本号+1
+const CACHE_VERSION = "v1.7.66"; // 版本号+1
 const CACHE_NAME = `ephone-cache-${CACHE_VERSION}`;
 
 const CORE_URLS_TO_CACHE = [
-  "./life-market-core.js?v=1.7.65",
-  "./life-market.js?v=1.7.65",
-  "./life-market.css?v=1.7.65",
+  "./life-market-core.js?v=1.7.66",
+  "./player-identity.js?v=1.7.66",
+  "./market-orders.js?v=1.7.66",
+  "./life-market.js?v=1.7.66",
+  "./life-market.css?v=1.7.66",
   "./index.html",
-  "./style.css?v=1.7.65",
-  "./persona-spaces.js?v=1.7.65",
-  "./group-context.js?v=1.7.65",
-  "./spectator-money.js?v=1.7.65",
-  "./space-wallet.js?v=1.7.65",
-  "./chat-response.js?v=1.7.65",
-  "./script.js?v=1.7.65",
+  "./style.css?v=1.7.66",
+  "./persona-spaces.js?v=1.7.66",
+  "./group-context.js?v=1.7.66",
+  "./spectator-money.js?v=1.7.66",
+  "./space-wallet.js?v=1.7.66",
+  "./chat-response.js?v=1.7.66",
+  "./script.js?v=1.7.66",
   "./api-payload-guard.js?v=1.7.44",
-  "./narration-mode.js",
-  "./time-machine.js?v=1.7.65",
-  "./holiday-calendar.js?v=1.7.65",
+  "./narration-mode.js?v=1.7.66",
+  "./time-machine.js?v=1.7.66",
+  "./holiday-calendar.js?v=1.7.66",
 ];
 
 const OPTIONAL_URLS_TO_CACHE = [

@@ -14,6 +14,7 @@
     "userTransactions",
     "marketState",
     "marketOrders",
+    "spaceProfiles",
     "spaceClock",
   ]);
   const IMPORTABLE_SHARED_TABLES = [
