@@ -41,7 +41,7 @@ function batch(prefix) {
       await window.db.userWallet.put({ id: "main", balance: 200, kinshipCards: [] });
       const avatar = "data:image/svg+xml," + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="40" height="40"><rect width="40" height="40" fill="lightblue"/></svg>');
       await window.db.chats.put({ id: "market-role", name: "林", originalName: "林", isGroup: false, avatar,
-        settings: { aiPersona: "喜欢书法", aiAvatar: avatar, linkedWorldBookIds: [987], maxMemory: 20 }, history: [{ role: "user", type: "text", content: "想买新文具", timestamp: 1 }] });
+        settings: { aiPersona: "喜欢书法。家境优渥，但消费节俭。", myPersona: "喜欢园艺。家庭经济条件普通，每月零花钱800元。", aiAvatar: avatar, linkedWorldBookIds: [987], maxMemory: 20 }, history: [{ role: "user", type: "text", content: "想买新文具", timestamp: 1 }] });
       await window.db.worldBooks.put({ id: 987, name: "学校", content: [{ title: "校园", content: "山海书院", enabled: true }] });
     });
     await page.reload({ waitUntil: "domcontentloaded" });
@@ -54,6 +54,9 @@ function batch(prefix) {
     await page.waitForFunction(() => document.querySelector(".market-message")?.textContent.includes("已全部更新"));
     assert.equal(calls, 1); assert.equal(await page.locator(".market-card").count(), 12);
     assert.match(prompts[0], /喜欢书法/); assert.doesNotMatch(prompts[0], /想买新文具|200\.00|山海书院/);
+    assert.match(prompts[0], /家境优渥，但消费节俭/);
+    assert.match(prompts[0], /家庭经济条件普通，每月零花钱800元/);
+    assert.match(prompts[0], /实际选品与定价/);
     await page.locator('[data-tab="food"]').click(); assert.equal(await page.locator(".market-card").count(), 8);
     await page.locator('[data-tab="goods"]').click();
     await page.locator('.market-card [data-delta="1"]').first().click();
@@ -89,6 +92,20 @@ function batch(prefix) {
     assert.match(await page.locator(".market-products").innerText(), /批2物/);
     await page.locator('[data-tab="orders"]').click(); assert.equal(await page.locator(".market-order").count(), 1);
     await page.locator('[data-tab="goods"]').click();
+    await page.evaluate(async () => {
+      const chat = await window.db.chats.get("market-role");
+      chat.settings.myPersona = "喜欢园艺。家庭条件富裕，但每月零用钱有限，偏爱实用耐用品。";
+      await window.db.chats.put(chat);
+    });
+    await page.locator(".market-back").click(); await page.locator("#life-market-home").click();
+    assert.equal(calls, 3, "Editing family conditions must not automatically replace the old catalog");
+    assert.match(await page.locator(".market-products").innerText(), /批2物/);
+    failure = false; await page.locator("#market-refresh").click();
+    await page.waitForFunction(() => document.querySelector(".market-message")?.textContent.includes("已全部更新"));
+    assert.equal(calls, 4);
+    assert.match(prompts.at(-1), /家庭条件富裕，但每月零用钱有限/);
+    assert.doesNotMatch(prompts.at(-1), /每月零花钱800元|想买新文具|山海书院|189\.85/);
+    assert.equal(await page.evaluate(async () => (await window.db.marketOrders.count())), 1);
     const layout = await page.evaluate(() => {
       const scroll = document.querySelector(".market-content"), nav = document.querySelector(".market-nav");
       scroll.scrollTop = 300;
@@ -98,6 +115,6 @@ function batch(prefix) {
     await page.evaluate(() => { document.querySelector(".market-content").scrollTop = 0; });
     await page.screenshot({ path: path.join(require("node:os").tmpdir(), "ephone-market-v1.7.60.png") });
     assert.deepEqual(errors, []);
-    console.log("PASS: actual mobile app, real API adapter with fake provider, both lists manual refresh, prompt grounding, failure preservation, reopen/reload, cart/order payment, space isolation, scroll layout, zero page errors");
+    console.log("PASS: actual mobile app, personality/family/consumption prompt grounding, profile edits only applied on manual refresh, both lists, no history/wallet assumptions, payment/order preservation, space isolation, scrolling, zero page errors");
   } finally { await browser.close(); await new Promise((resolve) => server.close(resolve)); }
 })().catch((error) => { console.error(error); process.exitCode = 1; });

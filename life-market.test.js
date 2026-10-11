@@ -33,6 +33,39 @@ function batch(prefix) {
   assert.equal(core.prompt({ ...context, walletBalance: 100, memories: "聊天秘密", worldbooks: "世界书秘密" }, { seenNames: [] }, 1),
     core.prompt({ ...context, walletBalance: 999, memories: "另一段聊天", worldbooks: "另一世界书" }, { seenNames: [] }, 999999));
   assert.doesNotMatch(core.prompt({ ...context, history: "聊天秘密", walletBalance: 123456 }, { seenNames: [] }), /聊天秘密|123456/);
+  // Financial circumstances are grounded in profiles, never cash-on-hand or
+  // recent chat. Preserve the exact source, negations, and person ownership.
+  const economics = core.buildContext({ chats: [{ id: "economics", name: "摄影朋友", settings: {
+    aiPersona: "喜欢摄影。" + "完整人物经历，".repeat(600) + "并非富裕家庭，父母有房贷。月薪6000元，消费节俭。",
+    myPersona: "喜欢园艺。" + "个人爱好介绍，".repeat(160) + "家庭条件普通，每月零花钱800元，不买奢侈品。",
+  }, get history() { throw Error("不读经济状况的聊天推断"); } }],
+    npcs: [{ name: "富裕邻居", persona: "家境优渥，家庭资产丰厚，喜欢高品质咖啡。" }], groupContext });
+  const profile = economics.characters.find((item) => item.name === "摄影朋友");
+  assert.doesNotMatch(profile.persona, /月薪6000/); // Beyond the preview, still retained below.
+  assert.match(profile.familyConditions, /并非富裕家庭.*父母有房贷.*月薪6000元.*消费节俭/s);
+  assert.match(profile.playerFamilyConditions, /家庭条件普通.*每月零花钱800元.*不买奢侈品/s);
+  assert.doesNotMatch(profile.playerFamilyConditions, /家庭资产丰厚/);
+  const economicsPrompt = core.prompt(economics, { seenNames: [] });
+  assert.match(economicsPrompt, /月薪6000元/); assert.match(economicsPrompt, /每月零花钱800元/);
+  assert.match(economicsPrompt, /不能只把家境写进推荐理由/);
+  assert.match(economicsPrompt, /明确的购买者家庭条件优先/);
+  assert.match(economicsPrompt, /不能因为同空间某个NPC或角色有钱/);
+  assert.match(economicsPrompt, /同款同规格商品凭空加价/);
+  assert.match(economicsPrompt, /家庭条件未设置或档案相互矛盾/);
+  const grounded = core.buildContext({ chats: [{ id: "plain", name: "普通朋友", settings: { aiPersona: "喜欢摄影。" } }], groupContext });
+  assert.equal(grounded.characters[0].familyConditions, "");
+  const poor = core.buildContext({ chats: [{ id: "plain", name: "普通朋友", settings: { aiPersona: "喜欢摄影。家境拮据，月生活费600元。" } }], groupContext });
+  const rich = core.buildContext({ chats: [{ id: "plain", name: "普通朋友", settings: { aiPersona: "喜欢摄影。家境富裕，但消费节俭。" } }], groupContext });
+  assert.notEqual(core.prompt(poor, { seenNames: [] }), core.prompt(rich, { seenNames: [] }));
+  const watchConditions = core.buildContext({ chats: [{ id: "source", name: "甲", settings: { aiPersona: "家境普通，爱读书。", myPersona: "每月生活费1200元。" } },
+    { id: "watch", isSpectatorGroup: true, members: [{ id: "source", originalName: "甲", persona: "家境优渥，但零花钱有限。", ephonePersonaOverride: true }] }], groupContext });
+  assert.ok(watchConditions.characters.some((item) => /家境优渥/.test(item.familyConditions) && /零花钱有限/.test(item.familyConditions)));
+  assert.ok(watchConditions.characters.every((item) => /每月生活费1200元/.test(item.playerFamilyConditions)));
+  const groupPlayer = core.buildContext({ chats: [{ id: "group-only", name: "家庭群", isGroup: true,
+    settings: { myNickname: "小林", myPersona: "喜欢读书，家庭经济拮据，每月零用钱300元。" }, members: [] }], groupContext });
+  assert.equal(groupPlayer.playerProfiles[0].name, "小林");
+  assert.match(groupPlayer.playerProfiles[0].familyConditions, /家庭经济拮据.*每月零用钱300元/);
+  assert.match(core.prompt(groupPlayer, { seenNames: [] }), /每月零用钱300元/);
   assert.equal((await store.load()).items.length, 0); assert.equal(await upgraded.marketState.count(), 0);
   const generate = async () => { calls++; return batch("第一批"); };
   const first = await store.refresh({ generate, context, vts: 1770000000000, batchId: "one" });
@@ -84,5 +117,5 @@ function batch(prefix) {
   await window.EPhoneSpaces.switchSpace("default");
   assert.equal((await new core.Store(facade).load()).items.length, 20); assert.equal(await facade.marketOrders.count(), 1);
   await Dexie.delete(name + "__space_other"); await upgraded.delete();
-  console.log("PASS: persistence, manual-only full refresh, non-repeating catalogs, abort/failure preservation, cart snapshots, atomic/idempotent wallet checkout, character awareness, DB upgrade, space isolation");
+  console.log("PASS: personality plus family/allowance grounding, long-profile preservation, economic ownership/negations/group overrides, wallet/history exclusion, persistence, manual-only refresh, non-repeating catalogs, abort/failure preservation, atomic checkout, space isolation");
 })().catch((error) => { console.error(error); process.exitCode = 1; });
