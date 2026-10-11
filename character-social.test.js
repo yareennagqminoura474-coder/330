@@ -113,7 +113,7 @@ const routine = { job: "医生", home: "自己的住处", note: "拟定，可编
     const stale = await service.scheduleTargets(key, { replaceOwner: true, includeCircle: false });
     await service.saveLife(key, week, at(5, 10), stale[0].revision);
     await assert.rejects(service.saveSchedules({ schedules: [{ key, life: week }] }, stale, at(5, 10)), /作息已被修改/);
-    assert.match(core.schedulePrompt(targets), /不创建NPC/); assert.match(core.newCirclePrompt(freshContext), /作息也是.*必填/);
+    assert.match(core.schedulePrompt(targets), /不创建NPC/); assert.match(core.newCirclePrompt(freshContext), /当天行程/);
     console.log("PASS: persona and own-chat grounding, verified sources, atomic NPC/relation creation, reuse/duplicates, manual fact preservation, weekly/overnight life, source-owned actual states, time travel, pending reviewed relation changes and private prompt boundaries");
   } finally { db.close(); await Dexie.delete(db.name); }
 })().catch((error) => { console.error(error); process.exitCode = 1; });

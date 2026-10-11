@@ -171,6 +171,7 @@
     spaceTable = table; spaceDatabaseName = table.db.name;
     activeChatId = null; activeBinding = null;
     setSpaceClock(saved); updateUi();
+    window.EPhoneCharacterDaily?.observeSpace(nowMs());
   }
 
   function virtualNow(config, realNow = Date.now()) {
@@ -329,6 +330,7 @@
 
   async function useRealTime() {
     if (!activeChatId) return;
+    const before = nowMs();
     const config = getConfig();
     if (config.mode === MODES.CUSTOM) freezeActiveRecords(config);
     config.mode = MODES.REAL;
@@ -338,6 +340,7 @@
     await saveActive(config, true);
     try { await window.EPhoneCharacterWallet?.sync(nowMs()); }
     catch (error) { console.warn("时间已跳转，角色钱包尚待结算", error); }
+    await window.EPhoneCharacterDaily?.onTimeChange(before, nowMs());
   }
 
   async function jumpTo(milliseconds, flow) {
@@ -387,6 +390,7 @@
     await saveActive(config, true);
     try { await window.EPhoneCharacterWallet?.sync(nowMs()); }
     catch (error) { console.warn("时间已跳转，角色钱包尚待结算", error); }
+    await window.EPhoneCharacterDaily?.onTimeChange(before, milliseconds);
   }
 
   async function setFlow(flow) {
@@ -680,7 +684,7 @@
     setSpaceClock(config);
     preparation.revision = spaceClock.revision;
     preparation.changed = true;
-    preparation.ready = persistSpaceClock();
+    preparation.ready = persistSpaceClock().then(() => window.EPhoneCharacterDaily?.onTimeChange(beforeMs, preparation.afterMs, { signal: options.signal }));
     updateUi();
     return preparation;
   }

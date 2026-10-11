@@ -8,7 +8,7 @@ const { chromium } = require("playwright-core");
   });
   await new Promise((r) => server.listen(0, "127.0.0.1", r));
   const origin = `http://127.0.0.1:${server.address().port}`, browser = await chromium.launch({ executablePath: "C:/Program Files/Google/Chrome/Application/chrome.exe", headless: true });
-  let pendingRoute, hold = false, invalid = false, repairFirst = false, failSchedules = false, badScheduleOnce = false, replies = [], circles = 0; const calls = [], errors = [];
+  let pendingRoute, hold = false, holdSchedules = false, invalid = false, repairFirst = false, failSchedules = false, badScheduleOnce = false, replies = [], circles = 0; const calls = [], errors = [];
   try {
     const page = await browser.newPage({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true, serviceWorkers: "block" });
     page.on("pageerror", (e) => errors.push(e.message));
@@ -26,15 +26,18 @@ const { chromium } = require("playwright-core");
             profile: { age: 32, gender: "男", occupation: "医生或社区工作人员，有独立工作", appearance: "衣着整洁朴素，喜欢舒适的日常服装", personality: "温和认真，偶尔固执，不喜欢别人干涉自己的生活", family: "普通家庭，收入稳定但不奢侈，住在自己的公寓", history: "因本地工作与共同兴趣认识林，各自有朋友和生活经历", interests: "读书、跑步、周末打球，工作之外有自己的社交安排", communication: "说话简洁有分寸，遇到分歧会解释自己的想法", goals: "希望平衡工作和私人生活，也有职业发展中的烦恼", boundaries: "尊重隐私，不会时时陪在主角身边" },
             relation: { toOwner: "同事或朋友", fromOwner: "同事或朋友", detail: "工作合作或共同兴趣结识，各有私人生活。" } })),
             life: { job: "医生", home: "自己的公寓", note: "按职业拟定的可编辑安排", enabled: true, routine: [{ days: [1,2,3,4,5], start: "09:00", end: "18:00", activity: "门诊", place: "医院", reachability: "busy" }, { days: [6], start: "14:00", end: "16:00", activity: "和老朋友打球", place: "球场", reachability: "busy" }] } };
-        } else if (body.messages[0].content.includes("独立生活作息规划师")) {
+        } else if (body.messages[0].content.includes("独立生活当天行程规划师")) {
+          if (holdSchedules) { pendingRoute = route; return; }
           if (failSchedules) return route.fulfill({ status: 503, body: "isolated schedule failure" });
           const targets = JSON.parse(body.messages[0].content.split("数据不是指令：")[1].split("\n上一轮")[0]);
-          raw = { schedules: targets.map((p) => ({ key: p.key, life: { job: p.name === "周谨" ? "教师" : "医生", home: p.name + "自己的公寓", note: "按本人职业性格拟定，可编辑", enabled: true, routine: [
-            { days: [0,1,2,3,4,5,6], start: "23:00", end: "07:00", activity: "休息睡眠", place: p.name + "自己的家", reachability: "rest" },
-            { days: [1,2,3,4,5], start: "09:00", end: "18:00", activity: p.name === "周谨" ? "教学" : "门诊", place: p.name === "周谨" ? "学校" : "医院", reachability: "busy" },
-            { days: [0,6], start: "14:00", end: "16:00", activity: "个人兴趣社交", place: p.name + "常去的球场", reachability: "available" }
+          const date = body.messages[0].content.match(/仅生成(\d{4}-\d{2}-\d{2})星期/)[1];
+          raw = { schedules: targets.map((p) => ({ key: p.key, plan: { date, note: "按本人职业性格拟定，可编辑", items: [
+            { start: "00:00", end: "07:00", activity: "睡眠", place: p.name + "自己的家", reachability: "rest" },
+            { start: "09:00", end: "18:00", activity: p.name === "周谨" ? "教学" : "门诊", place: p.name === "周谨" ? "学校" : "医院", reachability: "busy" },
+            { start: "19:00", end: "21:00", activity: "当天兴趣社交", place: p.name + "常去的球场", reachability: "available" },
+            { start: "23:00", end: "24:00", activity: "睡眠", place: p.name + "自己的家", reachability: "rest" }
           ] } })) };
-          if (badScheduleOnce) { badScheduleOnce = false; raw.schedules[0].life.routine.push(raw.schedules[0].life.routine[0]); }
+          if (badScheduleOnce) { badScheduleOnce = false; raw.schedules[0].plan.items.push(raw.schedules[0].plan.items[0]); }
         } else raw = replies.shift() || [{ type: "narration", content: "2026年3月5日，07点20分，星期四，地点：客厅" }, { type: "text", name: "林", content: "我待会儿还有自己的安排。" }];
         return route.fulfill({ contentType: "application/json", body: JSON.stringify({ choices: [{ message: { content: JSON.stringify(raw) }, finish_reason: "stop" }] }) });
       }
@@ -57,9 +60,9 @@ const { chromium } = require("playwright-core");
     }
     async function me() { await page.evaluate(() => window.showScreen("chat-list-screen")); await page.locator('.nav-item[data-view="me-view"]').click(); await page.locator("#me-character-social-button").click(); await page.waitForFunction(() => !window.EPhoneCharacterSocial.isBusy()); }
     await chat("social-watch"); await page.evaluate(() => window.ephoneTimeMachine.jumpTo(new Date(2026, 2, 5, 10).getTime(), "frozen"));
-    await me(); await page.locator("#cs-person").selectOption("chat:s0"); assert.equal(calls.length, 0, "opening never generates behind the user's back");
-    invalid = true; await page.locator('[data-cs-action="generate"]').click(); await page.waitForFunction(() => !window.EPhoneCharacterSocial.isBusy()); invalid = false;
-    assert.match(await page.locator("#cs-notice").innerText(), /人设|不完整/); assert.equal(await page.evaluate(() => window.db.npcs.count()), 0); assert.equal(calls.length, 2, "invalid output retries only once");
+    const beforeOpen = calls.length; assert.ok(beforeOpen > 0, "first cross-date jump generates all characters"); await me(); await page.locator("#cs-person").selectOption("chat:s0"); assert.equal(calls.length, beforeOpen, "opening never generates behind the user's back");
+    const beforeInvalid = calls.length; invalid = true; await page.locator('[data-cs-action="generate"]').click(); await page.waitForFunction(() => !window.EPhoneCharacterSocial.isBusy()); invalid = false;
+    assert.match(await page.locator("#cs-notice").innerText(), /人设|不完整/); assert.equal(await page.evaluate(() => window.db.npcs.count()), 0); assert.equal(calls.length - beforeInvalid, 2, "invalid output retries only once");
     failSchedules = true;
     await page.locator('[data-cs-action="generate"]').click(); await page.waitForFunction(() => !window.EPhoneCharacterSocial.isBusy());
     assert.match(await page.locator("#cs-notice").innerText(), /新增3位NPC、建立3段关系/);
@@ -71,8 +74,8 @@ const { chromium } = require("playwright-core");
     assert.match(await page.locator("#cs-notice").innerText(), /人物及关系已保留/);
     failSchedules = false; badScheduleOnce = true;
     await page.locator('[data-cs-action="generate-life"]').click(); await page.waitForFunction(() => !window.EPhoneCharacterSocial.isBusy());
-    assert.match(await page.locator("#cs-notice").innerText(), /已为5位人物生成并保存一周作息/);
-    assert.equal(await page.evaluate(async () => (await window.db.characterLives.toArray()).every(window.ephoneCharacterSocialCore.completeRoutine)), true);
+    assert.match(await page.locator("#cs-notice").innerText(), /已为3位人物生成并保存当天行程/);
+    assert.equal(await page.evaluate(async () => (await window.db.characterLives.toArray()).every((l) => l.dailyPlans?.["2026-03-05"]?.items.length >= 3)), true);
     assert.equal(await page.evaluate(() => window.db.npcs.count()), 3); assert.equal(await page.evaluate(() => window.db.characterRelations.count()), 4);
     assert.match(await page.locator(".cs-activity").innerText(), /门诊.*医院/s);
     repairFirst = true; const beforeRetry = calls.filter((b) => b.messages[0].content.includes("人物关系网的设计师")).length;
@@ -90,16 +93,64 @@ const { chromium } = require("playwright-core");
     const manualLife = await page.evaluate(() => window.db.characterLives.get("chat:s0"));
     await page.evaluate(async () => { const npc = (await window.db.npcs.toArray())[0]; await window.db.characterLives.delete("npc:" + npc.id); });
     await page.locator('[data-cs-action="generate-life"]').click(); await page.waitForFunction(() => !window.EPhoneCharacterSocial.isBusy());
-    assert.match(await page.locator("#cs-notice").innerText(), /已为1位人物生成并保存一周作息/);
+    assert.match(await page.locator("#cs-notice").innerText(), /已为1位人物生成并保存当天行程/);
     assert.deepEqual(await page.evaluate(() => window.db.characterLives.get("chat:s0")), manualLife);
     assert.equal(await page.evaluate(() => window.db.npcs.count()), 6);
     await page.locator(".cs-scroll").evaluate((el) => el.scrollTop = 0);
-    const shot = path.join(require("node:os").tmpdir(), "ephone-character-social-v170.png"); await page.screenshot({ path: shot }); console.log("SCREENSHOT " + shot);
+    const shot = path.join(require("node:os").tmpdir(), "ephone-character-social-v171.png"); await page.screenshot({ path: shot }); console.log("SCREENSHOT " + shot);
     // Abort a held response: no new NPCs or partially saved relations.
     hold = true; await page.locator('[data-cs-action="generate"]').click(); await page.waitForFunction(() => window.EPhoneCharacterSocial.isBusy());
     await page.locator('[data-cs-action="stop"]').click(); await page.waitForFunction(() => !window.EPhoneCharacterSocial.isBusy()); hold = false;
     if (pendingRoute) { await pendingRoute.abort().catch(() => {}); pendingRoute = null; }
     assert.equal(await page.evaluate(() => window.db.npcs.count()), 6); assert.match(await page.locator("#cs-notice").innerText(), /已停止/);
+    // Crossing a date automatically generates ALL roles/NPCs in bounded batches, not just this group.
+    await chat("social-watch"); const beforeNextDay = calls.length;
+    await page.evaluate(() => window.ephoneTimeMachine.jumpTo(new Date(2026, 2, 6, 10).getTime(), "frozen"));
+    assert.equal(calls.length - beforeNextDay, 2, "8 people use two batches of four");
+    assert.equal(await page.evaluate(async () => (await window.db.characterLives.toArray()).filter((l) => l.dailyPlans?.["2026-03-06"]).length), 8);
+    const afterNextDay = calls.length;
+    await page.evaluate(() => window.ephoneTimeMachine.jumpTo(new Date(2026, 2, 6, 11).getTime(), "frozen"));
+    await page.evaluate(() => window.ephoneTimeMachine.jumpTo(new Date(2026, 2, 5, 10).getTime(), "frozen"));
+    assert.equal(calls.length, afterNextDay, "same day and returning to a saved day never regenerate");
+    failSchedules = true;
+    await page.evaluate(() => window.ephoneTimeMachine.jumpTo(new Date(2026, 2, 7, 10).getTime(), "frozen"));
+    assert.match(await page.locator("#daily-schedule-status").innerText(), /行程尚未完成/);
+    assert.equal(await page.evaluate(async () => (await window.db.characterLives.toArray()).filter((l) => l.dailyPlans?.["2026-03-07"]).length), 0);
+    failSchedules = false; await page.locator("#daily-schedule-status button").click();
+    await page.waitForFunction(() => !window.EPhoneCharacterDaily.isBusy());
+    assert.equal(await page.evaluate(async () => (await window.db.characterLives.toArray()).filter((l) => l.dailyPlans?.["2026-03-07"]).length), 8);
+    await page.locator("#daily-schedule-status button").click();
+    await page.evaluate(() => window.ephoneTimeMachine.jumpTo(new Date(2026, 2, 10, 23, 59).getTime(), "frozen"));
+    await page.evaluate(async () => { const hold = window.ephoneTimeMachine.prepareReplyTime([], { chatId: "social-watch" }); await hold.ready; const next = window.ephoneTimeMachine.prepareReplyTime([], { chatId: "social-watch" }); await next.ready; });
+    assert.equal(await page.evaluate(async () => (await window.db.characterLives.toArray()).filter((l) => l.dailyPlans?.["2026-03-11"]).length), 8, "story advancing across midnight generates that date before replying");
+    await page.locator("#daily-schedule-status button").click();
+    await page.evaluate(() => window.ephoneTimeMachine.jumpTo(new Date(2026, 2, 5, 10).getTime(), "frozen"));
+    holdSchedules = true;
+    await page.evaluate(() => { window.testDailyJump = window.ephoneTimeMachine.jumpTo(new Date(2026, 2, 12, 10).getTime(), "frozen"); });
+    await page.waitForFunction(() => window.EPhoneCharacterDaily.isBusy());
+    await page.locator("#daily-schedule-status button").filter({ hasText: "停止" }).click();
+    await page.waitForFunction(() => !window.EPhoneCharacterDaily.isBusy()); await page.evaluate(() => window.testDailyJump);
+    holdSchedules = false; if (pendingRoute) { await pendingRoute.abort().catch(() => {}); pendingRoute = null; }
+    assert.equal(await page.evaluate(async () => (await window.db.characterLives.toArray()).filter((l) => l.dailyPlans?.["2026-03-12"]).length), 0, "stopping a pending daily request never saves a partial plan");
+    await page.locator("#daily-schedule-status button").click();
+    await page.waitForFunction(() => !window.EPhoneCharacterDaily.isBusy());
+    await page.locator("#daily-schedule-status button").click();
+    await page.evaluate(() => window.ephoneTimeMachine.jumpTo(new Date(2026, 2, 5, 10).getTime(), "frozen"));
+    // The existing reply button must still stop a cross-midnight schedule API request.
+    for (const [chatId, day, buttonId] of [["social-group", 14, "#wait-reply-btn"], ["social-watch", 16, "#spectator-propel-btn"]]) {
+      await chat(chatId);
+      await page.evaluate((day) => window.ephoneTimeMachine.jumpTo(new Date(2026, 2, day, 23, 59).getTime(), "frozen"), day);
+      await page.evaluate(async (chatId) => { const prep = window.ephoneTimeMachine.prepareReplyTime([], { chatId }); await prep.ready; }, chatId);
+      const historySize = await page.evaluate(async (chatId) => (await window.db.chats.get(chatId)).history.length, chatId);
+      holdSchedules = true; await page.locator(buttonId).click(); await page.waitForFunction(() => window.EPhoneCharacterDaily.isBusy());
+      await page.locator(buttonId).click(); await page.waitForFunction(() => !window.isPersonaSpaceBusy());
+      holdSchedules = false; if (pendingRoute) { await pendingRoute.abort().catch(() => {}); pendingRoute = null; }
+      assert.equal(await page.evaluate(async (chatId) => (await window.db.chats.get(chatId)).history.length, chatId), historySize);
+      const nextDate = "2026-03-" + String(day + 1).padStart(2, "0");
+      assert.equal(await page.evaluate(async (date) => (await window.db.characterLives.toArray()).filter((l) => l.dailyPlans?.[date]).length, nextDate), 0);
+      await page.evaluate(() => { document.querySelector("#daily-schedule-status").hidden = true; });
+    }
+    await page.evaluate(() => window.ephoneTimeMachine.jumpTo(new Date(2026, 2, 5, 10).getTime(), "frozen"));
     async function generate(id, actions) {
       await chat(id); replies = [[{ type: "narration", content: "2026年3月5日，10点00分，星期四，地点：走廊" }, ...actions]];
       await page.locator(id === "social-watch" ? "#spectator-propel-btn" : "#wait-reply-btn").click(); await page.waitForFunction(() => !window.isPersonaSpaceBusy()); assert.equal(replies.length, 0);
@@ -117,12 +168,16 @@ const { chromium } = require("playwright-core");
     await page.locator('[data-cs-action="accept-event"]').click(); await page.waitForFunction(() => !window.EPhoneCharacterSocial.isBusy()); assert.match(await page.locator("#cs-notice").innerText(), /已确认/);
     await page.reload({ waitUntil: "domcontentloaded" }); await page.waitForFunction(() => window.ephoneAppReady);
     assert.equal(await page.evaluate(() => window.db.npcs.count()), 6); assert.equal(await page.evaluate(() => window.db.characterRelations.count()), 7);
+    await chat("social-watch"); const beforeReloadJump = calls.length;
+    await page.evaluate(() => window.ephoneTimeMachine.jumpTo(new Date(2026, 2, 6, 10).getTime(), "frozen"));
+    assert.equal(calls.length, beforeReloadJump, "saved day survives refresh and is never regenerated");
     const count = calls.length;
     await page.evaluate(async () => { const spaces = JSON.parse(localStorage.getItem("ephone-persona-spaces-v1")); localStorage.setItem("ephone-persona-spaces-v1", JSON.stringify([...spaces, { id: "social-other", name: "另一空间" }])); await window.EPhoneSpaces.switchSpace("social-other"); await window.EPhoneCharacterSocial.open(); });
     assert.match(await page.locator("#cs-body").innerText(), /还没有人物/); assert.equal(await page.evaluate(() => window.db.characterRelations.count()), 0);
+    assert.equal(await page.evaluate(() => window.db.characterLives.count()), 0, "daily plans do not leak into another space");
     await page.evaluate(async () => { await window.EPhoneSpaces.switchSpace("default"); await window.EPhoneCharacterSocial.open(); });
     assert.equal(calls.length, count); assert.equal(await page.evaluate(() => window.db.characterRelations.count()), 7); assert.equal((await page.evaluate(() => window.db.npcs.toArray()))[0].enableBackgroundActivity, false);
     assert.deepEqual(errors, []);
-    console.log("PASS: real mobile relationship UI, grounded generate/reuse and atomic failure, reciprocal editing, scroll, stop, watch/normal/private integration, quote-grounded activity sharing, reviewed changes, no automatic API/NPC group join and per-space persistence");
+    console.log("PASS: mobile daily-plan editor, NPC circle generation, ALL-role cross-day batches, same-day/history cache, failed auto-generation retry, story midnight generation before reply, cancellation/reload/space isolation, watch/normal/private prompts and social regression");
   } finally { await browser.close(); await new Promise((r) => server.close(r)); }
 })().catch((error) => { console.error(error); process.exitCode = 1; });

@@ -17530,6 +17530,7 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
   }
   async function _ephoneSocialPrompt(chat, vts) {
     if (!window.ephoneCharacterSocialCore || !_0x24f906.characterRelations) return "";
+    await window.EPhoneCharacterDaily?.beforeReply(vts, { signal: (_0xephoneSpectatorController || _0xephoneGenerationController)?.signal });
     return new window.ephoneCharacterSocialCore.Service(_0x24f906).prompt(chat, vts);
   }
   async function _ephoneSocialAction(action, chat, vts, timestamp) {
@@ -17662,7 +17663,7 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
       _0xephoneSpectatorController?.abort();
       return;
     }
-    if (_0xephoneGenerationController || _ephoneSpectatorMoneyBusy || window.EPhoneCharacterWallet?.isBusy() || window.EPhoneCharacterSocial?.isBusy()) return;
+    if (_0xephoneGenerationController || _ephoneSpectatorMoneyBusy || window.EPhoneCharacterWallet?.isBusy() || window.EPhoneCharacterSocial?.isBusy() || window.EPhoneCharacterDaily?.isBusy()) return;
     _0xephoneSpectatorGenerating = true;
     const _ephoneSpectatorController = new AbortController();
     _0xephoneSpectatorController = _ephoneSpectatorController;
@@ -17696,6 +17697,7 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
         window.ephoneTimeMachine?.prepareReplyTime?.(_0x326f3d.history, {
           advance: !_ephoneSpectatorOptions.reroll,
           chatId: _0x4203ee,
+          signal: _ephoneSpectatorController.signal,
         }) || null;
       await _ephoneSpectatorTimePreparation?.ready;
       const _ephoneSpectatorReplyTimeMs =
@@ -18073,6 +18075,7 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
       _0xephoneGenerationController.abort();
       return;
     }
+    if (window.EPhoneCharacterDaily?.isBusy()) return;
     if (!_0xephoneGenerationController) {
       _0xephoneGenerationController = new AbortController();
     }
@@ -18376,6 +18379,7 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
         ? window.ephoneTimeMachine.prepareReplyTime(_0x5b16cb["history"], {
             advance: !_0xephoneIsRerolling && !_0xephoneContinue,
             chatId: _0x973a29,
+            signal: _0xephoneGenerationController?.signal,
           })
         : null;
       await _0xephoneTimePreparation?.ready;
@@ -56682,7 +56686,7 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
           _0xspaceLabel.textContent = window.EPHONE_SPACE_NAME || "默认空间";
         await window.ephonePlayerIdentity?.render?.();
       }),
-      (window.isPersonaSpaceBusy = () => Boolean(_0xephoneGenerationController || _0xephoneSpectatorGenerating || _ephoneSpectatorMoneyBusy || _ephoneWalletPending || window.EPhoneLifeMarket?.isBusy() || window.EPhoneCharacterWallet?.isBusy() || window.EPhoneCharacterSocial?.isBusy() || window.ephonePlayerIdentity?.isBusy?.())),
+      (window.isPersonaSpaceBusy = () => Boolean(_0xephoneGenerationController || _0xephoneSpectatorGenerating || _ephoneSpectatorMoneyBusy || _ephoneWalletPending || window.EPhoneLifeMarket?.isBusy() || window.EPhoneCharacterWallet?.isBusy() || window.EPhoneCharacterSocial?.isBusy() || window.EPhoneCharacterDaily?.isBusy() || window.ephonePlayerIdentity?.isBusy?.())),
       (window.EPhoneMarketAdapter = {
         now: (chatId) => window.ephoneTimeMachine?.nowMs(chatId || _0x5ea3c1.activeChatId) || Date.now(),
         formatTime: (value) => window.ephoneTimeMachine?.formatDateTime(value, { withWeekday: true }) || new Date(value).toLocaleString("zh-CN"),
