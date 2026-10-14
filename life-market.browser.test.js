@@ -37,7 +37,7 @@ function batch(prefix) {
     await page.locator("#update-notice-dismiss-btn").click();
     await page.evaluate(async () => {
       const config = await window.db.apiConfig.get("main") || { id: "main" };
-      await window.db.apiConfig.put({ ...config, proxyUrl: "https://market-test.invalid/v1", apiKey: "test-placeholder", model: "test-model", secondaryProxyUrl: "", secondaryApiKey: "", secondaryModel: "" });
+      await window.db.apiConfig.put({ ...config, proxyUrl: "https://market-test.invalid/v1", apiKey: "test-placeholder", model: "test-model", secondaryProxyUrl: "https://market-test.invalid/v1", secondaryApiKey: "test-aux-placeholder", secondaryModel: "auxiliary-test-model" });
       await window.db.userWallet.put({ id: "main", balance: 200, kinshipCards: [] });
       const avatar = "data:image/svg+xml," + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="40" height="40"><rect width="40" height="40" fill="lightblue"/></svg>');
       await window.db.chats.put({ id: "market-role", name: "林", originalName: "林", isGroup: false, avatar,

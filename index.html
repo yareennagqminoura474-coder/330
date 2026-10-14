@@ -4,8 +4,8 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
   <title>EPhone</title>
-  <link rel="stylesheet" href="style.css?v=1.7.72">
-  <link rel="stylesheet" href="life-market.css?v=1.7.72">
+  <link rel="stylesheet" href="style.css?v=1.7.73">
+  <link rel="stylesheet" href="life-market.css?v=1.7.73">
   <link rel="apple-touch-icon" href="https://s3plus.meituan.net/opapisdk/op_ticket_885190757_1758510900942_qdqqd_djw0z2.jpeg">
   <link rel="manifest" href="manifest.json">
   <meta name="apple-mobile-web-app-capable" content="yes">
@@ -24,35 +24,36 @@
   <script src="https://cdnjs.cloudflare.com/ajax/libs/tone/14.8.49/Tone.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.6.0/mammoth.browser.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/crypto-js/4.1.1/crypto-js.min.js"></script>
-  <script src="holiday-calendar.js?v=1.7.72" defer="defer"></script>
-  <script src="time-machine.js?v=1.7.72" defer="defer"></script>
+  <script src="holiday-calendar.js?v=1.7.73" defer="defer"></script>
+  <script src="time-machine.js?v=1.7.73" defer="defer"></script>
   <script src="api-payload-guard.js?v=1.7.44" defer="defer"></script>
-  <script src="persona-spaces.js?v=1.7.72" defer="defer"></script>
-  <script src="group-context.js?v=1.7.72" defer="defer"></script>
-  <script src="spectator-money.js?v=1.7.72" defer="defer"></script>
-  <script src="space-wallet.js?v=1.7.72" defer="defer"></script>
-  <script src="life-market-core.js?v=1.7.72" defer="defer"></script>
-  <script src="player-identity.js?v=1.7.72" defer="defer"></script>
-  <script src="story-expenses.js?v=1.7.72" defer="defer"></script>
-  <script src="character-wallet-core.js?v=1.7.72" defer="defer"></script>
-  <script src="character-wallet.js?v=1.7.72" defer="defer"></script>
-  <link rel="stylesheet" href="character-wallet.css?v=1.7.72">
-  <script src="character-social-core.js?v=1.7.72" defer="defer"></script>
-  <script src="life-simulation-core.js?v=1.7.72" defer="defer"></script>
-  <script src="life-simulation.js?v=1.7.72" defer="defer"></script>
-  <link rel="stylesheet" href="life-simulation.css?v=1.7.72">
-  <script src="character-daily.js?v=1.7.72" defer="defer"></script>
-  <script src="character-social.js?v=1.7.72" defer="defer"></script>
-  <link rel="stylesheet" href="character-social.css?v=1.7.72">
-  <script src="market-orders.js?v=1.7.72" defer="defer"></script>
-  <script src="life-market.js?v=1.7.72" defer="defer"></script>
-  <script src="chat-response.js?v=1.7.72" defer="defer"></script>
-  <script src="script.js?v=1.7.72" defer="defer"></script>
-  <script src="narration-mode.js?v=1.7.72" defer="defer"></script>
+  <script src="persona-spaces.js?v=1.7.73" defer="defer"></script>
+  <script src="api-routing-core.js?v=1.7.73" defer="defer"></script>
+  <script src="group-context.js?v=1.7.73" defer="defer"></script>
+  <script src="spectator-money.js?v=1.7.73" defer="defer"></script>
+  <script src="space-wallet.js?v=1.7.73" defer="defer"></script>
+  <script src="life-market-core.js?v=1.7.73" defer="defer"></script>
+  <script src="player-identity.js?v=1.7.73" defer="defer"></script>
+  <script src="story-expenses.js?v=1.7.73" defer="defer"></script>
+  <script src="character-wallet-core.js?v=1.7.73" defer="defer"></script>
+  <script src="character-wallet.js?v=1.7.73" defer="defer"></script>
+  <link rel="stylesheet" href="character-wallet.css?v=1.7.73">
+  <script src="character-social-core.js?v=1.7.73" defer="defer"></script>
+  <script src="life-simulation-core.js?v=1.7.73" defer="defer"></script>
+  <script src="life-simulation.js?v=1.7.73" defer="defer"></script>
+  <link rel="stylesheet" href="life-simulation.css?v=1.7.73">
+  <script src="character-daily.js?v=1.7.73" defer="defer"></script>
+  <script src="character-social.js?v=1.7.73" defer="defer"></script>
+  <link rel="stylesheet" href="character-social.css?v=1.7.73">
+  <script src="market-orders.js?v=1.7.73" defer="defer"></script>
+  <script src="life-market.js?v=1.7.73" defer="defer"></script>
+  <script src="chat-response.js?v=1.7.73" defer="defer"></script>
+  <script src="script.js?v=1.7.73" defer="defer"></script>
+  <script src="narration-mode.js?v=1.7.73" defer="defer"></script>
 </head>
 <body>
   <div id="phone-screen">
-    <span id="app-version-badge" aria-label="EPhone 版本 1.7.72">v1.7.72</span>
+    <span id="app-version-badge" aria-label="EPhone 版本 1.7.73">v1.7.73</span>
     <div id="status-bar"> <span id="status-bar-time">12:00</span>
       <div id="status-bar-battery" class="battery-container"> <span class="battery-text">--%</span>
         <div class="battery-icon">
@@ -687,7 +688,7 @@
                  </div>
             </div>
             <div class="settings-tip-wrapper">
-                <div class="settings-tip-content">每个配置预设会分别记住主模型和副模型，切换回来时自动恢复。</div>
+                <div class="settings-tip-content">这里切换主 API 预设。副 API 独立保存，不随主预设切换或原预设修改而变化。</div>
             </div>
         </div>
 
@@ -725,19 +726,27 @@
         </div>
 
         <!-- 副 API 设置 -->
-        <div class="settings-header" data-lang-key="apiSecondarySettings">副 API (长记忆总结)</div>
+        <div class="settings-header">副 API（总结与其他生成）</div>
         <div class="settings-section">
+            <div class="settings-item">
+                <label for="secondary-api-preset-select">从预设载入</label>
+                <div class="settings-right">
+                    <select id="secondary-api-preset-select" class="settings-select" style="flex:1;min-width:0"><option value="">选择已保存预设</option></select>
+                    <button type="button" id="load-secondary-api-preset-btn" class="settings-mini-btn">载入</button>
+                </div>
+            </div>
+            <div id="secondary-api-source-status" class="settings-desc">载入的是该预设当时的主 API 地址、密钥和模型的独立副本；原预设之后的修改、删除不会影响副 API。需要更新时再载入。</div>
             <div class="settings-item">
                 <label>副 API 地址（可选）</label>
                 <div class="settings-right">
-                    <input type="text" id="secondary-proxy-url" placeholder="留空使用主API">
+                    <input type="text" id="secondary-proxy-url" placeholder="留空直连 https://api.openai.com">
                 </div>
             </div>
-            <div class="settings-desc">支持服务根地址或以 /v1 结尾的地址；留空时沿用主 API。</div>
+            <div class="settings-desc">聊天回复、观看推进和重抽使用主 API；记忆总结、人物/行程/商品/生活事件等其他生成使用副 API。副 API 未配好时停止辅助任务，不会回退到主 API。语音与图片的专用服务仍使用各自设置。</div>
             <div class="settings-item">
                 <label>API Key</label>
                 <div class="settings-right">
-                    <input type="password" id="secondary-api-key" placeholder="可选">
+                    <input type="password" id="secondary-api-key" placeholder="填写副 API 密钥">
                 </div>
             </div>
             <!-- 修改点：模型和拉取按钮在一行 -->
@@ -750,7 +759,7 @@
                     <button id="fetch-secondary-models-btn" class="settings-mini-btn">拉取</button>
                 </div>
             </div>
-            <div id="secondary-api-save-status" class="settings-desc" role="status" aria-live="polite">副 API 更改后自动保存；留空时沿用主 API。</div>
+            <div id="secondary-api-save-status" class="settings-desc" role="status" aria-live="polite">副 API 更改后自动保存；只调整调用分工，不减少聊天记忆。</div>
         </div>
 
         <!-- 参数设置 -->

@@ -45,7 +45,7 @@ const { chromium } = require("playwright-core");
     });
     await page.goto(origin, { waitUntil: "domcontentloaded" }); await page.waitForFunction(() => window.ephoneAppReady); await page.locator("#update-notice-dismiss-btn").click();
     await page.evaluate(async () => {
-      const config = await window.db.apiConfig.get("main") || { id: "main" }; await window.db.apiConfig.put({ ...config, proxyUrl: "https://social-test.invalid/v1", apiKey: "test-placeholder", model: "test-model", secondaryProxyUrl: "", secondaryApiKey: "", secondaryModel: "" });
+      const config = await window.db.apiConfig.get("main") || { id: "main" }; await window.db.apiConfig.put({ ...config, proxyUrl: "https://social-test.invalid/v1", apiKey: "test-placeholder", model: "test-model", secondaryProxyUrl: "https://social-test.invalid/v1", secondaryApiKey: "test-aux-placeholder", secondaryModel: "auxiliary-test-model" });
       const avatar = "data:image/svg+xml," + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="40" height="40"><rect width="40" height="40" fill="lightblue"/></svg>');
       const members = ["林", "周谨"].map((name, i) => ({ id: "s" + i, originalName: name, groupNickname: name, persona: i ? "教师，林的大学同学，家境普通。" : "医生，家境普通，节俭，喜欢独处和打球，有自己的工作与朋友。", avatar }));
       for (const m of members) await window.db.chats.put({ id: m.id, name: m.originalName, originalName: m.originalName, avatar, settings: { aiPersona: m.persona, aiAvatar: avatar, maxMemory: 20 }, history: [{ role: "user", content: m.id === "s1" ? "周谨自己的私聊秘密" : "你也有自己的生活。", timestamp: 1 }] });

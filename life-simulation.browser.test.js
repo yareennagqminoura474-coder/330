@@ -38,7 +38,7 @@ const { chromium } = require("playwright-core");
     });
     await page.goto(origin, { waitUntil: "domcontentloaded" }); await page.waitForFunction(() => window.ephoneAppReady); await page.locator("#update-notice-dismiss-btn").click();
     await page.evaluate(async () => {
-      const config = await window.db.apiConfig.get("main") || { id: "main" }; await window.db.apiConfig.put({ ...config, proxyUrl: "https://life-sim-test.invalid/v1", apiKey: "test-placeholder", model: "test-model", secondaryProxyUrl: "", secondaryApiKey: "", secondaryModel: "" });
+      const config = await window.db.apiConfig.get("main") || { id: "main" }; await window.db.apiConfig.put({ ...config, proxyUrl: "https://life-sim-test.invalid/v1", apiKey: "test-placeholder", model: "test-model", secondaryProxyUrl: "https://life-sim-test.invalid/v1", secondaryApiKey: "test-aux-placeholder", secondaryModel: "auxiliary-test-model" });
       const avatar = "data:image/svg+xml," + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="40" height="40"><rect width="40" height="40" fill="lightblue"/></svg>');
       const members = ["林", "周谨", "第三人"].map((name, i) => ({ id: "p" + i, originalName: name, groupNickname: name, persona: name + "是普通家庭的成年人，有独立职业生活，尊重别人的隐私。", avatar }));
       for (const m of members) await window.db.chats.put({ id: m.id, name: m.originalName, originalName: m.originalName, avatar, settings: { aiPersona: m.persona, aiAvatar: avatar, maxMemory: 20 }, history: [] });

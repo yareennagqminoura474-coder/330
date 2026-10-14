@@ -36,7 +36,7 @@ const { chromium } = require("playwright-core");
     await page.goto(origin, { waitUntil: "domcontentloaded" }); await page.waitForFunction(() => window.ephoneAppReady);
     await page.locator("#update-notice-dismiss-btn").click();
     await page.evaluate(async () => {
-      const cfg = await window.db.apiConfig.get("main") || { id: "main" }; await window.db.apiConfig.put({ ...cfg, proxyUrl: "https://wallet-test.invalid/v1", apiKey: "test-placeholder", model: "test-model" });
+      const cfg = await window.db.apiConfig.get("main") || { id: "main" }; await window.db.apiConfig.put({ ...cfg, proxyUrl: "https://wallet-test.invalid/v1", apiKey: "test-placeholder", model: "test-model", secondaryProxyUrl: "https://wallet-test.invalid/v1", secondaryApiKey: "test-aux-placeholder", secondaryModel: "auxiliary-test-model" });
       const avatar = "data:image/svg+xml," + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="40" height="40"><rect width="40" height="40" fill="lightblue"/></svg>');
       const members = ["甲", "乙"].map((name, i) => ({ id: "r" + i, originalName: name, groupNickname: name, persona: "普通家庭，节俭，喜欢书法。", avatar }));
       for (const m of members) await window.db.chats.put({ id: m.id, name: m.originalName, originalName: m.originalName, avatar, settings: { aiPersona: m.persona, aiAvatar: avatar, maxMemory: 20 }, history: [{ role: "user", content: "继续", timestamp: 1 }] });

@@ -36,7 +36,7 @@ const { chromium } = require("playwright-core");
     await page.locator("#update-notice-dismiss-btn").click();
     await page.evaluate(async () => {
       const config = await window.db.apiConfig.get("main") || { id: "main" };
-      await window.db.apiConfig.put({ ...config, proxyUrl: "https://order-test.invalid/v1", apiKey: "test-placeholder", model: "test-model", secondaryProxyUrl: "", secondaryApiKey: "", secondaryModel: "" });
+      await window.db.apiConfig.put({ ...config, proxyUrl: "https://order-test.invalid/v1", apiKey: "test-placeholder", model: "test-model", secondaryProxyUrl: "https://order-test.invalid/v1", secondaryApiKey: "test-aux-placeholder", secondaryModel: "auxiliary-test-model" });
       const avatar = "data:image/svg+xml," + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="40" height="40"><rect width="40" height="40" fill="lightblue"/></svg>');
       const members = ["甲", "乙", "丙"].map((name, i) => ({ id: "role" + i, originalName: name, groupNickname: name, persona: name + "喜欢书法。家庭条件普通。", avatar }));
       for (const m of members) await window.db.chats.put({ id: m.id, name: m.originalName, originalName: m.originalName, avatar, settings: { aiPersona: m.persona, aiAvatar: avatar, maxMemory: 1 }, history: [] });

@@ -3,6 +3,9 @@
 
   const text = (value) => typeof value === "string" ? value : "";
   const list = (value) => Array.isArray(value) ? value : [];
+  // Only remove byte-equivalent copies of the same record. Identical sentences
+  // with a different date, source, range, or owner remain separate memories.
+  const uniqueMemories = (value) => [...new Map(list(value).map((record) => [JSON.stringify(record), record])).values()];
   const isGroup = (chat) => Boolean(chat?.isGroup || chat?.isSpectatorGroup);
   const validMessage = (message) => message && !message.isHidden &&
     !String(message.content || "").includes("已被用户删除");
@@ -96,7 +99,7 @@
     }).join("\n");
 
     function memories(owner, title) {
-      const items = list(owner?.longTermMemory).filter((memory) => text(memory.content));
+      const items = uniqueMemories(owner?.longTermMemory).filter((memory) => text(memory.content));
       return items.length ? `\n## ${title}\n` + items.map((memory) => {
         const time = Number(memory.vts ?? memory.timestamp);
         return `- ${formatTime && Number.isFinite(time) ? `[${formatTime(time)}] ` : ""}${memory.content}`;
@@ -124,7 +127,7 @@
     return { membersText, memoryText, linkedMemoryText, profiles };
   }
 
-  const api = { buildContext, recentHistory, describeMessage, memberProfile, resolveSpeaker };
+  const api = { buildContext, recentHistory, describeMessage, memberProfile, resolveSpeaker, uniqueMemories };
   if (typeof module !== "undefined" && module.exports) module.exports = api;
   root.ephoneGroupContext = api;
 })(typeof window !== "undefined" ? window : globalThis);
