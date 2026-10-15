@@ -10,13 +10,14 @@ const { chromium } = require("playwright-core"), { dailyReply } = require("./bro
   await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
   const origin = `http://127.0.0.1:${server.address().port}`, relay = "https://ephone-gcli-proxy.yareennagqminoura474.workers.dev", token = "a".repeat(64), calls = [], errors = [], dialogs = [];
   const browser = await chromium.launch({ executablePath: "C:/Program Files/Google/Chrome/Application/chrome.exe", headless: true });
-  let failRelay = false;
+  let failRelay = false, failSetup = false; const checks = [];
   try {
     const page = await browser.newPage({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true, serviceWorkers: "block" });
     page.on("pageerror", (error) => errors.push(error.message)); page.on("dialog", (dialog) => { dialogs.push(dialog.message()); return dialog.accept(); });
     await page.route("**/*", async (route) => {
       const actual = route.request().url(); if (actual.startsWith(origin)) return route.continue();
-      if (actual.includes("unpkg.com/dexie")) return route.fulfill({ contentType: "application/javascript", body: fs.readFileSync(path.join(path.dirname(require.resolve("dexie")), "dexie.min.js"), "utf8") });
+      if (actual.includes("unpkg.com/dexie")) return route.fulfill({ contentType: "application/javascript", body: "window.__setupFragmentSeen = location.hash;\n" + fs.readFileSync(path.join(path.dirname(require.resolve("dexie")), "dexie.min.js"), "utf8") });
+      if (actual === relay + "/device/check") { checks.push(route.request().headers()); return route.fulfill({ status: failSetup ? 401 : 200, contentType: "application/json", body: failSetup ? '{"error":{"message":"invalid setup"}}' : '{"ok":true}' }); }
       const headers = route.request().headers(), proxied = actual === relay + "/relay", target = proxied ? headers["x-ephone-target"] : actual;
       if (!/^https:\/\/(?:one|two|three)\.example\//.test(target || "")) return route.abort();
       calls.push({ actual, target, headers, body: route.request().postData(), method: route.request().method() });
@@ -62,6 +63,15 @@ const { chromium } = require("playwright-core"), { dailyReply } = require("./bro
     assert.equal(await page.evaluate(async () => (await window.db.globalSettings.get("main")).ephoneApiTransportSettings), undefined);
     await page.evaluate(async ({ relay, token }) => { const t = window.db.globalSettings; await t.update("api-transport", { token: "" }); await window.db.apiPresets.add({ name: "旧中转预设", proxyUrl: relay + "/" + token, apiKey: "fake-old-api-key", model: "reply-model" }); }, { relay, token });
     await reopen(); assert.equal(await page.locator("#api-relay-token").inputValue(), token, "old owner relay credential recovered without copying upstream API key"); assert.equal(calls.length, beforeRestore, "restore and recovery never pull models or generate");
+    const device = "b".repeat(64), beforeSetup = calls.length;
+    await page.goto(origin + "/?setup-test=1#ephone-setup=" + device, { waitUntil: "domcontentloaded" }); await page.waitForFunction(() => window.ephoneAppReady);
+    assert.equal(new URL(page.url()).hash, ""); assert.equal(await page.evaluate(() => window.__setupFragmentSeen), "", "fragment scrubbed before third-party scripts execute");
+    const configured = await page.evaluate(() => window.ephoneApiTransport.snapshot()); assert.equal(configured.token, device); assert.equal(configured.routes["https://69.deepsuck.sbs"], "relay"); assert.equal(configured.routes["https://one.example"], "relay"); assert.equal(configured.routes["https://two.example"], undefined);
+    assert.equal(checks.length, 1); assert.equal(checks[0]["x-ephone-relay-token"], device); assert.equal(checks[0].authorization, undefined); assert.equal(calls.length, beforeSetup, "pairing never pulls models or generates");
+    await reopen(); assert.equal((await page.evaluate(() => window.ephoneApiTransport.snapshot())).token, device); assert.equal(checks.length, 1, "ordinary reopen never repeats validation");
+    failSetup = true; await page.goto(origin + "/?setup-test=2#ephone-setup=" + "c".repeat(64), { waitUntil: "domcontentloaded" }); await page.waitForFunction(() => window.ephoneAppReady);
+    assert.equal(new URL(page.url()).hash, ""); assert.equal((await page.evaluate(() => window.ephoneApiTransport.snapshot())).token, device, "rejected link preserves valid prior credentials and address choices");
+    await page.goto(origin + "/?setup-test=3#ephone-setup=invalid", { waitUntil: "domcontentloaded" }); await page.waitForFunction(() => window.ephoneAppReady); assert.equal(new URL(page.url()).hash, ""); assert.equal(checks.length, 2, "malformed link never connects");
     assert.equal(await page.evaluate(async () => (await window.db.chats.get("transport-watch")).history[0].content), "不能删除的历史");
     assert.deepEqual(errors, []);
     console.log("PASS: actual mobile opt-in model pulls, defaults/mixed direct and relay, credential recovery input, persisted address choices and wallet/history, image selector, actual spectator reply, no fallback/retry, Termux remains direct");

@@ -22,17 +22,19 @@ export default {
   async fetch(request, env) {
     // Origin is additional restriction, not authentication; token is mandatory.
     if (request.headers.get("Origin") !== OWNER_ORIGIN) return new Response("Forbidden", { status: 403 });
-    const url = new URL(request.url), legacy = /^\/([a-f0-9]{64})(\/v1\/(?:models|chat\/completions))$/i.exec(url.pathname);
-    if (url.pathname !== "/relay" && !legacy) return failure(404, "中转接口不存在。");
+    const url = new URL(request.url), check = url.pathname === "/device/check", legacy = /^\/([a-f0-9]{64})(\/v1\/(?:models|chat\/completions))$/i.exec(url.pathname);
+    if (url.pathname !== "/relay" && !legacy && !check) return failure(404, "中转接口不存在。");
     if (request.method === "OPTIONS") {
       const method = request.headers.get("Access-Control-Request-Method"), headers = (request.headers.get("Access-Control-Request-Headers") || "").toLowerCase().split(",").map((v) => v.trim()).filter(Boolean);
-      if (!["GET", "POST"].includes(method) || headers.some((h) => !REQUEST_HEADERS.includes(h))) return failure(403, "不允许的预检请求。");
+      if (!(check ? method === "GET" : ["GET", "POST"].includes(method)) || headers.some((h) => !REQUEST_HEADERS.includes(h))) return failure(403, "不允许的预检请求。");
       return new Response(null, { status: 204, headers: cors() });
     }
     const expected = String(env.PROXY_TOKEN || "");
     if (!/^[a-f0-9]{64}$/i.test(expected)) return failure(503, "中转授权尚未配置。");
     const provided = legacy?.[1] || request.headers.get("X-EPhone-Relay-Token") || "";
-    if (!await authorised(provided, expected)) return failure(401, "中转授权码不正确；不是服务商 API Key，请检查中转设置。");
+    const device = String(env.DEVICE_TOKEN || ""), matches = await Promise.all([authorised(provided, expected), authorised(provided, device)]);
+    if (!matches[0] && !(/^[a-f0-9]{64}$/i.test(device) && matches[1])) return failure(401, "中转授权码不正确；不是服务商 API Key，请检查中转设置。");
+    if (check) return request.method === "GET" ? Response.json({ ok: true }, { headers: cors() }) : failure(405, "配置验证仅允许 GET。");
     let target;
     try { target = validateTarget(legacy ? "https://gcli.ggchan.dev" + legacy[2] + url.search : request.headers.get("X-EPhone-Target"), request.method); }
     catch (error) { return failure(400, error.message); }

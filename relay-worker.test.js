@@ -10,6 +10,13 @@ const assert = require("node:assert/strict"), { timingSafeEqual } = require("nod
   try {
     assert.equal((await worker.fetch(request("https://api.example/v1/models", { Origin: "https://evil.example" }), env)).status, 403);
     assert.equal((await worker.fetch(request("https://api.example/v1/models", { "X-EPhone-Relay-Token": "wrong" }), env)).status, 401); assert.equal(calls.length, 0);
+    assert.equal((await worker.fetch(request("https://api.example/v1/models", { "X-EPhone-Relay-Token": "" }), env)).status, 401, "unset device token never authenticates empty credentials");
+    const device = "b".repeat(64), deviceEnv = { ...env, DEVICE_TOKEN: device };
+    const checked = await worker.fetch(request("", { "X-EPhone-Relay-Token": device }, "GET", "/device/check"), deviceEnv);
+    assert.equal(checked.status, 200); assert.deepEqual(await checked.json(), { ok: true }); assert.equal(calls.length, 0, "device validation makes no upstream/paid request");
+    assert.equal((await worker.fetch(request("", { "X-EPhone-Relay-Token": "wrong" }, "GET", "/device/check"), deviceEnv)).status, 401);
+    assert.equal((await worker.fetch(request("", {}, "POST", "/device/check"), deviceEnv)).status, 405);
+    assert.equal((await worker.fetch(request("https://api.example/v1/models", { "X-EPhone-Relay-Token": device }), deviceEnv)).status, 200); calls.length = 0;
     const preflight = await worker.fetch(new Request("https://relay.example/relay", { method: "OPTIONS", headers: { Origin: origin, "Access-Control-Request-Method": "POST", "Access-Control-Request-Headers": "authorization,content-type,x-ephone-target,x-ephone-relay-token,x-goog-api-key" } }), env);
     assert.equal(preflight.status, 204); assert.equal(calls.length, 0);
     for (const target of ["http://api.example/v1/models", "https://127.0.0.1/v1/models", "https://2130706433/v1/models", "https://[::1]/v1/models", "https://secret.local/v1/models", "https://a.workers.dev/v1/models", "https://api.example/admin", "https://user:pass@api.example/v1/models", "https://api.example/v1/models?key=fake"]) assert.equal((await worker.fetch(request(target), env)).status, 400, target);

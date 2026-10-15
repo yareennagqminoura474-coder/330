@@ -4,6 +4,19 @@
   const relayOrigin = "https://ephone-gcli-proxy.yareennagqminoura474.workers.dev";
   const nativeFetch = root.fetch.bind(root);
   let adapter, row = { id: "api-transport", routes: {}, token: "" }, queue = Promise.resolve();
+  // This script is loaded before third-party scripts. Keep setup credentials in
+  // this closure and remove them from the address bar before anything else runs.
+  let setupToken = "", setupInvalid = false;
+  try {
+    const current = new URL(location.href);
+    if (/(?:^#|&)ephone-setup(?:=|&|$)/.test(current.hash)) {
+      const params = new URLSearchParams(current.hash.slice(1));
+      const values = params.getAll("ephone-setup"), value = values[0] || "";
+      if (values.length === 1 && /^[a-f0-9]{64}$/i.test(value)) setupToken = value;
+      else setupInvalid = true;
+      root.history.replaceState(root.history.state, "", current.pathname + current.search);
+    }
+  } catch { setupInvalid = true; }
   const fields = [["primary-transport", "proxy-url"], ["secondary-transport", "secondary-proxy-url"], ["image-api-transport", "image-api-baseUrl"]];
   const el = (id) => document.getElementById(id);
   function local(url) {
@@ -48,6 +61,18 @@
     });
     if (adapter.settings()) delete adapter.settings().ephoneApiTransportSettings;
     row = { ...row, ...await table.get("api-transport") }; row.routes ||= {};
+    if (setupToken) {
+      const proposed = setupToken; setupToken = "";
+      try {
+        const controller = new AbortController(), timer = setTimeout(() => controller.abort(), 15000);
+        let response;
+        try { response = await nativeFetch(relayOrigin + "/device/check", { headers: { "X-EPhone-Relay-Token": proposed }, credentials: "omit", redirect: "error", referrerPolicy: "no-referrer", signal: controller.signal }); }
+        finally { clearTimeout(timer); }
+        if (!response.ok || (await response.json()).ok !== true) throw new Error("setup rejected");
+        await save((latest) => ({ ...latest, token: proposed, routes: { ...latest.routes, "https://69.deepsuck.sbs": "relay" } }));
+        setupNotice("中转已自动配置。69.deepsuck.sbs 已选中转，其他地址保持原选择；不用填写授权码。");
+      } catch { setupNotice("专用链接暂未完成验证，原设置未改变。请确认网络正常后重新打开这条专用链接。", true); }
+    } else if (setupInvalid) setupNotice("专用配置链接不完整，原设置未改变。请打开完整链接。", true);
     // Recover only the old owner-issued relay credential, never an API key.
     if (!row.token) {
       const image = await table.get("image-api");
@@ -74,6 +99,11 @@
     // Existing settings renderers also assign URL values without DOM events.
     document.addEventListener("change", (event) => { if (/preset/.test(event.target.id || "")) queueMicrotask(render); });
     if (root.MutationObserver) new root.MutationObserver(render).observe(el("api-settings-screen"), { attributes: true, attributeFilter: ["class"] });
+  }
+  function setupNotice(message, failed = false) {
+    const notice = document.createElement("div"); notice.setAttribute("role", "status"); notice.textContent = message;
+    notice.style.cssText = "position:fixed;top:12px;left:12px;right:12px;z-index:99999;padding:14px;border-radius:12px;background:" + (failed ? "#fff1e5" : "#e7f7eb") + ";color:#222;font:15px/1.5 sans-serif;box-shadow:0 2px 15px #0002";
+    document.body.append(notice); setTimeout(() => notice.remove(), 12000);
   }
   root.fetch = async function ephoneSelectedTransport(input, options = {}) {
     let url; try { url = new URL(typeof input === "string" || input instanceof URL ? input : input.url, location.href); } catch { return nativeFetch(input, options); }
