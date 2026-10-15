@@ -13810,6 +13810,52 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
         document[_0x29ae36(0x1023)](_0x29ae36(0x18de))[_0x29ae36(0x34e)]());
     }
   }
+  let _ephoneUpdatingApiPreset = false, _ephonePrimaryPresetLoading = 0;
+  async function _ephoneUpdateApiPreset() {
+    if (_ephoneUpdatingApiPreset || _ephonePrimaryPresetLoading) return;
+    const select = document.getElementById("api-preset-select"), id = Number(select.value),
+      status = document.getElementById("api-preset-update-status");
+    if (!select.value || !Number.isInteger(id) || id <= 0) {
+      status.textContent = "请先选择要更新的已保存预设；新预设请点“保存”。";
+      return;
+    }
+    const value = (field) => document.getElementById(field).value,
+      draft = { proxyUrl: _ephoneNormalizeApiBaseUrl(value("proxy-url").trim()), apiKey: value("api-key").trim(), model: value("model-select"),
+        minimaxGroupId: value("minimax-group-id").trim(), minimaxApiKey: value("minimax-api-key").trim(), minimaxModel: value("minimax-model-select") },
+      locked = [select, ...["save-api-preset-btn", "update-api-preset-btn", "delete-api-preset-btn", "proxy-url", "api-key", "model-select", "minimax-group-id", "minimax-api-key", "minimax-model-select"].map((field) => document.getElementById(field))].filter(Boolean),
+      previousDisabled = locked.map((element) => element.disabled);
+    _ephoneUpdatingApiPreset = true;
+    locked.forEach((element) => { element.disabled = true; });
+    status.textContent = "正在更新当前预设…";
+    let committed = false;
+    try {
+      await _ephoneSecondarySaveQueue.catch(() => {});
+      const presets = _0x24f906.apiPresets, config = _0x24f906.apiConfig;
+      const name = await presets.db.transaction("rw", presets, config, async () => {
+        const preset = await presets.get(id);
+        if (!preset) throw new Error("PRESET_MISSING");
+        const latest = await config.get("main") || { id: "main" };
+        await presets.update(id, draft);
+        await config.put({ ...latest, ...draft, id: "main" });
+        return preset.name || "未命名预设";
+      });
+      committed = true;
+      Object.assign(_0x5ea3c1.apiConfig, draft);
+      // Legacy voice controls read these caches before rendering. Synchronize
+      // only after the atomic preset/config write has succeeded.
+      let voiceCacheSaved = true;
+      try {
+        for (const [key, field] of [["minimax-group-id", "minimaxGroupId"], ["minimax-api-key", "minimaxApiKey"], ["minimax-model", "minimaxModel"]]) localStorage.setItem(key, draft[field]);
+      } catch { voiceCacheSaved = false; }
+      await _0x2dde7d(id);
+      status.textContent = `已更新“${name}”：切换回来会使用本次保存的设置；副 API 没有改动。` + (voiceCacheSaved ? "" : "旧版语音缓存未能同步，请检查语音设置。主 API 预设已保存成功。");
+    } catch (error) {
+      status.textContent = committed ? "预设已保存成功，但列表刷新失败，请重新打开 API 设置查看。" : error.message === "PRESET_MISSING" ? "该预设已不存在，请重新选择；未新建或覆盖其他预设。" : "更新失败，原预设和已保存的 API 配置均未更改，请重试。";
+    } finally {
+      locked.forEach((element, index) => { element.disabled = previousDisabled[index]; });
+      _ephoneUpdatingApiPreset = false;
+    }
+  }
   async function _0x4a6dc1() {
     const _0x5bc5e2 = _0x3ce505,
       _0x216b19 = await _0x1b625f("保存\x20API\x20预设", _0x5bc5e2(0xb7f));
@@ -60460,8 +60506,15 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
       ),
       document[_0x274136(0x1023)]("api-preset-select")[_0x274136(0x111e)](
         "change",
-        _0x1cf16a,
+        async () => {
+          _ephonePrimaryPresetLoading++;
+          document.getElementById("update-api-preset-btn").disabled = true;
+          document.getElementById("api-preset-update-status").textContent = "更新：覆盖所选预设的主 API 与语音设置，副 API 不变。";
+          try { await _0x1cf16a(); }
+          finally { _ephonePrimaryPresetLoading--; if (!_ephonePrimaryPresetLoading && !_ephoneUpdatingApiPreset) document.getElementById("update-api-preset-btn").disabled = false; }
+        },
       ),
+      document.getElementById("update-api-preset-btn").addEventListener("click", _ephoneUpdateApiPreset),
       document[_0x274136(0x1023)]("save-api-preset-btn")["addEventListener"](
         _0x274136(0x34e),
         _0x4a6dc1,

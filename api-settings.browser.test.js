@@ -133,10 +133,51 @@ const { chromium } = require("playwright-core");
     await saved("model-one", "https://api-test.invalid/new", "fake-new");
     await reopen();
     await checkForm("model-one", "https://api-test.invalid/new", "fake-new");
+    // Explicit one-click update: selected ID, current form, no new record or
+    // hidden changes to the independent secondary connection.
+    const updateIds = await page.evaluate(async () => {
+      const a = await window.db.apiPresets.add({ name: "同名更新测试", proxyUrl: "https://api-test.invalid/update-old", apiKey: "fake-old", model: "old-update-model", customPresetMetadata: "preserve-me" });
+      const b = await window.db.apiPresets.add({ name: "同名更新测试", proxyUrl: "https://api-test.invalid/not-target", apiKey: "fake-not-target", model: "not-target" });
+      return { a, b };
+    });
+    await reopen(); await page.locator("#api-preset-select").selectOption("current");
+    const countBefore = await page.evaluate(() => window.db.apiPresets.count()); await page.locator("#update-api-preset-btn").click();
+    assert.match(await page.locator("#api-preset-update-status").innerText(), /请先选择/); assert.equal(await page.evaluate(() => window.db.apiPresets.count()), countBefore);
+    await page.locator("#api-preset-select").selectOption(String(updateIds.a)); await page.waitForFunction(() => document.getElementById("model-select").value === "old-update-model" && !document.getElementById("update-api-preset-btn").disabled);
+    await page.locator("#secondary-api-preset-select").selectOption(String(updateIds.a)); await page.locator("#load-secondary-api-preset-btn").click(); await saved("old-update-model", "https://api-test.invalid/update-old", "fake-old");
+    const secondaryBefore = await page.evaluate(async () => { const c = await window.db.apiConfig.get("main"); return Object.fromEntries(Object.entries(c).filter(([k]) => k.startsWith("secondary"))); });
+    const otherBefore = await page.evaluate((id) => window.db.apiPresets.get(id), updateIds.b), callsBeforeUpdate = requests.length;
+    await page.locator("#proxy-url").fill("https://api-test.invalid/update-new/"); await page.locator("#api-key").fill("fake-updated-key");
+    await page.evaluate(() => document.getElementById("model-select").add(new Option("updated-model", "updated-model"))); await page.locator("#model-select").selectOption("updated-model");
+    await page.locator("#minimax-group-id").fill("updated-group"); await page.locator("#minimax-api-key").fill("fake-updated-voice");
+    await page.evaluate(() => { document.getElementById("update-api-preset-btn").click(); document.getElementById("update-api-preset-btn").click(); });
+    await page.waitForFunction(() => document.getElementById("api-preset-update-status").textContent.startsWith("已更新") && !document.getElementById("update-api-preset-btn").disabled);
+    const updated = await page.evaluate((id) => window.db.apiPresets.get(id), updateIds.a);
+    assert.equal(updated.id, updateIds.a); assert.equal(updated.name, "同名更新测试"); assert.equal(updated.model, "updated-model"); assert.equal(updated.apiKey, "fake-updated-key"); assert.equal(updated.proxyUrl, "https://api-test.invalid/update-new");
+    assert.equal(updated.minimaxGroupId, "updated-group"); assert.equal(updated.minimaxApiKey, "fake-updated-voice"); assert.equal(updated.customPresetMetadata, "preserve-me");
+    assert.deepEqual(await page.evaluate((id) => window.db.apiPresets.get(id), updateIds.b), otherBefore); assert.equal(await page.evaluate(() => window.db.apiPresets.count()), countBefore); assert.equal(requests.length, callsBeforeUpdate);
+    assert.deepEqual(await page.evaluate(async () => { const c = await window.db.apiConfig.get("main"); return Object.fromEntries(Object.entries(c).filter(([k]) => k.startsWith("secondary"))); }), secondaryBefore);
+    await page.locator("#api-preset-select").selectOption(String(ids.b)); await page.waitForFunction(() => document.getElementById("model-select").value === "primary-b");
+    await page.locator("#api-preset-select").selectOption(String(updateIds.a)); await page.waitForFunction(() => document.getElementById("model-select").value === "updated-model");
+    assert.equal(await page.locator("#proxy-url").inputValue(), "https://api-test.invalid/update-new"); assert.equal(await page.locator("#api-key").inputValue(), "fake-updated-key");
+    await reopen(); assert.equal(await page.locator("#api-preset-select").inputValue(), String(updateIds.a)); assert.equal(await page.locator("#model-select").inputValue(), "updated-model");
+    assert.equal(await page.locator("#minimax-group-id").inputValue(), "updated-group"); assert.equal(await page.locator("#minimax-api-key").inputValue(), "fake-updated-voice");
+    // A failure in active configuration storage rolls the preset back too.
+    const configBeforeFailure = await page.evaluate(() => window.db.apiConfig.get("main"));
+    await page.locator("#api-key").fill("fake-not-saved");
+    await page.evaluate(() => { const table = window.db.apiConfig, original = table.put; table.put = async function (...args) { table.put = original; throw new Error("isolated storage failure"); }; });
+    await page.locator("#update-api-preset-btn").click(); await page.waitForFunction(() => document.getElementById("api-preset-update-status").textContent.startsWith("更新失败"));
+    assert.deepEqual(await page.evaluate((id) => window.db.apiPresets.get(id), updateIds.a), updated); assert.deepEqual(await page.evaluate(() => window.db.apiConfig.get("main")), configBeforeFailure);
+    assert.equal(await page.locator("#update-api-preset-btn").isEnabled(), true);
+    // A removed preset must not be silently recreated at its old ID.
+    await page.evaluate((id) => window.db.apiPresets.delete(id), updateIds.a); await page.locator("#update-api-preset-btn").click();
+    await page.waitForFunction(() => document.getElementById("api-preset-update-status").textContent.includes("该预设已不存在")); assert.equal(await page.evaluate((id) => window.db.apiPresets.get(id), updateIds.a), undefined);
+    await checkForm("old-update-model", "https://api-test.invalid/update-old", "fake-old");
+    const box = await page.locator("#update-api-preset-btn").boundingBox(); assert.ok(box.x >= 0 && box.x + box.width <= 420, "update button stays inside mobile viewport");
     assert.deepEqual(errors, []);
     await page.locator("#secondary-api-preset-select").scrollIntoViewIfNeeded();
-    const screenshot = path.join(require("node:os").tmpdir(), "ephone-api-routing-v173.png"); await page.screenshot({ path: screenshot }); console.log("SCREENSHOT " + screenshot);
-    assert.equal(await page.evaluate(async () => (await window.db.apiConfig.get("main")).secondaryPresetSnapshot), null);
-    console.log("PASS: offline model restore, independent secondary autosave/reload, primary preset switch/save isolation, copy preset PRIMARY connection as secondary snapshot, later source edits/deletion do not propagate, explicit reload updates snapshot, invalid source preserves old settings, manual edits clear source label, failed fetch/unrelated settings preserved");
+    const screenshot = path.join(require("node:os").tmpdir(), "ephone-api-routing-v175.png"); await page.screenshot({ path: screenshot }); console.log("SCREENSHOT " + screenshot);
+    assert.equal((await page.evaluate(async () => (await window.db.apiConfig.get("main")).secondaryPresetSnapshot)).id, updateIds.a);
+    console.log("PASS: model restore, secondary autosave and preset snapshot isolation; one-click current-preset update by ID with duplicate names, current URL/key/model/voice, metadata preservation, switch/reload, no extra calls/records, double-click protection, transaction rollback, deleted/no-selection safeguards and mobile layout");
   } finally { await browser.close(); await new Promise((resolve) => server.close(resolve)); }
 })().catch((error) => { console.error(error); process.exitCode = 1; });
