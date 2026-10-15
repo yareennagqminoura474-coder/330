@@ -90,10 +90,14 @@
   }
 
   window.fetch = async function ephoneGuardedFetch(input, options) {
-    if (!isChatRequest(input, options) || typeof options?.body !== "string") {
+    if ((!isChatRequest(input, options) && !options?.ephoneContextRequest) || typeof options?.body !== "string") {
       return originalFetch(input, options);
     }
-    const compactedBody = await compactChatBody(options.body);
-    return originalFetch(input, compactedBody === options.body ? options : { ...options, body: compactedBody });
+    const compactedBody = isChatRequest(input, options) ? await compactChatBody(options.body) : options.body;
+    options.signal?.throwIfAborted();
+    // Observe the FINAL body after payload protection, not the pre-trim draft.
+    const { ephoneContextRequest, ...transport } = options;
+    await ephoneContextRequest?.sent(compactedBody);
+    return originalFetch(input, { ...transport, body: compactedBody });
   };
 })();

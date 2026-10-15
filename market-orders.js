@@ -62,6 +62,11 @@
       const current = (await this.orders.orderBy("timestamp").reverse().toArray()).filter((order) =>
         order.ownerKey ? keys.has(order.ownerKey) || (order.knownBy || []).some((person) => keys.has(person.key)) : order.chatId === chat.id).slice(0, 40);
       const binding = await this.identity.load(this.db);
+      // No current order means no order actions can be executed. Keep identity
+      // and privacy boundaries without sending a whole unused action manual.
+      if (!current.length) return "\n# 本空间角色身份与订单记忆边界（高优先级）\n" +
+        (binding?.key ? `本空间绑定角色是 ${binding.name}，身份标识 ${binding.key}，购物/外卖属于此角色。\n` : "本空间尚未绑定代替用户的角色。\n") +
+        "当前没有本聊天人物相关的订单。不要编造已下单、到货、取消、退款或订单ID；其他人物的私人订单不是本聊天的共同记忆。\n";
       return "\n# 本空间角色身份与订单记忆边界（高优先级）\n" +
         (binding?.key ? `本空间绑定角色是 ${binding.name}，身份标识 ${binding.key}，其购物/外卖属于此角色，不属于额外的用户。\n` : "本空间尚未绑定代替用户的角色。\n") +
         "以下是作者用于维持剧情一致性的后台数据，不是全群公告，也不是每个角色都能看到的手机屏幕。只有owner及knownBy中的角色拥有相应知识；owner/details可知订单金额和完整详情，summary只知道disclosedText中的内容或到货看到的商品；主人明确说出的价格可以知道，未被明确告知的价格和手机内信息不可知道。知道下单不等于知道后来的取消或到货，除非实际获知。没有被列入的角色不得在台词、心理或行动中引用该订单，不得因看见历史订单卡片、总结、共享记忆就变成知情。历史或总结推测与此账本冲突时，以账本为准。未被告知的角色不能凭空吃醋、责备、阻止或取消订单。\n" +

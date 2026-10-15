@@ -7765,6 +7765,7 @@ async function _ephoneApiFetch(_ephoneUrl, _ephoneOptions = {}) {
           _ephoneData = JSON.parse(_ephoneData);
         } catch {}
       }
+      await _ephoneOptions.ephoneContextRequest?.sent(_ephoneData);
       const _ephoneNativeRequest = _ephoneNativeHttp.request({
         url: _ephoneUrl,
         method: _ephoneMethod,
@@ -17531,12 +17532,12 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
     for (const result of await service.captureDisclosures(chat)) await _ephoneSyncOrderResult(result);
     return service.prompt(chat);
   }
-  async function _ephoneSocialPrompt(chat, vts) {
+  async function _ephoneSocialPrompt(chat, vts, referenceText = "") {
     if (!window.ephoneCharacterSocialCore || !_0x24f906.characterRelations) return "";
     await window.EPhoneCharacterDaily?.beforeReply(vts, { signal: (_0xephoneSpectatorController || _0xephoneGenerationController)?.signal });
     await window.EPhoneLifeSimulation?.sync(vts, chat);
     const continuity = window.ephoneLifeSimulationCore && _0x24f906.lifeSimulation ? await new window.ephoneLifeSimulationCore.Service(_0x24f906).prompt(chat, vts) : "";
-    return (await new window.ephoneCharacterSocialCore.Service(_0x24f906).prompt(chat, vts)) + continuity;
+    return (await new window.ephoneCharacterSocialCore.Service(_0x24f906).prompt(chat, vts, { referenceText })) + continuity;
   }
   function _ephoneApiFor(purpose, required = true) {
     try { return window.ephoneApiRoutingCore.select(_0x5ea3c1.apiConfig, purpose); }
@@ -17802,7 +17803,7 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
           window.ephoneSpectatorMoney.ledger(_0x326f3d) +
           (await _ephoneOrderPrompt(_0x326f3d)) +
           (await _ephoneFinancePrompt(_0x326f3d, _ephoneSpectatorReplyTimeMs)) +
-          (await _ephoneSocialPrompt(_0x326f3d, _ephoneSpectatorReplyTimeMs)) +
+          (await _ephoneSocialPrompt(_0x326f3d, _ephoneSpectatorReplyTimeMs, [_0x3e48fd, _0x50a753, _0x34a92d].join("\n"))) +
           "\n# 围观模式的旁白与台词\n" +
           "第一个可见 JSON 对象必须是 narration 时间地点旁白。角色真正说出口或打出的内容用 text；动作、心理、神态、环境、场景和时间一律用 narration。每位发言角色的动作按情境穿插旁白。旁白对象格式为 {\"type\":\"narration\",\"name\":\"角色名或旁白\",\"content\":\"内容\"}。不要把动作放进 text，也不要以旁白代替角色说话。\n" +
           "无论最后一条是谁发送的，均从其内容继续往后推进。用户以角色身份输入的台词属于该角色，不属于额外的‘用户’，不要重写或忽略。根据剧情安排必要的多轮互动，条数不固定，不要每人只说一句就停止；同一条 text 只放一段自然发言，动作另用 narration。\n" +
@@ -17817,6 +17818,7 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
       _0x235416.push({ role: "user", content: "请按以上人设、人物关系及当前时间，从最后一条消息继续推进剧情；不要复述已有消息。" });
       _ephoneSpectatorController.signal.throwIfAborted();
       const _ephoneSpectatorComplete = await window.ephoneChatResponse.complete(async (_ephoneRecoveryPrompt) => {
+        const _ephoneContextRequest = window.ephoneRequestContext?.start(_0x24f906, _0x326f3d.id, _0x45d813, _ephoneRecoveryPrompt ? 2 : 1) || { finish: async (raw) => raw };
         const _ephoneRequestMessages = _ephoneRecoveryPrompt
           ? [..._0x235416, { role: "user", content: _ephoneRecoveryPrompt }] : _0x235416;
         let _0x4799c0 = _0x4dfdb5[_0xd07074(0x1507)](_0xd07074(0x328)),
@@ -17824,7 +17826,7 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
         if (_0x4799c0) {
           let _0x29aa1f = _0x20e281(_0x45d813, _0x570fe9, _0x404106, _ephoneRequestMessages);
           _0x13b518 = await fetch(_0x29aa1f[_0xd07074(0x863)], {
-            ..._0x29aa1f.data, signal: _ephoneSpectatorController.signal,
+            ..._0x29aa1f.data, signal: _ephoneSpectatorController.signal, ephoneContextRequest: _ephoneContextRequest,
           });
         } else
           _0x13b518 = await _ephoneApiFetch(
@@ -17832,6 +17834,7 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
             {
             method: "POST",
             signal: _ephoneSpectatorController.signal,
+            ephoneContextRequest: _ephoneContextRequest,
             headers: {
               "Content-Type": _0xd07074(0x1206),
               Authorization: _0xd07074(0x654) + _0x570fe9,
@@ -17856,7 +17859,7 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
               (_0x45883a[_0xd07074(0x110f)]?.[_0xd07074(0xeb4)] || "未知错误"),
           );
         }
-        return await _0x13b518.json();
+        return await _ephoneContextRequest.finish(await _0x13b518.json());
       }, {
         signal: _ephoneSpectatorController.signal, parse: _0x297b4d,
         isRenderable: (item) => item.type === "narration" || !!window.ephoneGroupContext.resolveSpeaker(_ephoneGroupContext.profiles, item.name),
@@ -20517,7 +20520,7 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
         "\n# 【回复长度与节奏（按情境灵活执行）】\n通常将内容拆分成约4到7条简短消息；简单回应可以更少，互动丰富或需要逐步展开时可以更多。此范围只是自然聊天的倾向，没有固定最低或最高条数。不要为凑数量添加空话，也不要把多个独立想法挤成一条。\n";
       _0x539674 += await _ephoneOrderPrompt(_0x5b16cb);
       _0x539674 += await _ephoneFinancePrompt(_0x5b16cb, _ephoneReplyTimeMs);
-      _0x539674 += await _ephoneSocialPrompt(_0x5b16cb, _ephoneReplyTimeMs);
+      _0x539674 += await _ephoneSocialPrompt(_0x5b16cb, _ephoneReplyTimeMs, _0x539674);
       _0x539674 +=
         "\n# 【发送前最终时间校验】\n" +
         `本轮唯一有效的当前时间是 ${window.ephoneTimeMachine?.formatDateTime(_ephoneReplyTimeMs, { withWeekday: true }) || _0x369e74}。` +
@@ -20533,13 +20536,14 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
         });
       }
       const _ephoneCompleteReply = await window.ephoneChatResponse.complete(async (_ephoneRecoveryPrompt) => {
+        const _ephoneContextRequest = window.ephoneRequestContext?.start(_0x24f906, _0x5b16cb.id, _0x1d2298, _ephoneRecoveryPrompt ? 2 : 1) || { finish: async (raw) => raw };
         const _ephoneRequestMessages = _ephoneRecoveryPrompt
           ? [..._0x4e7a2c, { role: "user", content: _ephoneRecoveryPrompt }] : _0x4e7a2c;
         let _0x401894 = _0x275228 === GEMINI_API_URL,
           _0x25b2a9 = _0x20e281(_0x1d2298, _0xdbefc3, _0x539674, _ephoneRequestMessages),
           _0x114828;
         try {
-          if (_0x25b2a9?.data) _0x25b2a9.data.signal = _0xephoneController.signal;
+          if (_0x25b2a9?.data) { _0x25b2a9.data.signal = _0xephoneController.signal; _0x25b2a9.data.ephoneContextRequest = _ephoneContextRequest; }
           _0x114828 = _0x401894
             ? await fetch(_0x25b2a9[_0x25f1e5(0x863)], _0x25b2a9["data"])
             : await _ephoneApiFetch(
@@ -20547,6 +20551,7 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
                 {
                 method: "POST",
                 signal: _0xephoneController.signal,
+                ephoneContextRequest: _ephoneContextRequest,
                 headers: {
                   "Content-Type": _0x25f1e5(0x1206),
                   Authorization: _0x25f1e5(0x654) + _0xdbefc3,
@@ -20607,7 +20612,7 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
           }
           throw new Error(_0x3ebff3);
         }
-        return await _0x114828.json();
+        return await _ephoneContextRequest.finish(await _0x114828.json());
       }, {
         signal: _0xephoneController.signal, parse: _0x297b4d,
         isRenderable: (item) => !_0x5b16cb.isGroup || item.type === "narration" ||
@@ -49843,104 +49848,36 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
     return Math[_0x27e153(0x1149)](_0x36313f["length"] / 1.5);
   }
   async function _0x41f10c() {
-    const _0x1fc7c1 = _0x3ce505;
-    if (!_0x5ea3c1[_0x1fc7c1(0x1aba)]) return 0x0;
-    const _0x43ee8e = _0x5ea3c1["chats"][_0x5ea3c1[_0x1fc7c1(0x1aba)]];
-    if (!_0x43ee8e) return 0x0;
-    const _0x309187 =
-        parseInt(document["getElementById"](_0x1fc7c1(0x14de))["value"]) || 0xa,
-      _0x576b3d =
-        parseInt(document[_0x1fc7c1(0x1023)](_0x1fc7c1(0x1478))["value"]) ||
-        0xa,
-      _0x1ba88a = document[_0x1fc7c1(0x1023)](_0x1fc7c1(0x19a4))[
-        _0x1fc7c1(0x136b)
-      ],
-      _0x5abb1b = document["getElementById"](_0x1fc7c1(0x18e7))[
-        _0x1fc7c1(0x16b0)
-      ],
-      _0x461d46 = document["getElementById"]("my-persona")["value"];
-    let _0xb7dd4 = "";
-    const _0x7a7853 = Array[_0x1fc7c1(0x24d)](
-      document["querySelectorAll"](
-        "#world-book-checkboxes-container\x20input:checked",
-      ),
-    )[_0x1fc7c1(0xbc5)]((_0x385ca1) =>
-      _0x385ca1[_0x1fc7c1(0x16b0)]["replace"](_0x1fc7c1(0x23b), ""),
-    );
-    if (_0x7a7853[_0x1fc7c1(0xa5d)] > 0x0) {
-      const _0xb888ff = _0x7a7853["map"]((_0x2eb3cf) => {
-        const _0x139b72 = _0x1fc7c1,
-          _0x1a39cd = _0x5ea3c1[_0x139b72(0x781)]["find"](
-            (_0x3c3dfa) => _0x3c3dfa["id"] === _0x2eb3cf,
-          );
-        if (!_0x1a39cd || !Array["isArray"](_0x1a39cd[_0x139b72(0xfd7)]))
-          return "";
-        return _0x1a39cd[_0x139b72(0xfd7)]
-          [_0x139b72(0x1916)]((_0x271279) => _0x271279["enabled"] !== ![])
-          [_0x139b72(0xbc5)]((_0x31f598) => _0x31f598["content"])
-          [_0x139b72(0x1895)]("\x0a");
-      })
-        [_0x1fc7c1(0x1916)](Boolean)
-        ["join"]("\x0a");
-      _0xb7dd4 += _0xb888ff;
-    }
-    _0x43ee8e[_0x1fc7c1(0x1027)] &&
-      _0x43ee8e[_0x1fc7c1(0x1027)][_0x1fc7c1(0xa5d)] > 0x0 &&
-      (_0xb7dd4 += _0x43ee8e[_0x1fc7c1(0x1027)]
-        [_0x1fc7c1(0xbc5)]((_0x250912) => _0x250912[_0x1fc7c1(0xfd7)])
-        [_0x1fc7c1(0x1895)]("\x0a"));
-    const _0x30bd3 = document["getElementById"](_0x1fc7c1(0x418))["checked"];
-    if (_0x30bd3) {
-      const _0x54db70 = Array[_0x1fc7c1(0x24d)](
-        document[_0x1fc7c1(0xa9b)](_0x1fc7c1(0x9b8)),
-      )["map"]((_0x52e008) => _0x52e008[_0x1fc7c1(0x16b0)]);
-      for (const _0xfbc93 of _0x54db70) {
-        const _0x2523a6 = _0x5ea3c1[_0x1fc7c1(0x1255)][_0xfbc93];
-        _0x2523a6 &&
-          _0x2523a6[_0x1fc7c1(0x8e6)]["length"] > 0x0 &&
-          (_0xb7dd4 += _0x2523a6["history"]
-            [_0x1fc7c1(0x1655)](-_0x576b3d)
-            ["map"]((_0x54d407) => String(_0x54d407[_0x1fc7c1(0xfd7)]))
-            [_0x1fc7c1(0x1895)]("\x0a"));
+    const chat = _0x5ea3c1.chats[_0x5ea3c1.activeChatId];
+    if (!chat) return 0;
+    const value = (id) => document.getElementById(id)?.value || "";
+    const checked = (id) => Boolean(document.getElementById(id)?.checked);
+    const linkedIds = checked("link-memory-toggle") ? Array.from(document.querySelectorAll("#linked-chats-checkboxes-container input:checked")).map((input) => input.value) : [];
+    const draft = { ...chat, settings: { ...chat.settings, myPersona: value("my-persona"), aiPersona: value("ai-persona"), maxMemory: parseInt(value("max-memory")) || 10, linkedMemoryCount: parseInt(value("linked-memory-count")) || 10, linkedMemoryChatIds: linkedIds } };
+    const selectedBooks = new Set(Array.from(document.querySelectorAll("#world-book-checkboxes-container input:checked")).map((input) => input.value.replace("book_", "")));
+    const chunks = (_0x5ea3c1.worldBooks || []).filter((book) => selectedBooks.has(String(book.id))).flatMap((book) => (book.content || []).filter((entry) => entry.enabled !== false).map((entry) => entry.content));
+    const format = (timestamp) => window.ephoneTimeMachine?.formatDateTime(timestamp, { withWeekday: true }) || "";
+    if (chat.isGroup || chat.isSpectatorGroup) {
+      const context = window.ephoneGroupContext.buildContext({ chat: draft, chats: _0x5ea3c1.chats, npcs: await _0x24f906.npcs.toArray(), formatTime: format });
+      chunks.push(context.membersText, context.memoryText, context.linkedMemoryText, _0x5ea60f(chat));
+    } else {
+      chunks.push(draft.settings.aiPersona);
+      chunks.push(...window.ephoneGroupContext.uniqueMemories(chat.longTermMemory).map((memory) => memory.content));
+      for (const id of [...new Set(linkedIds)].filter((id) => String(id) !== String(chat.id))) {
+        const source = _0x5ea3c1.chats[id]; if (!source) continue;
+        chunks.push(...window.ephoneGroupContext.uniqueMemories(source.longTermMemory).map((memory) => memory.content));
+        chunks.push(...window.ephoneGroupContext.recentHistory(source, draft.settings.linkedMemoryCount).map((message) => window.ephoneGroupContext.describeMessage(source, message, format)));
+      }
+      if (checked("offline-mode-toggle")) {
+        const preset = (_0x5ea3c1.presets || []).find((p) => String(p.id) === value("offline-preset-select"));
+        chunks.push(...(preset?.content || []).filter((entry) => entry.enabled !== false).map((entry) => entry.content));
       }
     }
-    _0x43ee8e["isGroup"]
-      ? _0x43ee8e[_0x1fc7c1(0x60c)][_0x1fc7c1(0x9bb)]((_0x27ed31) => {
-          const _0x34da64 = _0x1fc7c1;
-          _0xb7dd4 += _0x27ed31[_0x34da64(0x13cb)];
-        })
-      : (_0xb7dd4 += _0x5abb1b);
-    ((_0xb7dd4 += _0x461d46), (_0xb7dd4 += _0x4898fd(_0x43ee8e)));
-    _0x43ee8e[_0x1fc7c1(0x126)] && (_0xb7dd4 += _0x5ea60f(_0x43ee8e));
-    if (!_0x43ee8e["isGroup"] && _0x1ba88a) {
-      const _0x4b62c3 = document[_0x1fc7c1(0x1023)](_0x1fc7c1(0xa30))[
-        _0x1fc7c1(0x16b0)
-      ];
-      if (_0x4b62c3) {
-        const _0x5b7c6d = _0x5ea3c1[_0x1fc7c1(0x61b)][_0x1fc7c1(0xf0d)](
-          (_0x590d90) => _0x590d90["id"] === _0x4b62c3,
-        );
-        _0x5b7c6d &&
-          (_0xb7dd4 += _0x5b7c6d[_0x1fc7c1(0xfd7)]
-            ["filter"]((_0x182887) => _0x182887[_0x1fc7c1(0x160d)] !== ![])
-            [_0x1fc7c1(0xbc5)]((_0x6e4c30) => _0x6e4c30[_0x1fc7c1(0xfd7)])
-            [_0x1fc7c1(0x1895)]("\x0a"));
-      }
-    }
-    const _0x5b415c = _0x43ee8e["history"]["slice"](-_0x309187);
-    return (
-      (_0xb7dd4 += _0x5b415c[_0x1fc7c1(0xbc5)]((_0x481454) => {
-        const _0x25b70a = _0x1fc7c1;
-        if (typeof _0x481454["content"] === _0x25b70a(0x12f9))
-          return _0x481454[_0x25b70a(0xfd7)];
-        if (Array["isArray"](_0x481454[_0x25b70a(0xfd7)]))
-          return _0x481454["content"]
-            [_0x25b70a(0xbc5)]((_0x27460d) => _0x27460d[_0x25b70a(0x352)])
-            ["join"]("\x20");
-        return "";
-      })[_0x1fc7c1(0x1895)]("\x0a")),
-      _0x56f3e3(_0xb7dd4)
-    );
+    chunks.push(draft.settings.myPersona, _0x4898fd(chat));
+    chunks.push(...window.ephoneGroupContext.recentHistory(chat, draft.settings.maxMemory).map((message) => window.ephoneGroupContext.describeMessage(chat, message, format)));
+    // Form-only preview. Never run daily generation, disclosure capture or
+    // settlement here. Complete outgoing requests are measured at transport.
+    return _0x56f3e3(chunks.filter(Boolean).join("\n"));
   }
   const _0x3decfc = _0x460833(async () => {
     const _0x271d2d = _0x3ce505,
@@ -49962,6 +49899,8 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
     _0x5c61ec["textContent"] = _0x271d2d(0x1b86);
     try {
       const _0x49f20f = await _0x41f10c();
+      const _ephoneUsageChatId = _0x5ea3c1.activeChatId;
+      await window.ephoneRequestContext?.render(_0x24f906, _ephoneUsageChatId, () => _0x5ea3c1.activeChatId === _ephoneUsageChatId);
       ((_0x5c61ec[_0x271d2d(0x71a)] = _0x49f20f + _0x271d2d(0x1918)),
         (_0x5c61ec[_0x271d2d(0x791)][_0x271d2d(0xb1c)] = _0x271d2d(0xf16)),
         (document["body"][_0x271d2d(0xd57)][_0x271d2d(0x1928)](

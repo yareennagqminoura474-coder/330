@@ -318,20 +318,35 @@
         await this.relationshipEvents.update(id, { status: accept ? "accepted" : "dismissed", reviewedVts: vts });
       });
     }
-    async prompt(chat, vts) {
+    async prompt(chat, vts, options = {}) {
       const data = await this.snapshot(), current = this.identity.participants(chat, data.chats), keys = new Set(current.map((p) => p.key)), valid = new Map(data.people.map((p) => [p.key, p]));
       const relations = data.relations.filter((r) => (keys.has(r.a) || keys.has(r.b)) && valid.has(r.a) && valid.has(r.b));
+      // Keep the relationship directory, but do not expand everyone's entire
+      // offscreen social circle on every reply. Full member profiles are already
+      // in the main context. Mentioned contacts get one shared, complete profile.
+      const history = list(chat.history).filter((m) => !m.isHidden).slice(-Math.max(1, Number(chat.settings?.maxMemory) || 10));
+      const referenceText = [options.referenceText || "", ...history.map((m) => typeof m.content === "string" ? m.content : list(m.content).map((part) => part.text || "").join("\n")),
+        ...list(chat.longTermMemory).map((m) => m.content || ""), ...current.flatMap((p) => [valid.get(p.key)?.persona || "", ...list(data.chats.find((c) => "chat:" + c.id === p.key)?.longTermMemory).map((m) => m.content || "")])].join("\n");
+      const mentioned = new Set(data.people.filter((p) => !keys.has(p.key) && p.name.length > 1 && referenceText.includes(p.name)).map((p) => p.key));
+      const contactProfiles = new Map();
       const records = current.map((p) => {
         const life = data.lives.find((l) => l.key === p.key);
         return { name: p.name, job: life?.job || "依人设", home: life?.home || "未设置", note: life?.note || "", activity: activityAt(life, vts), todayPlan: life?.enabled !== false ? life?.dailyPlans?.[dayKey(vts)] || null : null,
-          contacts: relations.filter((r) => r.a === p.key || r.b === p.key).slice(0, 25).map((r) => { const from = r.a === p.key, other = valid.get(from ? r.b : r.a), ownLife = data.lives.find((l) => l.key === other.key); return { name: other.name, persona: other.persona.slice(0, 1800), activity: activityAt(ownLife, vts), relation: from ? r.aToB : r.bToA, reverse: from ? r.bToA : r.aToB, detail: r.detail, source: r.source, evidence: r.evidence }; }) };
+          contacts: relations.filter((r) => r.a === p.key || r.b === p.key).map((r) => {
+            const from = r.a === p.key, other = valid.get(from ? r.b : r.a), expanded = keys.has(other.key) || mentioned.has(other.key);
+            if (mentioned.has(other.key)) contactProfiles.set(other.key, { key: other.key, name: other.name, persona: other.persona });
+            return { key: other.key, name: other.name, relation: from ? r.aToB : r.bToA, reverse: from ? r.bToA : r.aToB, source: r.source,
+              ...(expanded ? { detail: r.detail } : {}) };
+          }) };
       });
       return "\n# 人物关系网与独立生活（作者资料；按各自知情范围演绎）\n" +
         "人物有各自的工作、学业、朋友、同事、家庭与独处时间，不能默认全员一直陪着用户或绑定角色。关系只代表彼此认识，不代表正在同一地点；同在群聊也不等于物理共处，能远程回复不代表在场。在忙碌、上班、学习、睡眠时允许暂不回话、稍后回复或仅有必要旁白，不要求每轮每个角色都发言。未设置生活计划的角色也按人设与前文合理行动，不假造其刚刚发生的重大经历。\n" +
         "todayPlan是此人指定日期的当天计划，不能循环当成每天固定安排。activity.source=daily或routine都只是计划，不是已发生事实；本轮明确场景、人物已说的约定、假期/调休优先于计划，不能突然传送或无视正在发生的互动。每人知道自己的计划，别人只有被告知、亲历或实际联系时才知道其私人日程。source=chat是带实际聊天原文的短时状态，按本轮空间时间判断有效；跨聊天状态仅作作者一致性参考，不让其他角色凭空知道其行踪。时间铁律仍是唯一当前时间，绝不因作息再次推进时间。\n" +
         "每人只直接知道自己的关系和亲历聊天；别人不自动知道其私下交往、关系细节或记录中的私事。generated是用户一键建立的新设定，不伪称它曾在旧聊天中发生；history含实际来源，但称呼、玩笑、假设不能当成亲属/恋人事实。手动关系优先保留，明确人设冲突须遵循更具体的设置而非凭空改辈分。新NPC不会自动加入当前群聊或突然到场；只能由在场角色实际联系、提及或后续情节合理引入，JSON发言仍只能用当前聊天合法成员。\n" +
         '如本轮实际叙述了某角色离开/开始活动，可在该段narration/text之后输出 {"type":"life_update","name":"实际参与者本名","activity":"原文中的活动","place":"原文中的地点","minutes":60,"reachability":"busy","quote":"包含该角色姓名、活动和地点的实际原文"}。可另加for_timestamp引用实际历史Timestamp；刚生成的段落只需逐字quote，系统匹配此前已经发出的原文，不猜时间戳。只有明确正在发生的行动才能更新，不得把明天、计划、假设或他人的活动写成该角色当前状态。有效时长按实际活动合理估计。不要仅凭作息更新状态，也不要每轮都改状态。\n' +
-        '关系出现明确实质变化时可输出 {"type":"relationship_event","name":"参与者本名","otherName":"另一方本名","aToB":"对方对我的身份","bToA":"我对对方的身份","detail":"变化依据","for_timestamp":原文Timestamp,"quote":"实际关系变化原文"}。变化先放在人物关系页待确认，未确认不得覆盖已存关系；不要反复提交同一记录。没有变化不必输出。\n' + JSON.stringify(records) + "\n";
+        '关系出现明确实质变化时可输出 {"type":"relationship_event","name":"参与者本名","otherName":"另一方本名","aToB":"对方对我的身份","bToA":"我对对方的身份","detail":"变化依据","for_timestamp":原文Timestamp,"quote":"实际关系变化原文"}。变化先放在人物关系页待确认，未确认不得覆盖已存关系；不要反复提交同一记录。没有变化不必输出。\n' +
+        "contacts仅是关系目录，未展开的联系人不能凭空补写其详细人设或私下行踪；当前成员完整人设见前文，提及的场外人物完整档案见contactProfiles（只发送一份）。没有发送原始关系证据不等于关系不存在，source仍区分手动、生成和已确认来源。\n" +
+        JSON.stringify({ people: records, contactProfiles: [...contactProfiles.values()] }) + "\n";
     }
   }
   function generationPrompt(context) {

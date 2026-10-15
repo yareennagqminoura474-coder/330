@@ -1,0 +1,30 @@
+const assert = require("node:assert/strict"), fs = require("node:fs"), vm = require("node:vm");
+const context = require("./request-context.js");
+(async () => {
+  const system = "完整人设和记忆\n# 人物关系网与独立生活\n社交资料\n# 角色独立资产与实际收支\n资产\n# 其他规则\n其他规则";
+  const body = { model: "fake", messages: [{ role: "system", content: system }, { role: "user", content: [{ type: "text", text: "完整聊天" }, { type: "image_url", image_url: { url: "data:image/png;base64," + "x".repeat(100000) } }] }] };
+  const before = JSON.stringify(body), result = context.inspect(body);
+  assert.equal(result.textChars, system.length + 4); assert.equal(result.images, 1);
+  assert.equal(result.categories.reduce((s, c) => s + c.textChars, 0), result.textChars);
+  assert.ok(result.categories.some((c) => c.key === "social")); assert.equal(JSON.stringify(body), before);
+  const native = context.inspect({ contents: [{ role: "user", parts: [{ text: system }] }, { role: "model", parts: [{ text: "已了解" }] }, { role: "user", parts: [{ text: "继续" }, { inline_data: { data: "a".repeat(50000) } }] }] });
+  assert.equal(native.textChars, system.length + 5); assert.equal(native.images, 1);
+  assert.deepEqual(context.usage({ usage: { prompt_tokens: 51234, completion_tokens: 100, prompt_tokens_details: { cached_tokens: 20000 } } }), { inputTokens: 51234, outputTokens: 100, cachedInputTokens: 20000 });
+  assert.equal(context.usage({ usageMetadata: { promptTokenCount: 222, candidatesTokenCount: 30 } }).inputTokens, 222);
+  assert.equal(context.usage({}).inputTokens, null); assert.equal(context.usage({ usage: { prompt_tokens: -1 } }).inputTokens, null);
+  const records = new Map(), other = new Map(); let active = records;
+  const db = { get spaceProfiles() { const target = active; return { put: async (r) => target.set(r.id, structuredClone(r)) }; } };
+  const tracker = context.start(db, "chat", "fake-model", 2); active = other; await tracker.sent(body); await tracker.finish({ usage: { prompt_tokens: 51234 } });
+  assert.equal(other.size, 0); assert.equal(records.get("context-usage:chat").inputTokens, 51234);
+  const saved = JSON.stringify([...records.values()]); assert.doesNotMatch(saved, /完整聊天|完整人设和记忆|base64/); assert.match(saved, /"attempt":2/);
+  const next = context.start(db, "chat", "another-model"); await next.sent(body); await next.finish({}); assert.equal(other.get("context-usage:chat").inputTokens, null);
+  const broken = context.start({ spaceProfiles: { put: async () => { throw new Error("quota"); } } }, "broken", "fake"); await broken.sent(body); await broken.finish({});
+  // Actual outgoing payload is observed AFTER legacy large-body protection.
+  const sent = [], win = { fetch: async (_url, options) => { sent.push(options); return { ok: true }; } };
+  vm.runInNewContext(fs.readFileSync("api-payload-guard.js", "utf8"), { window: win, location: { href: "https://example.invalid/" }, URL });
+  let observed;
+  await win.fetch("https://fake.invalid/v1/chat/completions", { method: "POST", body: JSON.stringify({ messages: [{ role: "system", content: system }, { role: "assistant", content: "a".repeat(3000000) }, { role: "user", content: "保留最后一条" }] }), ephoneContextRequest: { sent: async (body) => { observed = body; } } });
+  assert.equal(observed, sent[0].body); assert.equal(JSON.parse(observed).messages.length, 2); assert.equal(sent[0].ephoneContextRequest, undefined);
+  assert.ok(context.inspect(observed).textChars < 1000);
+  console.log("PASS: complete final-payload accounting, disjoint category counts, native/compatible usage, image exclusion, cache not double-counted, private metadata-only per-space storage, missing usage and storage failures, after-guard observation");
+})().catch((e) => { console.error(e); process.exitCode = 1; });
