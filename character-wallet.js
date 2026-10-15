@@ -21,6 +21,11 @@
       if (!action) return;
       if (action === "stop") { controller?.abort(); return; }
       if (busy) return;
+      if (action === "correct-estimate") {
+        const entry = entries.find((e) => e.id === event.target.closest("button").dataset.entryId); if (!entry) return;
+        const value = window.prompt("校正这笔估算支出（原扣款会同步调整，不会另扣一笔）", String(entry.amount));
+        if (value != null) await operate(async () => { const updated = await service.correctEstimate(entry.id, value); await window.ephoneRefreshFinanceChat?.(updated.chatId); await window.EPhoneMarketAdapter?.onPaid({ balance: Number((await service.userWallet.get("main"))?.balance || 0) }); message = "已校正金额，余额和原流水已同步调整。"; await load(); });
+      }
       if (action === "edit") { editing = true; draftCache = account; render(); }
       if (action === "cancel-edit") { editing = false; render(); }
       if (action === "generate") await generate(false);
@@ -78,7 +83,7 @@
       `<section class="cw-summary"><span>${esc(month)} 收入<br>+${money(sum("income"))}</span><span>支出<br>−${money(sum("expense"))}</span></section>` +
       `<section class="cw-panel"><h3>${esc(account.job || "身份 / 工作尚未设置")}</h3><p>${esc(account.family || "家庭条件以角色人设为准")}</p><small>${esc(account.note || "可按人设生成资产及工资、零花钱和生活开销计划，也可手动设置。未设置不代表角色没有财富。")}</small><p>本空间时间：${esc(window.EPhoneMarketAdapter.formatTime(now()))}</p><p>${account.configured ? account.automatic ? "自动结算已开启" : "自动结算已暂停" : "尚未设置收支计划"}</p><button data-cw-action="edit">编辑资产与计划</button> <button data-cw-action="generate">按人设生成</button> <button data-cw-action="generate-all">初始化未设置角色</button>${busy && controller ? ' <button data-cw-action="stop">停止生成</button>' : ""}</section><div id="cw-editor"></div>` +
       `<section class="cw-panel"><h3>记一笔</h3><div class="cw-book"><select id="cw-book-direction"><option value="expense">支出</option><option value="income">收入</option></select><input id="cw-book-amount" type="number" min="0.01" step="0.01" placeholder="金额"><input id="cw-book-note" placeholder="用途 / 收入来源"><button data-cw-action="book">记账</button></div></section>` +
-      `<section class="cw-panel"><h3>收支明细</h3><small>按虚拟日期显示最近200笔；资产初始设定不计工资收入。</small>${entries.length ? entries.slice(0, 200).map((e) => `<article class="cw-entry"><div><strong>${esc(e.description)}</strong><small>${esc(window.EPhoneMarketAdapter.formatTime(e.vts))} · ${e.source === "story_text" ? "聊天支出 · 有原文依据" : e.source === "scheduled" ? "定期收支" : e.adjustment ? "资产调整" : "实际收支"}</small></div><span class="${e.direction}">${e.status === "unconfigured" ? "未设置资产，未扣款" : e.status === "insufficient" ? "余额不足，未扣款" : (e.direction === "income" ? "+" : "−") + money(e.amount)}</span></article>`).join("") : "<p>暂无流水。</p>"}</section>`;
+      `<section class="cw-panel"><h3>收支明细</h3><small>按虚拟日期显示最近200笔；资产初始设定不计工资收入。</small>${entries.length ? entries.slice(0, 200).map((e) => `<article class="cw-entry"><div><strong>${esc(e.description)}</strong><small>${esc(window.EPhoneMarketAdapter.formatTime(e.vts))} · ${e.estimated ? e.estimateCorrected ? "估算支出 · 已由你校正" : "估算支出 · 不是明说的实际金额" : e.source === "story_text" ? "聊天支出 · 有原文依据" : e.source === "scheduled" ? "定期收支" : e.adjustment ? "资产调整" : "实际收支"}</small>${e.estimated ? `<small>${esc(e.estimate?.reason || "按商品参考估算")}</small>${e.status === "posted" ? `<button data-cw-action="correct-estimate" data-entry-id="${esc(e.id)}">校正金额</button>` : ""}` : ""}</div><span class="${e.direction}">${e.status === "unconfigured" ? "未设置资产，未扣款" : e.status === "insufficient" ? "余额不足，未扣款" : (e.direction === "income" ? "+" : "−") + money(e.amount)}</span></article>`).join("") : "<p>暂无流水。</p>"}</section>`;
     if (editing) renderForm(draftCache || account);
     body.querySelectorAll("button").forEach((b) => { if (b.dataset.cwAction !== "stop") b.disabled = busy; });
   }

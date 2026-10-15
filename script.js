@@ -16675,23 +16675,9 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
                         "is-ai-image",
                         "is-card-like",
                       );
-                      const _0x322581 =
-                          _0x45add0[_0x200523(0x1140)] === _0x200523(0x1904)
-                            ? _0x200523(0xc9e)
-                            : "AI生成的图片",
-                        _0x46b4ed =
-                          _0x5ea3c1[_0x200523(0x9b1)][_0x200523(0x145b)] &&
-                          _0x45add0[_0x200523(0x3aa)]
-                            ? _0x200523(0x1938) + _0x45add0[_0x200523(0x3aa)]
-                            : "https://i.postimg.cc/KYr2qRCK/1.jpg";
-                      _0x770263 =
-                        "<img\x20src=\x22" +
-                        _0x46b4ed +
-                        "\x22\x20class=\x22ai-generated-image\x22\x20alt=\x22" +
-                        _0x322581 +
-                        _0x200523(0x1a55) +
-                        _0x45add0[_0x200523(0xfd7)] +
-                        "\x22>";
+                      _0x770263 = window.ephoneChatImages
+                        ? window.ephoneChatImages.render(_0x45add0, _0x5ea3c1.globalSettings)
+                        : "<span>图片描述（绘图组件未加载）</span>";
                     } else {
                       if (_0x45add0[_0x200523(0x1140)] === _0x200523(0x200))
                         (_0x310183[_0x200523(0xd57)][_0x200523(0x17db)](
@@ -17612,8 +17598,7 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
   }
   async function _ephoneCaptureChatExpenses(chat, messages, vts) {
     if (!window.ephoneCharacterWalletCore || !messages.length) return;
-    const participants = window.ephonePlayerIdentity.participants(chat, Object.values(_0x5ea3c1.chats));
-    if (!messages.some((m) => window.ephoneStoryExpenses?.extract(m, participants, window.ephonePlayerIdentity.resolve).length)) return;
+    if (!messages.some((m) => window.ephoneStoryExpenses?.couldContainPayment(m))) return;
     _ephoneWalletPending++;
     try {
       const service = new window.ephoneCharacterWalletCore.Service(_0x24f906);
@@ -17627,31 +17612,72 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
     } catch (error) { console.warn("聊天支出记账失败", error); }
     finally { _ephoneWalletPending--; }
   }
+  async function _ephoneAfterChatDeletion(result) {
+    for (const updated of result.otherChats || []) if (_0x5ea3c1.chats[updated.id]) Object.assign(_0x5ea3c1.chats[updated.id], updated);
+    const chat = _0x5ea3c1.chats[result.chat.id];
+    if (chat) Object.assign(chat, result.chat);
+    window.ephoneTimeMachine?.adoptCommittedClock(_0x24f906, result.clock, result.chat.id);
+    if (String(_0x5ea3c1.activeChatId) === String(result.chat.id)) {
+      const kept = new Set(result.chat.history.map((m) => m.timestamp));
+      lastResponseTimestamps = lastResponseTimestamps.filter((timestamp) => kept.has(timestamp));
+    }
+    try { await window.EPhoneMarketAdapter?.onPaid({ balance: result.balance }); }
+    catch (error) { console.warn("聊天与余额已回退，钱包界面稍后刷新", error); }
+  }
+  async function _ephoneDeleteChatMessages(chat, timestamps, notification) {
+    if (window.isPersonaSpaceBusy?.()) { await _0x1e5953("请稍候", "请先停止回复或完成当前操作，再删除聊天。"); return false; }
+    _ephoneWalletPending++;
+    try {
+      await window.ephoneTimeMachine?.flushWrites();
+      const result = await new window.ephoneChatFinanceRollback.Service(_0x24f906).remove(chat.id, timestamps, {
+        notification, resolveTime: (m) => window.ephoneTimeMachine?.messageTime(m, chat.id) ?? m.vts ?? m.timestamp,
+      });
+      await _ephoneAfterChatDeletion(result);
+      _0x276139();
+      return true;
+    } catch (error) { await _0x1e5953("删除未完成", error.message || "保存失败，聊天、余额和时间均未更改。"); return false; }
+    finally { _ephoneWalletPending--; }
+  }
+  window.ephoneRefreshFinanceChat = async (chatId) => {
+    if (chatId == null || !_0x5ea3c1.chats[chatId]) return;
+    const latest = await _0x24f906.chats.get(chatId);
+    if (latest) Object.assign(_0x5ea3c1.chats[chatId], latest);
+  };
   async function _ephoneWalletAction(action, chat, vts, timestamp) {
     const service = new window.ephoneCharacterWalletCore.Service(_0x24f906);
     const people = window.ephonePlayerIdentity.participants(chat, Object.values(_0x5ea3c1.chats));
     const person = window.ephonePlayerIdentity.resolve(people, action.name);
-    let notice;
+    let notice, source, modelEstimate;
     try {
       if (!person) throw new Error("收支角色身份不明确。");
+      if (action.estimated && !action.quote) throw new Error("估算支出必须逐字引用已经发生的付款原文，未扣款。");
       const account = await service.account(person.key);
       if (!account.configured && !account.bound) throw new Error("请先在“我 → 角色钱包”设置该角色资产，未凭空记账。");
       if (action.type === "wallet_expense" && action.quote) {
-        const source = chat.history.findLast((m) => (!action.for_timestamp || String(m.timestamp) === String(action.for_timestamp)) && typeof m.content === "string" && m.content.includes(action.quote));
-        const proof = source && window.ephoneStoryExpenses?.extract(source, people, window.ephonePlayerIdentity.resolve).find((p) => p.key === person.key && Math.round(p.amount * 100) === Math.round(Number(action.amount) * 100));
+        source = chat.history.findLast((m) => (!action.for_timestamp || String(m.timestamp) === String(action.for_timestamp)) && typeof m.content === "string" && m.content.includes(action.quote));
+        const candidates = source && window.ephoneStoryExpenses?.extract(source, people, window.ephonePlayerIdentity.resolve, { infer: true, allowUnpriced: true, history: chat.history });
+        if (candidates?.some((p) => p.key === person.key && p.estimated)) { await _ephoneCaptureChatExpenses(chat, [source], vts); return; }
+        const proof = candidates?.find((p) => p.key === person.key && (p.needsEstimate ? action.estimated === true && Number(action.amount) > 0 : Math.round(p.amount * 100) === Math.round(Number(action.amount) * 100)));
         if (!proof || Number(source.vts) > vts) throw new Error("消费指令的原文没有明确发生这笔付款，未扣款。");
+        if (proof.needsEstimate) modelEstimate = { method: "reply_model_reference", reason: "本轮回复模型根据实际购买物品与前文估算，原文没有明说金额；不是付款凭证，可在角色钱包校正。" };
       }
+      if (action.type === "wallet_expense" && source && (await service.characterTransactions.where("key").equals(person.key).toArray()).some((row) =>
+        row.direction === "expense" && row.status === "posted" && String(row.evidence?.chatId) === String(chat.id) && row.evidence?.timestamp === source.timestamp &&
+        String(row.evidence?.quote || "").replace(/[。！!？?]$/, "") === String(action.quote || "").replace(/[。！!？?]$/, ""))) return;
       if (action.type === "wallet_expense" && await service.expenseDuplicate(person.key, action.amount, action.category || "other", vts, action.quote)) return;
       const direction = action.type === "wallet_income" ? "income" : "expense";
-      notice = { role: "system", type: "pat_message", walletEntry: true, senderName: person.name, timestamp, vts,
-        content: "【" + person.name + "的钱包】" + (direction === "income" ? "收入" : "支出") + " ¥" + Number(action.amount).toFixed(2) + " · " + String(action.content || "剧情收支").slice(0, 600) };
+      const entryId = "story:" + chat.id + ":" + timestamp;
+      notice = { role: "system", type: "pat_message", walletEntry: true, walletEntryId: entryId, walletSourceTimestamp: source?.timestamp, senderName: person.name, timestamp, vts,
+        content: "【" + person.name + "的钱包】" + (direction === "income" ? "收入" : modelEstimate ? "估算支出" : "支出") + " ¥" + Number(action.amount).toFixed(2) + " · " + String(action.content || "剧情收支").slice(0, 600) + (modelEstimate ? "\n" + modelEstimate.reason : "") };
       await service.db.transaction("rw", ...service.tables(), service.chats, async () => {
-        await service.change(person.key, action.amount, direction, { id: "story:" + chat.id + ":" + timestamp, vts,
-          category: action.category || "other", description: action.content || "剧情收支", source: "story" });
+        await service.change(person.key, action.amount, direction, { id: entryId, vts,
+          category: action.category || "other", description: action.content || "剧情收支", source: "story", chatId: chat.id, sourceTimestamp: source?.timestamp, noticeTimestamp: timestamp,
+          estimated: Boolean(modelEstimate), estimate: modelEstimate,
+          ...(source ? { evidence: { chatId: chat.id, timestamp: source.timestamp, quote: action.quote } } : {}) });
         await service.chats.put({ ...chat, history: [...chat.history, notice] });
       });
     } catch (error) {
-      notice = { role: "system", type: "pat_message", walletEntry: true, timestamp, vts,
+      notice = { role: "system", type: "pat_message", walletEntry: true, walletSourceTimestamp: source?.timestamp, timestamp, vts,
         content: "【角色收支未生效】" + error.message + " 不能在剧情里视为已支付或到账。" };
       await service.chats.put({ ...chat, history: [...chat.history, notice] });
     }
@@ -22488,8 +22514,10 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
                   _0x74a266[_0x25f1e5(0xa1b)],
                   _0x25f1e5(0x180d),
                   _0x25f1e5(0x1634) + _0x5b16cb[_0x25f1e5(0xeda)],
+                  { chatId: _0x5b16cb.id, sourceTimestamp: _0x74a266.timestamp, noticeTimestamp: _0x1b9d0b },
                 ));
               const _0x52261c = {
+                moneyReceipt: true, forTimestamp: _0x74a266.timestamp, recipientName: "我", vts: _ephoneReplyTimeMs,
                 role: "assistant",
                 senderName: _0x5b16cb[_0x25f1e5(0xeda)],
                 type: _0x25f1e5(0xeca),
@@ -23309,6 +23337,7 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
       ](_0x37ddce(0x2fb)));
   }
   async function _0x403d67() {
+    let _ephonePaymentTimestamp;
     const _0x49053b = _0x3ce505;
     if (!_0x5ea3c1[_0x49053b(0x1aba)]) return;
     const _0x226ac8 = document[_0x49053b(0x1023)](_0x49053b(0x192e)),
@@ -23396,6 +23425,7 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
         _0x4ec121,
         _0x49053b(0x4dc),
         _0x49053b(0x11e6) + _0x123ccf,
+        { chatId: _0xfe3466.id, sourceTimestamp: (_ephonePaymentTimestamp = Date.now()) },
       );
       if (!_0x482009) return;
     } else {
@@ -23448,7 +23478,7 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
       note: _0x56473b,
       senderName: _0x102714,
       receiverName: _0x123ccf,
-      timestamp: Date[_0x49053b(0x902)](),
+      timestamp: _ephonePaymentTimestamp || Date.now(),
     };
     (_0xfe3466[_0x49053b(0x8e6)][_0x49053b(0x3e6)](_0x367773),
       await _0x24f906["chats"][_0x49053b(0x114d)](_0xfe3466),
@@ -23489,6 +23519,7 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
       _0x50270b,
       "expense",
       _0x97778e(0x1a5c) + _0x557b09,
+      { chatId: _0x2ea304.id, sourceTimestamp: _0x531fd7 },
     );
     _0x81709b[_0x97778e(0x791)]["zIndex"] = "";
     if (!_0x4bb689) return;
@@ -28490,6 +28521,7 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
         _0x1634cb[_0x251df8(0xa1b)],
         _0x251df8(0x4dc),
         _0x251df8(0x12a4) + _0x1634cb["senderName"],
+        { chatId: _0x1c0eb8.id, sourceTimestamp: _0x1634cb.timestamp },
       );
       if (!_0x3709fd) return;
       ((_0x1634cb[_0x251df8(0x162f)] = _0x447398),
@@ -29233,6 +29265,7 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
     } else _0x4c0453();
   }
   async function _0x5e289a(_0x200676) {
+    let _ephoneReceiptTimestamp;
     const _0xced18b = _0x3ce505;
     if (!_0x4413c5) return;
     const _0x24db2d = _0x4413c5,
@@ -29270,6 +29303,7 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
           _0x29af79,
           "income",
           _0xced18b(0x1f9) + _0x44ad31[_0xced18b(0xcac)],
+          { chatId: _0x846e81.id, sourceTimestamp: _0x44ad31.timestamp, noticeTimestamp: (_ephoneReceiptTimestamp = Date.now()) },
         );
         if (_0x2ebf11) {
           await _0x1e5953(
@@ -29284,7 +29318,8 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
             note: "已收款",
             senderName: "我",
             receiverName: _0x44ad31[_0xced18b(0xcac)],
-            timestamp: Date[_0xced18b(0x902)](),
+            timestamp: _ephoneReceiptTimestamp,
+            moneyReceipt: true, forTimestamp: _0x44ad31.timestamp, recipientName: "我",
           };
           _0x846e81[_0xced18b(0x8e6)]["push"](_0x92bf62);
         } else alert("警告：金额入账失败，请检查控制台日志！");
@@ -29704,6 +29739,7 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
       _0x30be20["classList"][_0xa7131f(0x17db)]("visible"));
   }
   async function _0x89f84d() {
+    let _ephonePaymentTimestamp;
     const _0x519c40 = _0x3ce505,
       _0x620df9 = _0x5ea3c1["chats"][_0x5ea3c1[_0x519c40(0x1aba)]],
       _0x2a3bf9 = parseFloat(
@@ -29733,6 +29769,7 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
         _0x2a3bf9,
         _0x519c40(0x4dc),
         _0x519c40(0xf26),
+        { chatId: _0x620df9.id, sourceTimestamp: (_ephonePaymentTimestamp = Date.now()) },
       );
     if (!_0x22de14) return;
     const _0x4da8bb = {
@@ -29740,7 +29777,7 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
       senderName: _0x1ade4a,
       type: "red_packet",
       packetType: "lucky",
-      timestamp: Date["now"](),
+      timestamp: _ephonePaymentTimestamp || Date.now(),
       totalAmount: _0x2a3bf9,
       count: _0x76cc81,
       greeting: _0x578125 || _0x519c40(0x1b79),
@@ -29758,6 +29795,7 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
       ]("visible"));
   }
   async function _0x9a5c8e() {
+    let _ephonePaymentTimestamp;
     const _0x4ea158 = _0x3ce505,
       _0x3bb84e = _0x5ea3c1[_0x4ea158(0x1255)][_0x5ea3c1[_0x4ea158(0x1aba)]],
       _0x5e38ef = parseFloat(
@@ -29781,6 +29819,7 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
         _0x5e38ef,
         _0x4ea158(0x4dc),
         _0x4ea158(0x1668) + _0x355187,
+        { chatId: _0x3bb84e.id, sourceTimestamp: (_ephonePaymentTimestamp = Date.now()) },
       );
     if (!_0x356212) return;
     const _0x393749 = {
@@ -29788,7 +29827,7 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
       senderName: _0x11721b,
       type: _0x4ea158(0x1bda),
       packetType: _0x4ea158(0x31f),
-      timestamp: Date[_0x4ea158(0x902)](),
+      timestamp: _ephonePaymentTimestamp || Date.now(),
       totalAmount: _0x5e38ef,
       count: 0x1,
       greeting: _0x16edb1 || _0x4ea158(0x1716),
@@ -29953,6 +29992,7 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
         _0x287201[_0x539681(0x18df)] +
         ")。红包还未领完，你现在可以使用\x20\x27open_red_packet\x27\x20指令来尝试领取。]";
     const _0x4cf6a1 = {
+      moneyReceipt: true, forTimestamp: _0x287201.timestamp, recipientName: _0x56d65d, amount: _0x368b97,
       role: _0x539681(0xd77),
       content: _0x4bb3cd,
       timestamp: _0x4dc54c++,
@@ -29966,6 +30006,7 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
           _0x368b97,
           _0x539681(0x180d),
           _0x539681(0x4fa) + _0x4b322f,
+          { chatId: _0x8aeecf.id, sourceTimestamp: _0x287201.timestamp, noticeTimestamp: _0x4cf6a1.timestamp },
         )),
       _0x368b97
     );
@@ -31150,7 +31191,7 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
               _ephoneDeleteSegment.dataset.summaryId = _0x3ea577.ephoneSummaryId;
               _ephoneDeleteSegment.dataset.sourceChatId =
                 _0x3ea577.ephoneSourceChatId || "";
-              _4edd0e.append(_ephoneRange, _ephoneDeleteSegment);
+              _0x4edd0e.append(_ephoneRange, _ephoneDeleteSegment);
             })(),
           _0x5eb499[_0x42dfd9(0x3fe)](_0x4edd0e));
       }),
@@ -31227,6 +31268,15 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
       _0x2ef710());
   }
   async function _ephoneDeleteSummaryBundle(
+    sourceChatId, summaryId, deleteMessages = false,
+  ) {
+    if (deleteMessages && window.isPersonaSpaceBusy?.()) throw new Error("请先停止回复或完成当前操作，再删除聊天。");
+    if (deleteMessages && !window.ephoneChatFinanceRollback) throw new Error("收付款回退组件未加载，请刷新后重试；本次未删除聊天。");
+    if (deleteMessages) _ephoneWalletPending++;
+    try { return await _ephoneDeleteSummaryBundleImpl(sourceChatId, summaryId, deleteMessages); }
+    finally { if (deleteMessages) _ephoneWalletPending--; }
+  }
+  async function _ephoneDeleteSummaryBundleImpl(
     _ephoneSourceChatId,
     _ephoneSummaryId,
     _ephoneDeleteMessages = false,
@@ -31381,7 +31431,14 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
       _ephoneDirtyChats.add(_ephoneSourceChat);
     }
     try {
-      if (typeof _0x24f906.transaction === "function") {
+      if (_ephoneDeleteMessages && _ephoneSourceChat && window.ephoneChatFinanceRollback) {
+        await window.ephoneTimeMachine?.flushWrites();
+        const before = { ..._ephoneSourceChat, history: _ephoneSnapshots.get(_ephoneSourceChat).history };
+        const result = await new window.ephoneChatFinanceRollback.Service(_0x24f906).apply(before, _ephoneSourceChat, {
+          otherChats: [..._ephoneDirtyChats], resolveTime: (m) => window.ephoneTimeMachine?.messageTime(m, _ephoneSourceChat.id) ?? m.vts ?? m.timestamp,
+        });
+        await _ephoneAfterChatDeletion(result);
+      } else if (typeof _0x24f906.transaction === "function") {
         await _0x24f906.transaction("rw", _0x24f906.chats, async () => {
           for (const _ephoneChat of _ephoneDirtyChats)
             await _0x24f906.chats.put(_ephoneChat);
@@ -31423,7 +31480,7 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
   ) {
     const _ephoneConfirmed = await _0x41c474(
       "删除这段聊天记录？",
-      "将同时删除该总结生成的长期记忆，以及写入对应角色的记忆。聊天记录会从原始聊天中移除。此操作无法恢复。",
+      "将同时删除这段聊天及对应角色的总结记忆，撤销本聊天关联收付款并恢复余额；时间回到最后保留的有效消息。商城独立订单与其他聊天账单不变。此操作无法恢复。",
       { confirmButtonClass: "btn-danger" },
     );
     if (!_ephoneConfirmed) return;
@@ -52309,13 +52366,14 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
         (_0x57a126 = 0x0));
     }
   }
-  async function _0x2ee1ca(amount, type, description) {
+  async function _0x2ee1ca(amount, type, description, linkage = {}) {
     const spaceId = window.EPHONE_SPACE_ID || "default";
     _ephoneWalletPending++;
     try {
       const result = await window.ephoneSpaceWallet.book(_0x24f906, amount, type, description, {
         walletSpaceId: spaceId,
         vts: window.ephoneTimeMachine?.nowMs(_0x5ea3c1.activeChatId) ?? Date.now(),
+        ...(linkage.chatId != null ? { chatId: linkage.chatId, sourceTimestamp: linkage.sourceTimestamp, noticeTimestamp: linkage.noticeTimestamp } : {}),
       });
       if (!result.ok) {
         await _0x1e5953("支付失败", "余额不足！当前: " + result.balance.toFixed(2));
@@ -58008,8 +58066,7 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
             _0xeae960(0x2f4),
           );
           if (_0x2c5e9f) {
-            const _0x451609 = _0x2c5e9f[_0xeae960(0x151)][_0xeae960(0xe12)];
-            if (_0x451609) _0x1e5953("照片描述", _0x451609);
+            window.ephoneChatImages?.open(_0x2c5e9f);
             return;
           }
           const _0x3d5fe7 = _0x298c24[_0xeae960(0x571)][_0xeae960(0xaac)](
@@ -59390,7 +59447,7 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
           if (_0x36a004[_0x49c207(0xb1e)] === 0x0) return;
           const _0x54408c = await _0x41c474(
             _0x49c207(0x10b0),
-            _0x49c207(0x137b) + _0x36a004["size"] + _0x49c207(0x1211),
+            "删除选中的 " + _0x36a004.size + " 条消息，并同步撤销本聊天关联收付款、恢复对应余额。时间回到最后保留的消息（需要时切换虚拟时间）；商城独立订单与其他聊天账单不变。",
             { confirmButtonClass: _0x49c207(0x1b1f) },
           );
           if (_0x54408c) {
@@ -59411,27 +59468,13 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
                     ")",
                 );
             }
-            _0xdce024[_0x49c207(0x8e6)] = _0xdce024[_0x49c207(0x8e6)][
-              _0x49c207(0x1916)
-            ](
-              (_0x23e49b) =>
-                !_0x36a004[_0x49c207(0x18e0)](_0x23e49b[_0x49c207(0x18df)]),
-            );
             let _0x389123 = _0x49c207(0x185e);
             _0x20e758[_0x49c207(0xa5d)] > 0x0 &&
               (_0x389123 +=
                 _0x49c207(0xc6d) + _0x20e758[_0x49c207(0x1895)]("；") + "。");
             _0x389123 += _0x49c207(0x404);
-            const _0xab7f29 = {
-              role: _0x49c207(0xd77),
-              content: "[系统提示：" + _0x389123 + "]",
-              timestamp: Date[_0x49c207(0x902)](),
-              isHidden: !![],
-            };
-            (_0xdce024[_0x49c207(0x8e6)][_0x49c207(0x3e6)](_0xab7f29),
-              await _0x24f906[_0x49c207(0x1255)][_0x49c207(0x114d)](_0xdce024),
-              _0x57e676(_0x5ea3c1[_0x49c207(0x1aba)]),
-              _0x4bb316());
+            const deleted = await _ephoneDeleteChatMessages(_0xdce024, [..._0x36a004], "[系统提示：" + _0x389123 + "]");
+            if (deleted) { await _0x57e676(_0x5ea3c1.activeChatId); await _0x4bb316(); }
           }
         },
       ),
@@ -59442,21 +59485,14 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
           if (_0x36a004[_0x56838b(0xb1e)] === 0x0) return;
           const _0x22abbb = await _0x41c474(
             _0x56838b(0x12c1),
-            _0x56838b(0x11b4) + _0x36a004[_0x56838b(0xb1e)] + _0x56838b(0x125b),
+            "永久删除选中的 " + _0x36a004.size + " 条消息，并同步撤销本聊天关联收付款、恢复对应余额。时间回到最后保留的消息（需要时切换虚拟时间）；商城独立订单与其他聊天账单不变。此操作无法恢复。",
             { confirmButtonClass: "btn-danger", confirmText: "确认抹除" },
           );
           if (_0x22abbb) {
             const _0x185eac =
               _0x5ea3c1[_0x56838b(0x1255)][_0x5ea3c1[_0x56838b(0x1aba)]];
-            ((_0x185eac[_0x56838b(0x8e6)] = _0x185eac[_0x56838b(0x8e6)][
-              _0x56838b(0x1916)
-            ](
-              (_0x4a8e04) =>
-                !_0x36a004[_0x56838b(0x18e0)](_0x4a8e04[_0x56838b(0x18df)]),
-            )),
-              await _0x24f906[_0x56838b(0x1255)]["put"](_0x185eac),
-              _0x57e676(_0x5ea3c1[_0x56838b(0x1aba)]),
-              _0x4bb316());
+            const deleted = await _ephoneDeleteChatMessages(_0x185eac, [..._0x36a004]);
+            if (deleted) { await _0x57e676(_0x5ea3c1.activeChatId); await _0x4bb316(); }
           }
         },
       ));

@@ -46,18 +46,20 @@
       const bound = binding?.key === key;
       return { ...data, bound, storedBalance: Number(data.balance || 0), balance: bound ? Number((await this.userWallet.get("main"))?.balance || 0) : Number(data.balance || 0) };
     }
-    async change(key, value, direction, { id, vts, category = "other", description = "角色收支", source = "manual", adjustment = false, evidence, storyFingerprint } = {}) {
+    async change(key, value, direction, { id, vts, category = "other", description = "角色收支", source = "manual", adjustment = false, evidence, storyFingerprint, estimated = false, estimate, chatId, sourceTimestamp, noticeTimestamp } = {}) {
       if (!id || !Number.isFinite(vts) || !["income", "expense"].includes(direction)) throw new Error("记账参数无效。");
       const existing = await this.characterTransactions.get(id); if (existing) return existing;
       const cents = amount(value, false), account = await this.account(key), balance = amount(account.balance);
       if (direction === "expense" && balance < cents) throw new Error("角色余额不足，未扣款。");
       const next = balance + (direction === "income" ? cents : -cents); if (!Number.isSafeInteger(next)) throw new Error("余额超出保存范围。");
       const entry = { id, key, direction, amount: cents / 100, vts, timestamp: Date.now(), category: text(category, 30), description: text(description, 600), source, status: "posted", adjustment,
-        ...(evidence ? { evidence } : {}), ...(storyFingerprint ? { storyFingerprint } : {}) };
+        walletDestination: account.bound ? "space" : "character", ...(evidence ? { evidence } : {}), ...(storyFingerprint ? { storyFingerprint } : {}),
+        ...(estimated ? { estimated: true, estimate } : {}), ...(chatId != null ? { chatId, sourceTimestamp, noticeTimestamp } : {}) };
       if (account.bound) {
         const wallet = await this.userWallet.get("main") || { id: "main", balance: 0 };
         await this.userWallet.put({ ...wallet, balance: next / 100 });
-        await this.userTransactions.add({ type: direction, amount: cents / 100, description: entry.description, vts, timestamp: entry.timestamp, characterEntryId: id, characterKey: key, category: entry.category, adjustment });
+        await this.userTransactions.add({ type: direction, amount: cents / 100, description: estimated ? "【估算支出】" + entry.description : entry.description, vts, timestamp: entry.timestamp, characterEntryId: id, characterKey: key, category: entry.category, adjustment,
+          ...(estimated ? { estimated: true, estimate } : {}), ...(chatId != null ? { chatId, sourceTimestamp, noticeTimestamp } : {}) });
       }
       await this.characterWallets.put({ ...account, bound: undefined, storedBalance: undefined,
         balance: account.bound ? account.storedBalance : next / 100, revision: account.revision + 1 });
@@ -74,7 +76,13 @@
     }
     async captureExpenses(chat, messages, vts) {
       if (!storyExpenses || !Number.isFinite(vts)) return { notices: [], entries: [], chat };
-      const people = this.identity.participants(chat, await this.chats.toArray()), claims = messages.flatMap((m) => storyExpenses.extract(m, people, this.identity.resolve));
+      const allChats = await this.chats.toArray(), people = this.identity.participants(chat, allChats), profiles = this.identity.choices(allChats, await this.npcs.toArray());
+      const personas = Object.fromEntries(profiles.map((p) => [p.key, p.persona]));
+      for (const member of chat.members || []) {
+        const person = this.identity.resolve(people, member.originalName || member.groupNickname);
+        if (person && member.persona && (member.ephonePersonaOverride === true || member.ephonePersonaOverride !== false && member.ephoneSourcePersona == null && member.persona !== personas[person.key])) personas[person.key] = member.persona;
+      }
+      const claims = messages.flatMap((m) => storyExpenses.extract(m, people, this.identity.resolve, { infer: true, history: (chat.history || []).filter((p) => p.timestamp <= m.timestamp), personas }));
       if (!claims.length) return { notices: [], entries: [], chat };
       const orderTable = this.db.tables.find((t) => t.name === "marketOrders"), orders = orderTable ? await orderTable.toArray() : [];
       return this.db.transaction("rw", ...this.tables(), this.chats, async () => {
@@ -87,23 +95,24 @@
           if (await this.characterTransactions.get(id)) continue;
           const recent = await this.characterTransactions.where("key").equals(claim.key).toArray(), mark = storyExpenses.fingerprint(claim);
           const sameDay = (r) => r.vts <= vts && dayKey(r.vts) === dayKey(vts);
-          if (!claim.repeat && recent.some((r) => sameDay(r) && r.status === "posted" && r.storyFingerprint === mark)) continue;
+          if (!claim.repeat && recent.some((r) => sameDay(r) && r.status === "posted" && r.storyFingerprint === mark && (!claim.estimated || Math.abs(r.vts - vts) < 5 * 60000))) continue;
           // Explicit wallet commands and plain-language descriptions of the same payment share one debit.
           if (recent.some((r) => r.source === "story" && r.direction === "expense" && r.status === "posted" && r.vts === vts && amount(r.amount) === amount(claim.amount) && (r.category === claim.category || r.category === "other"))) continue;
-          if (!claim.repeat && recent.some((r) => sameDay(r) && r.source === "scheduled" && r.direction === "expense" && r.status === "posted" && r.category === claim.category)) continue;
+          if (!claim.repeat && recent.some((r) => sameDay(r) && r.source === "scheduled" && r.direction === "expense" && r.status === "posted" && r.category === claim.category && amount(r.amount) === amount(claim.amount) && (!claim.estimated || claim.quote.includes(r.description)))) continue;
           const account = await this.account(claim.key);
-          if (account.bound && orders.some((o) => o.ownerKey === claim.key && !["cancelled", "canceled"].includes(o.status) && dayKey(o.vts || o.createdVts || 0) === dayKey(vts) && amount(o.total || o.totalAmount || 0) === amount(claim.amount))) continue;
+          if (account.bound && !claim.repeat && orders.some((o) => o.ownerKey === claim.key && !["cancelled", "canceled"].includes(o.status) && dayKey(o.vts || o.createdVts || 0) === dayKey(vts) &&
+            (amount(o.total || o.totalAmount || 0) === amount(claim.amount) || claim.estimated && (o.items || []).some((line) => claim.estimate.items.some((item) => (line.item?.name || line.name || "").includes(item.name)))))) continue;
           const evidence = { chatId: chat.id, timestamp: source.timestamp, quote: claim.quote }, failed = !account.configured && !account.bound ? "unconfigured" : amount(account.balance) < amount(claim.amount) ? "insufficient" : "";
           let entry;
           if (failed) {
             entry = { id, key: claim.key, direction: "expense", amount: 0, plannedAmount: claim.amount, vts, timestamp: Date.now(), category: claim.category,
               description: claim.quote, source: "story_text", status: failed, evidence, storyFingerprint: mark };
             await this.characterTransactions.add(entry);
-          } else entry = await this.change(claim.key, claim.amount, "expense", { id, vts, category: claim.category, description: claim.quote, source: "story_text", evidence, storyFingerprint: mark });
+          } else entry = await this.change(claim.key, claim.amount, "expense", { id, vts, category: claim.category, description: claim.quote, source: "story_text", evidence, storyFingerprint: mark, estimated: claim.estimated, estimate: claim.estimate, chatId: chat.id, sourceTimestamp: source.timestamp, noticeTimestamp: timestamp });
           entries.push(entry);
-          const notice = { role: "system", type: "pat_message", walletEntry: true, senderName: claim.name, timestamp: timestamp++, vts,
+          const notice = { role: "system", type: "pat_message", walletEntry: true, walletEntryId: id, walletSourceTimestamp: source.timestamp, senderName: claim.name, timestamp: timestamp++, vts,
             content: failed ? "【" + claim.name + "的支出未入账】¥" + claim.amount.toFixed(2) + " · " + (failed === "unconfigured" ? "请先在我 → 角色钱包设置资产" : "余额不足") + "，未扣款。" :
-              "【" + claim.name + "的钱包】支出 ¥" + claim.amount.toFixed(2) + " · " + claim.quote };
+              "【" + claim.name + "的钱包】" + (claim.estimated ? "估算支出 " : "支出 ") + "¥" + claim.amount.toFixed(2) + " · " + claim.quote + (claim.estimated ? "\n估算依据：" + claim.estimate.reason : "") };
           saved.history.push(notice); notices.push(notice);
         }
         if (notices.length) await this.chats.put(saved);
@@ -178,6 +187,29 @@
         key, direction: row.type, vts: row.vts || row.timestamp, status: "posted", source: "space_wallet" })) : [];
       return [...own, ...user].sort((a, b) => b.vts - a.vts || b.timestamp - a.timestamp).slice(0, limit);
     }
+    async correctEstimate(id, value) {
+      const next = amount(value, false);
+      return this.db.transaction("rw", ...this.tables(), this.chats, async () => {
+        const row = await this.characterTransactions.get(id);
+        if (!row?.estimated || row.status !== "posted" || row.direction !== "expense") throw new Error("这条不是可校正的已入账估算支出。");
+        const bills = (await this.userTransactions.toArray()).filter((b) => b.characterEntryId === id);
+        const bound = row.walletDestination === "space" || !row.walletDestination && bills.length > 0;
+        const table = bound ? this.userWallet : this.characterWallets, key = bound ? "main" : row.key, wallet = await table.get(key);
+        if (!wallet) throw new Error("找不到原扣款账户。");
+        const balance = amount(wallet.balance) + amount(row.amount) - next;
+        if (balance < 0 || !Number.isSafeInteger(balance)) throw new Error("校正后余额不足，原金额未改变。");
+        await table.put({ ...wallet, balance: balance / 100, ...(!bound ? { revision: (wallet.revision || 0) + 1 } : {}) });
+        if (bound) { const roleWallet = await this.characterWallets.get(row.key); if (roleWallet) await this.characterWallets.update(row.key, { revision: (roleWallet.revision || 0) + 1 }); }
+        const corrected = { ...row, amount: next / 100, estimateCorrected: true };
+        await this.characterTransactions.put(corrected);
+        for (const bill of bills) await this.userTransactions.put({ ...bill, amount: next / 100, estimateCorrected: true, description: "【已校正支出】" + row.description });
+        if (row.chatId != null) {
+          const chat = await this.chats.get(row.chatId);
+          if (chat) { chat.history = chat.history.map((m) => m.walletEntryId === id ? { ...m, content: `【${m.senderName || "角色"}的钱包】已校正支出 ¥${(next / 100).toFixed(2)} · ${row.description}\n原记录为估算，本次由你校正金额。` } : m); await this.chats.put(chat); }
+        }
+        return corrected;
+      });
+    }
     async prompt(chat, vts) {
       const chats = await this.chats.toArray(), people = this.identity.participants(chat, chats), preview = await this.settle(vts, { preview: true });
       const records = [];
@@ -187,6 +219,8 @@
           job: a.job || "未设置", family: a.family || "以人设为准", rules: a.rules || [], recent: [...preview.entries.filter((e) => e.key === p.key), ...ledger].sort((a, b) => b.vts - a.vts).slice(0, 18) });
       }
       return "\n# 角色独立资产与实际收支（私有账本，高优先级）\n" +
+        "estimated=true是未明说价格时的后台估算，可由用户校正；不得把参考单价当成亲历事实或让其他角色凭空知道精确金额。没提金额的真实购物按上下文与物品合理估算，系统会落账，不要再发无依据的wallet_expense重复扣款。计划、未付、假设仍不记账。\n" +
+        '普通物品系统会按前文单价和数量或参考价格自动估算；特殊物品/复杂消费可在实际付款段落后输出 {"type":"wallet_expense","name":"实际付款本人","amount":合理推断的总价,"estimated":true,"category":"shopping","content":"所购物品及估价依据","quote":"已发生付款段落的逐字原文"}。估价依物品、数量、已知品牌档次及本人家庭条件，明确价格优先，不猜别人的钱；未发生付款或付款人不明确不得发指令。估算只用本轮回复，不额外调用模型。\n' +
         "以下是作者后台记账资料，不是群公告。每个角色只直接知道自己的资产、工资和支出；其他角色只有实际被告知或查看其钱包才可能知道，不得全员凭空知道余额。绑定为我的角色与本空间钱包共用一个余额，其他角色独立。房产/投资等其他资产不是可用余额，不可凭空变现。未设置的余额只是待设置，不代表人物贫穷或富裕，不得编造实际入账。\n" +
         "工资、零花钱及日常开销由收支计划按所选真实/虚拟时间自动结算，账本含本轮时间的确定性预估；已列入的收支不能因为角色说‘上班了’‘发工资了’再次入账。每次聊天明确发生且有确定金额的额外消费都应关联角色钱包；不要只说文字而漏记账。系统会从明确付款、花费、买了等当下文字识别支出；每段只描述一笔确定的付款，有多个金额或复杂分摊时先分段明确叙述每人的实际付款及最终金额，再分别用wallet_expense指令。计划、报价、假设、回忆旧支出、取消退款不可当新支出。普通实际额外收入/消费使用wallet_income/wallet_expense指令记账（不要重复购物订单、转账红包和周期计划）。消费指令放在相应付款旁白/台词之后，并用quote逐字引用该段，便于和自动识别去重；既有流水里的付款重提不可再记，余额未设置时提示设置资产而非编造余额。按发生顺序，只有系统确认成功才能声称完成；余额不足不能声称已成功支付。\n" +
         '{"type":"wallet_income","name":"实际收款角色本名","amount":100,"category":"bonus","content":"实际收到的额外报酬原因"} 或 {"type":"wallet_expense","name":"实际付款角色本名","amount":25,"category":"food","content":"剧情中实际发生的额外消费","quote":"逐字引用本轮已发出的实际付款原文"}。\n' + JSON.stringify(records) + "\n";
@@ -202,7 +236,7 @@
       const total = message.type === "transfer" ? message.amount : message.totalAmount ?? message.amount;
       await this.db.transaction("rw", ...this.tables(), this.chats, async () => {
         await this.change(sender.key, total, "expense", { id: `card:${chat.id}:${message.timestamp}`, vts: message.vts,
-          category: message.type, source: "card", description: `${message.type === "transfer" ? "转账" : "红包"}给${message.receiverName || "群成员"}（已扣款，待领取）` });
+          category: message.type, source: "card", description: `${message.type === "transfer" ? "转账" : "红包"}给${message.receiverName || "群成员"}（已扣款，待领取）`, chatId: chat.id, sourceTimestamp: message.timestamp });
         const saved = await this.chats.get(chat.id); if (!saved) throw new Error("聊天已不存在。");
         if (!(saved.history || []).some((m) => m.timestamp === message.timestamp)) saved.history = [...(chat.history || []), { ...message, walletFunded: true, walletSenderKey: sender.key }];
         await this.chats.put(saved);
@@ -221,7 +255,7 @@
       if (!person) throw new Error("找不到实际领取角色。");
       if (!original.walletFunded && !binding?.key && !(await this.account(person.key)).configured) return null; // Legacy unconfigured receipts retain their destination.
       await this.change(person.key, receipt.amount, "income", { id: `receipt:${chat.id}:${original.timestamp}:${person.key}`, vts: receipt.vts,
-        category: original.type, source: "card", description: `领取${original.senderName}的${original.type === "transfer" ? "转账" : "红包"}` });
+        category: original.type, source: "card", description: `领取${original.senderName}的${original.type === "transfer" ? "转账" : "红包"}`, chatId: chat.id, sourceTimestamp: original.timestamp, noticeTimestamp: receipt.timestamp });
       const account = await this.account(person.key);
       receipt.walletDestination = person.key; receipt.walletCredited = true;
       return { ok: true, balance: Number((await this.userWallet.get("main"))?.balance || 0), recipientBalance: account.balance, destinationLabel: account.bound ? "本空间的钱包" : receipt.recipientName + "的钱包" };

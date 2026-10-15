@@ -989,6 +989,14 @@
     jumpTo,
     useRealTime,
     setFlow,
+    flushWrites: async () => { if (spaceDatabaseName) await (spaceWrites.get(spaceDatabaseName) || Promise.resolve()); },
+    adoptCommittedClock: (db, clock, chatId) => {
+      if (!clock || db?.spaceClock?.db.name !== spaceDatabaseName) return;
+      if (configs[chatId]) configs[chatId].frozen = {};
+      setSpaceClock(clock);
+      if (String(activeChatId) === String(chatId)) rebuildFrozenIndex(activeBinding, getConfig());
+      persistConfigs(); updateUi();
+    },
   };
 
   if (document.readyState === "loading") {
