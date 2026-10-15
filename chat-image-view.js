@@ -18,6 +18,8 @@
   function source(message, settings = {}) {
     const existing = safeImage(message.imageUrl); if (existing) return { url: existing, reason: "已有图片附件" };
     if (!settings.enableAiDrawing) return { url: "", reason: "普通生图未开启；这是主聊天 API 生成的图片描述，不是真实图片。" };
+    if (root.ephoneImageApi?.selectedCustom() || message.imageGeneration?.provider === "custom") return { url: "", custom: true,
+      reason: message.imageGeneration?.error || "这条图片还没有用第三方生图接口生成。点击下方按钮生成；打开聊天不会自动产生付费生图请求。" };
     const drawing = drawingText(message);
     if (!drawing.text) return { url: "", reason: "本条没有有效的图片描述或绘图提示词，无法生成图片。" };
     let prompt = drawing.text;
@@ -30,7 +32,7 @@
   }
   function render(message, settings) {
     const image = source(message, settings), description = String(message.content || message.description || "未提供图片描述");
-    if (!image.url) return `<button type="button" class="ai-image-description-card" data-description="${esc(description)}" style="white-space:normal;text-align:left;padding:16px;border:0;border-radius:10px;background:var(--bg-secondary,#f5f5f5);color:inherit"><strong>图片描述 · 未生成图片</strong><small style="display:block;margin-top:8px">${esc(image.reason)}</small><span style="display:block;margin-top:8px">${esc(description.slice(0, 120))}</span></button>`;
+    if (!image.url) return `<div class="ephone-image-pending"><button type="button" class="ai-image-description-card" data-description="${esc(description)}" style="white-space:normal;text-align:left;padding:16px;border:0;border-radius:10px;background:var(--bg-secondary,#f5f5f5);color:inherit"><strong>图片描述 · 未生成图片</strong><small style="display:block;margin-top:8px">${esc(image.reason)}</small><span style="display:block;margin-top:8px">${esc(description.slice(0, 120))}</span></button>${image.custom ? '<button type="button" class="ephone-image-generate" style="display:block;margin:8px 0;padding:8px 12px">使用当前生图设置生成</button>' : ""}</div>`;
     return `<figure class="ephone-chat-image" style="margin:0"><img src="${esc(image.url)}" class="ai-generated-image" alt="图片附件" data-description="${esc(description)}" style="max-width:100%"><figcaption style="font-size:12px;padding:5px">点击查看大图 · <button type="button" class="ai-image-description-card" data-description="${esc(description)}">查看描述</button>${image.fromDescription ? '<small style="display:block">已按图片描述补全提示词</small>' : ""}<span class="ephone-image-status"></span></figcaption></figure>`;
   }
   function open(img) {

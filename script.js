@@ -11406,7 +11406,7 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
         worldBooks: _0x1ca1ec,
         userStickers: _0x482e70,
         apiConfig: _0x446ec2,
-        globalSettings: _0x5b6a58,
+        globalSettings: { id: "main", ..._0x5b6a58, ephoneImageApiSettings: await _0x24f906.globalSettings.get("image-api") },
         personaPresets: _0x273035,
         musicLibrary: _0x31335b,
         qzoneSettings: _0x3275cd,
@@ -13583,6 +13583,7 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
     _0x4ab097[_0x419cbb(0x1bf6)] = _0x419cbb(0x1327);
     const _0xfa9e0 = await _0x24f906["apiPresets"][_0x419cbb(0x16dd)]();
     _ephoneRenderSecondaryApiPresets(_0xfa9e0);
+    await window.ephoneImageApi?.refreshPresets();
     _0xfa9e0["forEach"]((_0x302d2f) => {
       const _0x361116 = _0x419cbb,
         _0x54eedc = document[_0x361116(0x139f)](_0x361116(0x105));
@@ -17756,7 +17757,7 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
       _0xephoneSpectatorController?.abort();
       return;
     }
-    if (_0xephoneGenerationController || _ephoneSpectatorMoneyBusy || window.EPhoneCharacterWallet?.isBusy() || window.EPhoneCharacterSocial?.isBusy() || window.EPhoneCharacterDaily?.isBusy() || window.EPhoneLifeSimulation?.isBusy()) return;
+    if (_0xephoneGenerationController || _ephoneSpectatorMoneyBusy || window.ephoneImageApi?.isBusy() || window.EPhoneCharacterWallet?.isBusy() || window.EPhoneCharacterSocial?.isBusy() || window.EPhoneCharacterDaily?.isBusy() || window.EPhoneLifeSimulation?.isBusy()) return;
     _0xephoneSpectatorGenerating = true;
     const _ephoneSpectatorController = new AbortController();
     _0xephoneSpectatorController = _ephoneSpectatorController;
@@ -18029,7 +18030,7 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
           case _0xd07074(0xe19):
             _0x14c18c = {
               ..._0x45a46e,
-              ...window.ephoneChatImages.messageFields(_0x5cafc4),
+              ...await window.ephoneImageApi.generateMessage(_0x5cafc4, _0x5ea3c1.globalSettings, { signal: _ephoneSpectatorController.signal }),
             };
             break;
           case _0xd07074(0x18ee):
@@ -18169,7 +18170,7 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
       _0xephoneGenerationController.abort();
       return;
     }
-    if (window.EPhoneCharacterDaily?.isBusy() || window.EPhoneLifeSimulation?.isBusy()) return;
+    if (window.ephoneImageApi?.isBusy() || window.EPhoneCharacterDaily?.isBusy() || window.EPhoneLifeSimulation?.isBusy()) return;
     if (!_0xephoneGenerationController) {
       _0xephoneGenerationController = new AbortController();
     }
@@ -22807,7 +22808,7 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
           case _0x25f1e5(0xe19):
             _0x4c93fd = {
               ..._0x5ca666,
-              ...window.ephoneChatImages.messageFields(_0x58c66c),
+              ...await window.ephoneImageApi.generateMessage(_0x58c66c, _0x5ea3c1.globalSettings, { signal: _0xephoneController.signal }),
             };
             break;
           case "voice_message":
@@ -25810,7 +25811,7 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
           case "ai_image":
             _0x2d2f7d = {
               ..._0x487744,
-              ...window.ephoneChatImages.messageFields(_0x5ee5e4),
+              ...await window.ephoneImageApi.generateMessage(_0x5ee5e4, _0x5ea3c1.globalSettings),
             };
             break;
           case _0x416b4d(0x1492):
@@ -26961,7 +26962,7 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
           case _0x5f56f6(0xe19):
             _0x21bead = {
               ..._0x1b3993,
-              ...window.ephoneChatImages.messageFields(_0x4dab18),
+              ...await window.ephoneImageApi.generateMessage(_0x4dab18, _0x5ea3c1.globalSettings),
             };
             break;
           default:
@@ -33859,7 +33860,7 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
         case _0x23e348(0xe19):
           _0x27bc55 = {
             ..._0x33cb92,
-            ...window.ephoneChatImages.messageFields(_0x11da09),
+            ...await window.ephoneImageApi.generateMessage(_0x11da09, _0x5ea3c1.globalSettings),
           };
           break;
         case _0x23e348(0x200): {
@@ -56718,7 +56719,7 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
           _0xspaceLabel.textContent = window.EPHONE_SPACE_NAME || "默认空间";
         await window.ephonePlayerIdentity?.render?.();
       }),
-      (window.isPersonaSpaceBusy = () => Boolean(_0xephoneGenerationController || _0xephoneSpectatorGenerating || _ephoneSpectatorMoneyBusy || _ephoneWalletPending || window.EPhoneLifeMarket?.isBusy() || window.EPhoneCharacterWallet?.isBusy() || window.EPhoneCharacterSocial?.isBusy() || window.EPhoneCharacterDaily?.isBusy() || window.EPhoneLifeSimulation?.isBusy() || window.ephonePlayerIdentity?.isBusy?.())),
+      (window.isPersonaSpaceBusy = () => Boolean(_0xephoneGenerationController || _0xephoneSpectatorGenerating || _ephoneSpectatorMoneyBusy || _ephoneWalletPending || window.ephoneImageApi?.isBusy() || window.EPhoneLifeMarket?.isBusy() || window.EPhoneCharacterWallet?.isBusy() || window.EPhoneCharacterSocial?.isBusy() || window.EPhoneCharacterDaily?.isBusy() || window.EPhoneLifeSimulation?.isBusy() || window.ephonePlayerIdentity?.isBusy?.())),
       (window.EPhoneMarketAdapter = {
         now: (chatId) => window.ephoneTimeMachine?.nowMs(chatId || _0x5ea3c1.activeChatId) || Date.now(),
         formatTime: (value) => window.ephoneTimeMachine?.formatDateTime(value, { withWeekday: true }) || new Date(value).toLocaleString("zh-CN"),
@@ -65379,6 +65380,26 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
       _0x5787db(),
       _0x426f02(),
       _0x275208(_0x274136(0x114a)));
+    await window.ephoneImageApi.init({
+      db: _0x24f906, fetch: _ephoneApiFetch, settings: () => _0x5ea3c1.globalSettings,
+      generateExisting: async (timestamp, generate, signal) => {
+        const id = _0x5ea3c1.activeChatId, table = _0x24f906.chats, before = await table.get(id),
+          original = before?.history.find((message) => message.timestamp === timestamp);
+        if (!original || original.type !== "ai_image") throw new Error("这条图片消息已删除或不是可生成的图片。");
+        const fields = await generate(original); signal.throwIfAborted();
+        const saved = await table.db.transaction("rw", table, async () => {
+          const latest = await table.get(id), index = latest?.history.findIndex((message) => message.timestamp === timestamp);
+          if (index == null || index < 0 || JSON.stringify(latest.history[index]) !== JSON.stringify(original)) throw new Error("图片消息已修改或删除，未重新插入聊天；不会自动重试生图。");
+          latest.history[index] = { ...latest.history[index], ...fields }; await table.put(latest); return latest;
+        });
+        const current = _0x5ea3c1.chats[id]; if (current) current.history = saved.history;
+        if (_0x5ea3c1.activeChatId === id) {
+          const bubble = document.querySelector(`#chat-messages .message-bubble[data-timestamp="${timestamp}"]`), old = bubble?.closest(".message-wrapper");
+          if (old) old.replaceWith(await _0x426585(saved.history.find((message) => message.timestamp === timestamp), saved));
+          _ephoneRestoreChatScrolling();
+        }
+      },
+    });
     window.ephoneAppReady = true;
   }
   (function _0x4ec901() {
