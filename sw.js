@@ -1,44 +1,44 @@
 // Service Worker 文件 (sw.js) - 强力保活版
 
 // 缓存版本号
-const CACHE_VERSION = "v1.7.78"; // 版本号+1
+const CACHE_VERSION = "v1.7.79"; // 版本号+1
 const CACHE_NAME = `ephone-cache-${CACHE_VERSION}`;
 
 const CORE_URLS_TO_CACHE = [
-  "./image-api-core.js?v=1.7.78",
-  "./image-api.js?v=1.7.78",
-  "./chat-finance-rollback.js?v=1.7.78",
-  "./chat-image-view.js?v=1.7.78",
-  "./request-context.js?v=1.7.78",
-  "./api-routing-core.js?v=1.7.78",
-  "./life-market-core.js?v=1.7.78",
-  "./player-identity.js?v=1.7.78",
-  "./story-expenses.js?v=1.7.78",
-  "./character-wallet-core.js?v=1.7.78",
-  "./character-wallet.js?v=1.7.78",
-  "./character-wallet.css?v=1.7.78",
-  "./character-social-core.js?v=1.7.78",
-  "./life-simulation-core.js?v=1.7.78",
-  "./life-simulation.js?v=1.7.78",
-  "./life-simulation.css?v=1.7.78",
-  "./character-daily.js?v=1.7.78",
-  "./character-social.js?v=1.7.78",
-  "./character-social.css?v=1.7.78",
-  "./market-orders.js?v=1.7.78",
-  "./life-market.js?v=1.7.78",
-  "./life-market.css?v=1.7.78",
+  "./image-api-core.js?v=1.7.79",
+  "./image-api.js?v=1.7.79",
+  "./chat-finance-rollback.js?v=1.7.79",
+  "./chat-image-view.js?v=1.7.79",
+  "./request-context.js?v=1.7.79",
+  "./api-routing-core.js?v=1.7.79",
+  "./life-market-core.js?v=1.7.79",
+  "./player-identity.js?v=1.7.79",
+  "./story-expenses.js?v=1.7.79",
+  "./character-wallet-core.js?v=1.7.79",
+  "./character-wallet.js?v=1.7.79",
+  "./character-wallet.css?v=1.7.79",
+  "./character-social-core.js?v=1.7.79",
+  "./life-simulation-core.js?v=1.7.79",
+  "./life-simulation.js?v=1.7.79",
+  "./life-simulation.css?v=1.7.79",
+  "./character-daily.js?v=1.7.79",
+  "./character-social.js?v=1.7.79",
+  "./character-social.css?v=1.7.79",
+  "./market-orders.js?v=1.7.79",
+  "./life-market.js?v=1.7.79",
+  "./life-market.css?v=1.7.79",
   "./index.html",
-  "./style.css?v=1.7.78",
-  "./persona-spaces.js?v=1.7.78",
-  "./group-context.js?v=1.7.78",
-  "./spectator-money.js?v=1.7.78",
-  "./space-wallet.js?v=1.7.78",
-  "./chat-response.js?v=1.7.78",
-  "./script.js?v=1.7.78",
-  "./api-payload-guard.js?v=1.7.78",
-  "./narration-mode.js?v=1.7.78",
-  "./time-machine.js?v=1.7.78",
-  "./holiday-calendar.js?v=1.7.78",
+  "./style.css?v=1.7.79",
+  "./persona-spaces.js?v=1.7.79",
+  "./group-context.js?v=1.7.79",
+  "./spectator-money.js?v=1.7.79",
+  "./space-wallet.js?v=1.7.79",
+  "./chat-response.js?v=1.7.79",
+  "./script.js?v=1.7.79",
+  "./api-payload-guard.js?v=1.7.79",
+  "./narration-mode.js?v=1.7.79",
+  "./time-machine.js?v=1.7.79",
+  "./holiday-calendar.js?v=1.7.79",
 ];
 
 const OPTIONAL_URLS_TO_CACHE = [
@@ -49,6 +49,14 @@ const OPTIONAL_URLS_TO_CACHE = [
   "https://s3plus.meituan.net/opapisdk/op_ticket_885190757_1758510900942_qdqqd_djw0z2.jpeg",
   "https://s3plus.meituan.net/opapisdk/op_ticket_885190757_1756312261242_qdqqd_g0eriz.jpeg",
 ];
+
+// Only this app's known static files belong in the offline cache. API requests
+// must remain window-initiated: a worker cannot prompt for local-network access.
+const STATIC_CACHE_URLS = new Set(
+  [...CORE_URLS_TO_CACHE, ...OPTIONAL_URLS_TO_CACHE].map((url) =>
+    new URL(url, self.registration.scope).href,
+  ),
+);
 
 // --- 强力保活核心代码 Start ---
 // 只要浏览器允许，这个 Interval 会一直运行，试图保持 SW 活跃
@@ -85,7 +93,7 @@ self.addEventListener("activate", (event) => {
       .then((cacheNames) => {
         return Promise.all(
           cacheNames.map((cacheName) => {
-            if (cacheName !== CACHE_NAME) {
+            if (cacheName.startsWith("ephone-cache-") && cacheName !== CACHE_NAME) {
               console.log("删除旧缓存:", cacheName);
               return caches.delete(cacheName);
             }
@@ -102,28 +110,38 @@ self.addEventListener("activate", (event) => {
 
 // 3. 拦截网络请求
 self.addEventListener("fetch", (event) => {
+  const request = event.request;
+  if (request.method !== "GET") return;
+  let url;
+  try { url = new URL(request.url); } catch { return; }
+  // Never read/cache authenticated requests, even if an API happens to use a
+  // URL that looks like a static asset. No API credentials enter Cache Storage.
+  if (["authorization", "proxy-authorization", "x-api-key", "x-goog-api-key"].some((name) => request.headers.has(name))) return;
+
   // 如果是心跳 Ping 请求（虚拟地址），直接返回 200 OK，不走网络
   // 这是配合 script.js 里的保活 fetch 使用的
-  if (event.request.url.includes("/_keep_alive_ping_")) {
+  if (url.origin === self.location.origin && url.pathname === "/_keep_alive_ping_") {
     event.respondWith(new Response("pong"));
     return;
   }
 
-  if (event.request.method !== "GET") return;
-
-  if (event.request.mode === "navigate") {
+  if (request.mode === "navigate" && url.origin === self.location.origin && url.href.startsWith(self.registration.scope)) {
     event.respondWith(
       fetch(event.request).catch(() => caches.match("./index.html")),
     );
     return;
   }
 
+  // Do not call respondWith or fetch for local/external API routes. This is
+  // intentionally an allowlist rather than guessing which URLs are APIs.
+  if (!STATIC_CACHE_URLS.has(url.href)) return;
+
   event.respondWith(
-    caches.match(event.request).then((cachedResponse) => {
+    caches.match(request).catch(() => null).then((cachedResponse) => {
       if (cachedResponse) {
         return cachedResponse;
       }
-      return fetch(event.request);
+      return fetch(request);
     }),
   );
 });

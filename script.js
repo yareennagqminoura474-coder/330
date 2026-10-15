@@ -7746,6 +7746,12 @@ function _ephoneBuildApiEndpoint(_ephoneUrl, _ephoneEndpoint) {
     : _ephoneNormalized + "/v1";
   return _ephoneVersionedBase + "/" + _ephoneRoute + _ephoneQuery;
 }
+function _ephoneIsLoopbackApi(_ephoneUrl) {
+  try {
+    const host = new URL(_ephoneUrl).hostname.toLowerCase();
+    return host === "localhost" || host.endsWith(".localhost") || host === "[::1]" || /^127\.(?:\d{1,3}\.){2}\d{1,3}$/.test(host);
+  } catch { return false; }
+}
 async function _ephoneApiFetch(_ephoneUrl, _ephoneOptions = {}) {
   const _ephoneMethod = String(_ephoneOptions.method || "GET").toUpperCase();
   const _ephoneCapacitor = window.Capacitor;
@@ -7836,7 +7842,11 @@ async function _ephoneApiFetch(_ephoneUrl, _ephoneOptions = {}) {
       };
       return _ephoneAdapter;
     }
-    return await fetch(_ephoneUrl, _ephoneOptions);
+    // Annotation, not a bypass: Edge still asks the user for this site's local
+    // permission and still enforces CORS. Never probe/resend a paid request.
+    return await fetch(_ephoneUrl, _ephoneIsLoopbackApi(_ephoneUrl)
+      ? { ..._ephoneOptions, targetAddressSpace: "loopback" }
+      : _ephoneOptions);
   } catch (_ephoneError) {
     if (_ephoneError?.name === "AbortError") throw _ephoneError;
     const _ephoneHost = (() => {
@@ -7861,9 +7871,9 @@ async function _ephoneApiFetch(_ephoneUrl, _ephoneOptions = {}) {
       _ephoneError?.message || _ephoneError || "unknown error",
     );
     const _ephoneOnline = navigator.onLine ? "online" : "offline";
-    const _ephoneWrappedError = new Error(
-      `API ${_ephoneMethod} network error: ${_ephoneMessage} (host=${_ephoneHost}, path=${_ephonePath}, transport=${_ephoneTransport}, browser=${_ephoneOnline}${_ephonePayloadChars}). A failed request before receiving an HTTP response can be caused by CORS, DNS/TLS, network policy, or connection failure.`,
-    );
+    const _ephoneWrappedError = new Error(_ephoneIsLoopbackApi(_ephoneUrl)
+      ? `本机 API 连接失败（${_ephoneHost}${_ephonePath}，${_ephoneTransport}）。请允许当前 GitHub 网站访问本地网络／本机服务；糯叽机网站的授权不自动适用于这里。若已允许，仍需检查 Termux 服务是否允许此网站跨域读取。没有收到可读的 HTTP 响应，暂不能区分具体原因。不要清除网站数据。原始错误：${_ephoneMessage}`
+      : `API ${_ephoneMethod} network error: ${_ephoneMessage} (host=${_ephoneHost}, path=${_ephonePath}, transport=${_ephoneTransport}, browser=${_ephoneOnline}${_ephonePayloadChars}). A failed request before receiving an HTTP response can be caused by CORS, DNS/TLS, network policy, or connection failure.`);
     _ephoneWrappedError.cause = _ephoneError;
     throw _ephoneWrappedError;
   }
@@ -57751,7 +57761,7 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
         const _ephoneFetchError = String(
             _0x313626?.message || _0x313626 || "未知错误",
           ),
-          _ephoneNetworkHint = /failed to fetch|load failed|networkerror|fetch failed/i.test(
+          _ephoneNetworkHint = !_ephoneIsLoopbackApi(_0x412c5d) && /failed to fetch|load failed|networkerror|fetch failed/i.test(
             _ephoneFetchError,
           )
             ? "\n浏览器无法读取 API 响应，通常是网络不可达或服务端未允许跨域（CORS）。请检查 API 地址和网络；不要将 API Key 填入不可信的公共代理。"
