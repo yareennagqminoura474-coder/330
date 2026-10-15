@@ -11416,7 +11416,7 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
         worldBooks: _0x1ca1ec,
         userStickers: _0x482e70,
         apiConfig: _0x446ec2,
-        globalSettings: { id: "main", ..._0x5b6a58, ephoneImageApiSettings: await _0x24f906.globalSettings.get("image-api") },
+        globalSettings: { id: "main", ..._0x5b6a58, ephoneImageApiSettings: await _0x24f906.globalSettings.get("image-api"), ephoneApiTransportSettings: await _0x24f906.globalSettings.get("api-transport") },
         personaPresets: _0x273035,
         musicLibrary: _0x31335b,
         qzoneSettings: _0x3275cd,
@@ -13727,6 +13727,7 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
     document.getElementById("secondary-api-key").value = _patch.secondaryApiKey;
     _ephoneRestoreApiPresetModel("secondary-model-select", _patch.secondaryModel);
     await _ephoneSaveSecondaryApiDraft(_patch.secondaryPresetSnapshot);
+    window.ephoneApiTransport?.render();
   }
   function _ephoneRenderSavedApiModels() {
     for (const [_id, _field, _placeholder] of [
@@ -13818,6 +13819,7 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
         ));
       (await _0x24f906[_0x29ae36(0x162b)]["put"](_0x5ea3c1["apiConfig"]),
         _0x4bf560(_0x35deb4),
+        window.ephoneApiTransport?.render(),
         document[_0x29ae36(0x1023)](_0x29ae36(0x18de))[_0x29ae36(0x34e)]());
     }
   }
@@ -56784,6 +56786,7 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
       (window["renderWorldBookScreenProxy"] = _0x5dd041),
       await window.ephoneTimeMachine?.loadSpace(_0x24f906),
       await _0x3367c4(),
+      await window.ephoneApiTransport.init({ db: _0x24f906, settings: () => _0x5ea3c1.globalSettings }),
       await _0x4b0d91(),
       _0x1d0309(),
       _0xd141a5(_0x5ea3c1[_0x274136(0x9b1)][_0x274136(0xab6)]),

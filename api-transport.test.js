@@ -1,0 +1,29 @@
+const assert = require("node:assert/strict"), fs = require("node:fs"), vm = require("node:vm");
+(async () => {
+  const nodes = new Map(), stored = new Map(), calls = [];
+  const node = (id) => { if (!nodes.has(id)) nodes.set(id, { value: "", handlers: {}, addEventListener(type, fn) { this.handlers[type] = fn; } }); return nodes.get(id); };
+  const table = { get: async (key) => structuredClone(stored.get(key)), put: async (value) => stored.set(value.id, structuredClone(value)), db: { transaction: async (...args) => args.at(-1)() } };
+  const root = { fetch: async (...args) => { calls.push(args); return new Response("okay"); } };
+  vm.runInNewContext(fs.readFileSync("api-transport.js", "utf8"), { window: root, document: { getElementById: node, addEventListener() {} }, URL, Headers, structuredClone, location: { href: "https://yareennagqminoura474-coder.github.io/330/" }, queueMicrotask });
+  node("proxy-url").value = "https://one.example/v1"; node("secondary-proxy-url").value = "https://two.example"; node("image-api-baseUrl").value = "https://one.example/v1";
+  await root.ephoneApiTransport.init({ db: { globalSettings: table, apiPresets: { toArray: async () => [] }, apiConfig: { get: async () => null } }, settings: () => ({}) });
+  const options = { headers: { Authorization: "Bearer fake-user" }, signal: new AbortController().signal };
+  await root.fetch("https://one.example/v1/models", options); assert.equal(calls.at(-1)[0], "https://one.example/v1/models"); assert.equal(calls.at(-1)[1], options);
+  node("primary-transport").value = "relay"; node("primary-transport").handlers.change(); await root.ephoneApiTransport.flush();
+  assert.equal(node("image-api-transport").value, "relay"); assert.equal(node("secondary-transport").value, "direct");
+  const before = calls.length; await assert.rejects(root.fetch("https://one.example/v1/models", options), /缺少中转授权码/); assert.equal(calls.length, before);
+  node("api-relay-token").value = "a".repeat(64); node("api-relay-token").handlers.input(); await root.ephoneApiTransport.flush();
+  await root.fetch("https://one.example/v1/models", options); const [url, forwarded] = calls.at(-1);
+  assert.match(url, /workers\.dev\/relay$/); assert.equal(forwarded.headers.get("X-EPhone-Target"), "https://one.example/v1/models"); assert.equal(forwarded.headers.get("Authorization"), "Bearer fake-user"); assert.equal(forwarded.credentials, "omit"); assert.equal(forwarded.signal, options.signal); assert.equal(options.headers["X-EPhone-Target"], undefined);
+  await root.fetch("https://two.example/v1/models", options); assert.equal(calls.at(-1)[0], "https://two.example/v1/models");
+  node("proxy-url").value = "https://new.example/v1"; node("proxy-url").handlers.input(); assert.equal(node("primary-transport").value, "direct");
+  for (const address of ["http://127.0.0.1:2156/v1/models", "http://localhost:2156/v1/models", "http://[::1]:2156/v1/models", "http://192.168.1.10:2156/v1/models"]) { await root.fetch(address, options); assert.equal(calls.at(-1)[0], address); }
+  await root.fetch("https://one.example/not-an-api", options); assert.equal(calls.at(-1)[0], "https://one.example/not-an-api");
+  node("proxy-url").value = "https://generativelanguage.googleapis.com/v1beta"; node("primary-transport").value = "relay"; node("primary-transport").handlers.change(); await root.ephoneApiTransport.flush();
+  const body = '{"contents":[{"parts":[{"text":"unchanged"}]}]}';
+  await root.fetch("https://generativelanguage.googleapis.com/v1beta/models/gemini:generateContent?key=fake-native", { method: "POST", body });
+  assert.equal(calls.at(-1)[1].headers.get("x-goog-api-key"), "fake-native"); assert.doesNotMatch(calls.at(-1)[1].headers.get("X-EPhone-Target"), /fake-native/); assert.equal(calls.at(-1)[1].body, body);
+  const stop = new AbortController(); stop.abort(); const count = calls.length; await assert.rejects(root.fetch("https://one.example/v1/models", { signal: stop.signal }), (e) => e.name === "AbortError"); assert.equal(calls.length, count);
+  const snapshot = root.ephoneApiTransport.snapshot(); assert.equal(snapshot.routes["https://one.example"], "relay"); assert.equal(snapshot.routes["https://two.example"], undefined);
+  console.log("PASS: address-specific explicit opt-in, unchanged direct defaults and local requests, shared selection and snapshots, independent addresses, missing-token fail-closed, native key headers, exact body/signal, no retries");
+})().catch((error) => { console.error(error); process.exitCode = 1; });

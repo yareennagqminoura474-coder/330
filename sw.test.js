@@ -4,7 +4,7 @@ const assert = require("node:assert/strict"), fs = require("node:fs"), vm = requ
   let failCache = false, failNetwork = false, cached = null;
   const caches = {
     match: async () => { calls.cache++; if (failCache) throw new Error("cache unavailable"); return cached?.clone() || null; },
-    keys: async () => ["other-app-cache", "ephone-cache-v1.7.78", "ephone-cache-v1.7.80"],
+    keys: async () => ["other-app-cache", "ephone-cache-v1.7.78", "ephone-cache-v1.7.81"],
     delete: async (key) => { calls.deleted.push(key); return true; },
   };
   const context = vm.createContext({ URL, Response, Set, console: { log() {} }, setInterval() {}, caches,
@@ -20,13 +20,13 @@ const assert = require("node:assert/strict"), fs = require("node:fs"), vm = requ
   for (const url of ["http://127.0.0.1:2156/v1/models", "http://localhost:2156/v1/models", "http://[::1]:2156/v1/models", "http://192.168.1.10:2156/v1/models", "https://third-party.invalid/v1/models", scope + "v1/models", scope + "api.json", scope + "api.js", "https://third-party.invalid/_keep_alive_ping_"]) {
     for (const headers of [{}, { Authorization: "Bearer fake-test" }]) assert.equal(dispatch(url, { headers }), null, url + " stays window-initiated");
   }
-  for (const name of ["Authorization", "Proxy-Authorization", "x-api-key", "x-goog-api-key"]) assert.equal(dispatch(scope + "style.css?v=1.7.80", { headers: { [name]: "fake" } }), null);
+  for (const name of ["Authorization", "Proxy-Authorization", "x-api-key", "x-goog-api-key"]) assert.equal(dispatch(scope + "style.css?v=1.7.81", { headers: { [name]: "fake" } }), null);
   assert.equal(dispatch("http://127.0.0.1:2156/v1/chat/completions", { method: "POST" }), null);
-  assert.equal(dispatch(scope + "style.css?v=1.7.80", { method: "POST" }), null);
+  assert.equal(dispatch(scope + "style.css?v=1.7.81", { method: "POST" }), null);
   assert.equal(calls.cache, 0); assert.equal(calls.fetch, 0, "worker does not issue API requests, probes or retries");
-  cached = new Response("cached static"); assert.equal(await (await dispatch(scope + "style.css?v=1.7.80")).text(), "cached static");
+  cached = new Response("cached static"); assert.equal(await (await dispatch(scope + "style.css?v=1.7.81")).text(), "cached static");
   assert.equal(await (await dispatch("https://unpkg.com/dexie/dist/dexie.js")).text(), "cached static");
-  failCache = true; assert.equal(await (await dispatch(scope + "style.css?v=1.7.80")).text(), "network"); failCache = false;
+  failCache = true; assert.equal(await (await dispatch(scope + "style.css?v=1.7.81")).text(), "network"); failCache = false;
   assert.equal(await (await dispatch(origin + "/_keep_alive_ping_")).text(), "pong");
   assert.equal(dispatch("https://other.invalid/330/", { mode: "navigate" }), null); assert.equal(dispatch(origin + "/other-app/", { mode: "navigate" }), null);
   failNetwork = true; cached = new Response("offline index"); assert.equal(await (await dispatch(scope, { mode: "navigate" })).text(), "offline index");

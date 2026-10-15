@@ -23,7 +23,7 @@
   function render() {
     el("provider").value = row.provider;
     for (const [key, value] of Object.entries(core.config(row.config))) el(key).value = value;
-    el("preset-name").value = row.sourceName || ""; showProvider(); renderModels();
+    el("preset-name").value = row.sourceName || ""; showProvider(); renderModels(); window.ephoneApiTransport?.render();
     status(selectedCustom() ? `当前生图：${row.config.model || "尚未选择模型"}${row.sourceName ? " · " + row.sourceName : ""}。配置独立保存，不随主／副 API 切换。` : "当前使用原通用绘图服务。可以选择第三方生图 API，再载入一个预设。");
   }
   function write(transform) {

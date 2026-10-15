@@ -1,0 +1,12 @@
+{
+  "name": "ephone-gcli-proxy",
+  "account_id": "520b96b45cc1a71386b801dd71f0704c",
+  "main": "relay-worker.mjs",
+  "compatibility_date": "2026-09-24",
+  "workers_dev": true,
+  "observability": {
+    "enabled": true,
+    "logs": { "enabled": true, "invocation_logs": false },
+    "traces": { "enabled": false }
+  }
+}
