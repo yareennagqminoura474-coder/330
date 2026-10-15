@@ -8,14 +8,14 @@ const { chromium } = require("playwright-core"), { dailyReply } = require("./bro
   });
   await new Promise((r) => server.listen(0, "127.0.0.1", r));
   const origin = `http://127.0.0.1:${server.address().port}`, browser = await chromium.launch({ executablePath: "C:/Program Files/Google/Chrome/Application/chrome.exe", headless: true });
-  const errors = [], calls = []; let actions = [], images = 0, correction = null;
+  const errors = [], calls = [], imageUrls = []; let actions = [], images = 0, correction = null;
   try {
     const page = await browser.newPage({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true, serviceWorkers: "block" });
     page.on("pageerror", (e) => errors.push(e.message)); page.on("dialog", (d) => d.accept(d.type() === "prompt" ? correction || "30" : undefined));
     await page.route("**/*", async (route) => {
       const url = route.request().url(); if (url.startsWith(origin)) return route.continue();
       if (url.includes("unpkg.com/dexie")) return route.fulfill({ contentType: "application/javascript", body: fs.readFileSync(path.join(path.dirname(require.resolve("dexie")), "dexie.min.js"), "utf8") });
-      if (url.startsWith("https://image.pollinations.ai/")) { images++; if (url.includes("bad-image")) return route.abort(); return route.fulfill({ contentType: "image/svg+xml", body: '<svg xmlns="http://www.w3.org/2000/svg" width="120" height="120"><rect width="120" height="120" fill="skyblue"/></svg>' }); }
+      if (url.startsWith("https://image.pollinations.ai/")) { images++; imageUrls.push(url); if (url.includes("bad-image")) return route.abort(); return route.fulfill({ contentType: "image/svg+xml", body: '<svg xmlns="http://www.w3.org/2000/svg" width="120" height="120"><rect width="120" height="120" fill="skyblue"/></svg>' }); }
       if (!url.startsWith("https://finance-main.invalid/") && !url.startsWith("https://finance-aux.invalid/")) return route.abort();
       const body = route.request().postDataJSON(), prompt = body.messages[0].content;
       if (prompt.includes("独立生活当天行程规划师")) return route.fulfill({ contentType: "application/json", body: JSON.stringify(dailyReply(prompt)) });
@@ -99,14 +99,33 @@ const { chromium } = require("playwright-core"), { dailyReply } = require("./bro
     assert.match(await page.locator(".ai-image-description-card").last().innerText(), /未生成图片/); assert.equal(images, 0);
     await page.evaluate(() => window.showScreen("api-settings-screen")); await page.locator("#enable-ai-drawing-switch").evaluate((el) => { if (!el.checked) el.parentElement.click(); });
     await page.locator("#custom-modal-overlay.visible #custom-modal-confirm").click();
+    // Missing fields must not leave watch/normal/private images stuck as descriptions.
+    for (const [id, prompt] of [["finance-watch", undefined], ["finance-group", "   "], ["f0", null]]) {
+      const description = `透明盒中的蓝白机甲，测试图片${id}，40%光照。`, count = calls.length;
+      await generate(id, [{ type: "ai_image", name: "林老师", description, image_prompt: prompt }]);
+      await page.waitForFunction(() => [...document.querySelectorAll(".ai-generated-image")].at(-1)?.naturalWidth > 0);
+      assert.equal(calls.length, count + 1, "prompt repair must not call another text model");
+      assert.match(calls.at(-1).messages[0].content, /# 图片字段完整性/);
+      const saved = await page.evaluate((id) => window.db.chats.get(id).then((c) => c.history.findLast((m) => m.type === "ai_image")), id);
+      assert.equal(saved.image_prompt, description); assert.equal(saved.imagePromptSource, "description");
+      assert.ok(imageUrls.some((url) => decodeURIComponent(new URL(url).pathname.slice("/prompt/".length)) === description));
+      assert.match(await page.locator(".ephone-chat-image").last().innerText(), /已按图片描述补全提示词/);
+    }
     await generate("finance-watch", [{ type: "ai_image", name: "林老师", description: "柜台上的奶茶。", image_prompt: "tea & light" }]);
     const img = page.locator(".ai-generated-image").last(); await img.waitFor(); await page.waitForFunction(() => [...document.querySelectorAll(".ai-generated-image")].at(-1)?.naturalWidth > 0);
     const callCount = calls.length, imageCount = images; await img.click(); await page.waitForSelector("#ephone-chat-image-preview"); assert.equal(calls.length, callCount); assert.equal(images, imageCount);
     await page.locator("#ephone-chat-image-preview").getByRole("button", { name: "关闭", exact: true }).click(); assert.equal(await page.locator("#ephone-chat-image-preview").count(), 0);
     await generate("finance-watch", [{ type: "ai_image", name: "林老师", description: "服务失败的图片。", image_prompt: "bad-image" }]);
     await page.waitForFunction(() => [...document.querySelectorAll(".ephone-image-status")].at(-1)?.textContent.includes("加载失败"));
-    await page.reload({ waitUntil: "domcontentloaded" }); await page.waitForFunction(() => window.ephoneAppReady); assert.equal(await page.evaluate(async () => (await window.db.userWallet.get("main")).balance), 1000);
+    const oldDescription = "旧记录只有描述，蓝白机甲和透明展示盒。";
+    await page.evaluate(async (content) => { const c = await window.db.chats.get("finance-watch"); c.history.push({ type: "ai_image", role: "assistant", senderName: "林老师", content, timestamp: Date.now() + 1, vts: c.history.at(-1).vts }); await window.db.chats.put(c); }, oldDescription);
+    const beforeReload = calls.length;
+    await page.reload({ waitUntil: "domcontentloaded" }); await page.waitForFunction(() => window.ephoneAppReady); await chat("finance-watch");
+    await page.waitForFunction(() => [...document.querySelectorAll(".ai-generated-image")].at(-1)?.naturalWidth > 0);
+    assert.equal(calls.length, beforeReload, "old missing prompts repair locally on display, not by model calls");
+    assert.ok(imageUrls.some((url) => decodeURIComponent(new URL(url).pathname.slice("/prompt/".length)) === oldDescription));
+    assert.equal(await page.evaluate(async () => (await window.db.userWallet.get("main")).balance), 1000);
     assert.deepEqual(errors, []);
-    console.log("PASS: real mobile watch/group/private no-amount accounting with explicit-command dedupe, corrected original debit, hard/soft deletion with balance/notice/clock hold, funded transfer+receipt undo, honest description cards and real-image preview with zero extra generation calls, persisted reload");
+    console.log("PASS: mobile watch/group/private finance rollback, missing-prompt local repair and complete-field instructions in all reply modes, old-image reload repair, drawing toggle, provider error, real-image preview and zero extra text/generation calls on preview");
   } finally { await browser.close(); await new Promise((r) => server.close(r)); }
 })().catch((e) => { console.error(e); process.exitCode = 1; });

@@ -17872,6 +17872,7 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
             _ephoneSpectatorReplyTimeMs,
           ) || "") +
           window.ephoneSpectatorMoney.prompt +
+          (window.ephoneChatImages?.getPromptRule(_0x5ea3c1.globalSettings) || "") +
           window.ephoneSpectatorMoney.ledger(_0x326f3d) +
           (await _ephoneOrderPrompt(_0x326f3d)) +
           (await _ephoneFinancePrompt(_0x326f3d, _ephoneSpectatorReplyTimeMs)) +
@@ -18028,9 +18029,7 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
           case _0xd07074(0xe19):
             _0x14c18c = {
               ..._0x45a46e,
-              type: _0xd07074(0xe19),
-              content: _0x5cafc4["description"],
-              image_prompt: _0x5cafc4[_0xd07074(0x3aa)],
+              ...window.ephoneChatImages.messageFields(_0x5cafc4),
             };
             break;
           case _0xd07074(0x18ee):
@@ -20591,6 +20590,7 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
       _0x539674 +=
         "\n# 【回复长度与节奏（按情境灵活执行）】\n通常将内容拆分成约4到7条简短消息；简单回应可以更少，互动丰富或需要逐步展开时可以更多。此范围只是自然聊天的倾向，没有固定最低或最高条数。不要为凑数量添加空话，也不要把多个独立想法挤成一条。\n";
       _0x539674 += await _ephoneOrderPrompt(_0x5b16cb);
+      _0x539674 += window.ephoneChatImages?.getPromptRule(_0x5ea3c1.globalSettings) || "";
       _0x539674 += await _ephoneFinancePrompt(_0x5b16cb, _ephoneReplyTimeMs);
       _0x539674 += await _ephoneSocialPrompt(_0x5b16cb, _ephoneReplyTimeMs, _0x539674);
       _0x539674 +=
@@ -22807,9 +22807,7 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
           case _0x25f1e5(0xe19):
             _0x4c93fd = {
               ..._0x5ca666,
-              type: _0x25f1e5(0xe19),
-              content: _0x58c66c["description"],
-              image_prompt: _0x58c66c["image_prompt"],
+              ...window.ephoneChatImages.messageFields(_0x58c66c),
             };
             break;
           case "voice_message":
@@ -25812,8 +25810,7 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
           case "ai_image":
             _0x2d2f7d = {
               ..._0x487744,
-              type: _0x416b4d(0xe19),
-              content: _0x5ee5e4["description"],
+              ...window.ephoneChatImages.messageFields(_0x5ee5e4),
             };
             break;
           case _0x416b4d(0x1492):
@@ -26964,9 +26961,7 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
           case _0x5f56f6(0xe19):
             _0x21bead = {
               ..._0x1b3993,
-              type: _0x5f56f6(0xe19),
-              content: _0x4dab18[_0x5f56f6(0xe12)],
-              image_prompt: msgData[_0x5f56f6(0x3aa)],
+              ...window.ephoneChatImages.messageFields(_0x4dab18),
             };
             break;
           default:
@@ -33864,9 +33859,7 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
         case _0x23e348(0xe19):
           _0x27bc55 = {
             ..._0x33cb92,
-            type: "ai_image",
-            content: _0x11da09[_0x23e348(0xe12)],
-            image_prompt: _0x11da09[_0x23e348(0x3aa)],
+            ...window.ephoneChatImages.messageFields(_0x11da09),
           };
           break;
         case _0x23e348(0x200): {
