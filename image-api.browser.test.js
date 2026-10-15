@@ -10,7 +10,7 @@ const { chromium } = require("playwright-core"), { dailyReply } = require("./bro
   const origin = `http://127.0.0.1:${server.address().port}`, browser = await chromium.launch({ executablePath: "C:/Program Files/Google/Chrome/Application/chrome.exe", headless: true });
   const errors = [], imageCalls = [], replyCalls = [], pollinations = [], modelCalls = [];
   const png = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Wl6E1sAAAAASUVORK5CYII=", dataUrl = "data:image/png;base64," + png;
-  let failed = false, hold = false, release, readyHold;
+  let failed = false, hold = false, release, readyHold, emptyModels = false, failModels = false;
   try {
     const page = await browser.newPage({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true, serviceWorkers: "block" });
     page.on("pageerror", (error) => errors.push(error.message)); page.on("dialog", (dialog) => dialog.accept());
@@ -19,7 +19,7 @@ const { chromium } = require("playwright-core"), { dailyReply } = require("./bro
       if (url.includes("unpkg.com/dexie")) return route.fulfill({ contentType: "application/javascript", body: fs.readFileSync(path.join(path.dirname(require.resolve("dexie")), "dexie.min.js"), "utf8") });
       if (url.startsWith("https://image.pollinations.ai/")) { pollinations.push(url); return route.abort(); }
       if (url.startsWith("https://draw-test.invalid/")) {
-        if (route.request().method() === "GET") { modelCalls.push(url); return route.fulfill({ contentType: "application/json", body: '{"data":[{"id":"third-gpt-image"},{"id":"gemini-third-image"}]}' }); }
+        if (route.request().method() === "GET") { modelCalls.push(url); return route.fulfill({ status: failModels ? 500 : 200, contentType: "application/json", body: failModels ? '{"error":{"message":"model list unavailable"}}' : emptyModels ? '{"data":[]}' : '{"data":[{"id":"third-gpt-image"},{"id":"gemini-third-image"}]}' }); }
         const body = route.request().postDataJSON(), headers = route.request().headers(); imageCalls.push({ url, body, headers });
         if (hold) { readyHold?.(); await new Promise((resolve) => { release = resolve; }); }
         if (failed) return route.fulfill({ status: 400, contentType: "application/json", body: '{"error":{"message":"model or format unsupported fake-image-key"}}' });
@@ -57,8 +57,21 @@ const { chromium } = require("playwright-core"), { dailyReply } = require("./bro
     await page.locator("#image-api-preset-select").selectOption("api:" + presetId); await page.locator("#image-api-use-preset").click();
     await page.waitForFunction(() => document.getElementById("image-api-status").textContent.includes("已使用独立副本"));
     assert.equal(await page.locator("#image-api-model").inputValue(), "third-gpt-image");
-    await page.locator("#image-api-fetch-models").click(); await page.waitForFunction(() => document.querySelectorAll("#image-api-models option").length === 2);
+    await page.locator("#image-api-fetch-models").click(); await page.waitForFunction(() => document.querySelectorAll("#image-api-models option").length === 3);
     assert.equal(imageCalls.length, 0); assert.equal(await page.locator("#image-api-model").inputValue(), "third-gpt-image");
+    assert.equal(await page.locator("#image-api-models").evaluate((node) => node.tagName), "SELECT");
+    assert.equal(await page.locator("#image-api-models").isEnabled(), true);
+    await page.locator("#image-api-models").selectOption("gemini-third-image"); await settle();
+    assert.equal(await page.locator("#image-api-model").inputValue(), "gemini-third-image");
+    await reopen(); await settings(); assert.equal(await page.locator("#image-api-model").inputValue(), "gemini-third-image");
+    assert.equal(await page.locator("#image-api-models").isDisabled(), true, "reopening does not automatically pull models");
+    assert.equal(modelCalls.length, 1);
+    await page.locator("#image-api-fetch-models").click(); await page.waitForFunction(() => document.querySelectorAll("#image-api-models option").length === 3);
+    assert.equal(await page.locator("#image-api-models").inputValue(), "gemini-third-image");
+    await page.locator("#image-api-model").fill("manual-image-model"); await settle(); assert.equal(await page.locator("#image-api-models").inputValue(), "");
+    await page.locator("#image-api-models").selectOption("third-gpt-image"); await settle();
+    const listBounds = await page.locator("#image-api-models").boundingBox(); assert.ok(listBounds.x >= 0 && listBounds.x + listBounds.width <= 391 && listBounds.height >= 36, "native model selector is touchable and fits mobile screen");
+    await page.locator("#image-api-models").scrollIntoViewIfNeeded(); await page.screenshot({ path: path.join(process.env.TEMP, "ephone-image-api-v180.png") });
     await page.locator("#image-api-preset-name").fill("机甲生图"); await page.locator("#image-api-save-preset").click(); await page.waitForFunction(() => document.getElementById("image-api-status").textContent.includes("已保存独立生图预设"));
     const ownId = await page.locator("#image-api-preset-select").inputValue(); assert.match(ownId, /^image:/);
     await page.evaluate(async (id) => { await window.db.apiPresets.update(id, { model: "changed-text-model", apiKey: "changed-key" }); }, presetId);
@@ -101,9 +114,15 @@ const { chromium } = require("playwright-core"), { dailyReply } = require("./bro
     await page.evaluate(async () => { const t = window.db.globalSettings, main = await t.get("main"), snapshot = await t.get("image-api"); await t.put({ id: "main", ...main, ephoneImageApiSettings: snapshot }); await t.delete("image-api"); });
     await reopen(); await settings(); assert.equal(await page.locator("#image-api-model").inputValue(), "third-gpt-image"); assert.equal(await page.evaluate(async () => (await window.db.globalSettings.get("main")).ephoneImageApiSettings), undefined);
     await page.locator("#image-api-model").fill("third-gpt-image-updated"); await settle(); await reopen(); await settings(); assert.equal(await page.locator("#image-api-model").inputValue(), "third-gpt-image-updated");
-    assert.deepEqual(errors, []); assert.equal(pollinations.length, 0); assert.equal(modelCalls.length, 1); assert.equal(replyCalls.length, 5);
+    emptyModels = true; await page.locator("#image-api-fetch-models").click(); await page.waitForFunction(() => document.getElementById("image-api-status").textContent.includes("没有返回模型列表"));
+    assert.equal(await page.locator("#image-api-models").isDisabled(), true); assert.equal(await page.locator("#image-api-model").inputValue(), "third-gpt-image-updated");
+    emptyModels = false; failModels = true; await page.locator("#image-api-fetch-models").click(); await page.waitForFunction(() => document.getElementById("image-api-status").textContent.includes("未完成"));
+    assert.equal(await page.locator("#image-api-fetch-models").isEnabled(), true); assert.equal(await page.locator("#image-api-models").isDisabled(), true);
+    failModels = false; await page.locator("#image-api-fetch-models").click(); await page.waitForFunction(() => document.querySelectorAll("#image-api-models option").length === 3);
+    await page.locator("#image-api-baseUrl").fill("https://other-draw-test.invalid/v1"); await settle(); assert.equal(await page.locator("#image-api-models").isDisabled(), true, "changing service removes stale choices");
+    await page.locator("#image-api-baseUrl").fill("https://draw-test.invalid/v1"); await settle();
+    assert.deepEqual(errors, []); assert.equal(pollinations.length, 0); assert.equal(modelCalls.length, 5); assert.equal(replyCalls.length, 5);
     const bounds = await page.locator("#image-api-model").boundingBox(); assert.ok(bounds.x >= 0 && bounds.x + bounds.width <= 391, "mobile model field stays inside screen");
-    await page.locator("#image-api-provider").scrollIntoViewIfNeeded(); await page.screenshot({ path: path.join(process.env.TEMP, "ephone-image-api-v178.png") });
     console.log("PASS: mobile independent image presets and backup restoration without stale overwrites, images/chat/native generation in watch/group/private, saved images and zero reopen/preview billing, no main/aux changes or prompt leakage, redacted errors without fallback/retry, legacy manual generation and stop");
   } finally { await browser.close(); await new Promise((resolve) => server.close(resolve)); }
 })().catch((error) => { console.error(error); process.exitCode = 1; });

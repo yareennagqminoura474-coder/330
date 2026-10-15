@@ -2,7 +2,7 @@
   "use strict";
   const core = window.ephoneImageApiCore;
   const defaults = () => ({ id: "image-api", provider: "pollinations", config: core.config(), presets: [], selectedPresetId: "", sourceName: "" });
-  let adapter, row = defaults(), queue = Promise.resolve(), busy = 0, manualController, manualStamp, modelController, editSerial = 0;
+  let adapter, row = defaults(), queue = Promise.resolve(), busy = 0, manualController, manualStamp, modelController, editSerial = 0, availableModels = [];
   const el = (name) => document.getElementById("image-api-" + name);
   const status = (text) => { if (el("status")) el("status").textContent = text; };
   const selectedCustom = () => row.provider === "custom";
@@ -10,10 +10,20 @@
     return { provider: el("provider").value, config: core.config(Object.fromEntries(["baseUrl", "apiKey", "model", "protocol", "size", "quality"].map((key) => [key, el(key).value]))) };
   }
   function showProvider() { el("details").hidden = el("provider").value !== "custom"; }
+  function renderModels() {
+    const select = el("models"), current = el("model").value;
+    select.replaceChildren(new Option(availableModels.length ? "请选择生图模型（也可手动填写）" : "请先拉取模型", ""), ...availableModels.map((model) => new Option(model, model)));
+    select.disabled = !availableModels.length;
+    select.value = availableModels.includes(current) ? current : "";
+  }
+  function clearModels() {
+    modelController?.abort(); modelController = null; availableModels = [];
+    el("fetch-models").disabled = false; renderModels();
+  }
   function render() {
     el("provider").value = row.provider;
     for (const [key, value] of Object.entries(core.config(row.config))) el(key).value = value;
-    el("preset-name").value = row.sourceName || ""; showProvider();
+    el("preset-name").value = row.sourceName || ""; showProvider(); renderModels();
     status(selectedCustom() ? `当前生图：${row.config.model || "尚未选择模型"}${row.sourceName ? " · " + row.sourceName : ""}。配置独立保存，不随主／副 API 切换。` : "当前使用原通用绘图服务。可以选择第三方生图 API，再载入一个预设。");
   }
   function write(transform) {
@@ -46,6 +56,7 @@
   }
   async function usePreset() {
     const id = el("preset-select").value, serial = ++editSerial; if (!id) throw new Error("请先选择一个预设。");
+    clearModels();
     await queue.catch(() => {});
     const own = id.startsWith("image:"), preset = own ? row.presets.find((p) => "image:" + p.id === id) : await adapter.db.apiPresets.get(Number(id.slice(4)));
     if (serial !== editSerial || el("preset-select").value !== id) return;
@@ -78,14 +89,15 @@
     el("preset-select").value = ""; await refreshPresets(); status("已删除预设，当前生图配置及已有图片未变。");
   }
   async function fetchModels() {
-    modelController?.abort(); const controller = new AbortController(); modelController = controller;
+    clearModels(); const controller = new AbortController(); modelController = controller;
     const c = draft().config, signature = JSON.stringify(c); el("fetch-models").disabled = true; status("正在拉取模型；不会测试生成图片或产生生图请求…");
     try {
       const models = await core.models(c, adapter.fetch, { signal: controller.signal });
       if (controller.signal.aborted || JSON.stringify(draft().config) !== signature) return;
-      el("models").replaceChildren(...models.map((model) => new Option(model, model)));
-      status(`已拉取 ${models.length} 个模型。列表可能包含文字模型，请选择服务商支持生图的模型；也可以手动输入。`);
-    } finally { if (modelController === controller) { modelController = null; el("fetch-models").disabled = false; } }
+      availableModels = models; renderModels();
+      status(models.length ? `已拉取 ${models.length} 个模型，请点击上方“生图模型列表”选择。列表可能包含文字模型，请选择服务商支持生图的模型；也可以手动输入。` : "接口返回的模型列表为空。可以手动填写服务商支持的生图模型，或检查地址与密钥后重新拉取。");
+    } catch (error) { if (!controller.signal.aborted) throw error; }
+    finally { if (modelController === controller) { modelController = null; el("fetch-models").disabled = false; } }
   }
   async function generateMessage(action, settings, { signal } = {}) {
     await queue.catch(() => {});
@@ -132,9 +144,17 @@
     const handle = (fn) => async () => { try { await fn(); } catch (error) { status("未完成：" + core.redact(error, draft().config)); } };
     for (const field of ["provider", "baseUrl", "apiKey", "model", "protocol", "size", "quality"]) {
       el(field).addEventListener(field === "baseUrl" || field === "apiKey" || field === "model" ? "input" : "change", async () => {
-        editSerial++; showProvider(); try { await saveDraft(); } catch (error) { render(); status("保存失败，继续保留上次已保存设置：" + core.redact(error, draft().config)); }
+        editSerial++; showProvider();
+        if (["provider", "baseUrl", "apiKey", "protocol"].includes(field)) clearModels();
+        else if (field === "model") renderModels();
+        try { await saveDraft(); } catch (error) { render(); status("保存失败，继续保留上次已保存设置：" + core.redact(error, draft().config)); }
       });
     }
+    el("models").addEventListener("change", () => {
+      if (!availableModels.includes(el("models").value)) return;
+      el("model").value = el("models").value;
+      el("model").dispatchEvent(new Event("input", { bubbles: true }));
+    });
     el("use-preset").onclick = handle(usePreset); el("save-preset").onclick = handle(() => savePreset()); el("update-preset").onclick = handle(() => savePreset(true)); el("delete-preset").onclick = handle(removePreset);
     el("fetch-models").onclick = handle(fetchModels); el("preset-select").addEventListener("focus", () => refreshPresets().catch(() => {}));
     document.addEventListener("click", (event) => { const button = event.target.closest(".ephone-image-generate"); if (!button) return; event.preventDefault(); event.stopPropagation(); manualGenerate(button).catch((error) => window.alert(core.redact(error, row.config))); });

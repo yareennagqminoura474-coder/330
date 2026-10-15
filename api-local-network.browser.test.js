@@ -34,20 +34,22 @@ const { chromium } = require("playwright-core");
     const preserved = { id: "keep-chat", name: "保留聊天", settings: {}, history: [{ role: "user", content: "不得清空", timestamp: 123 }] };
     await page.evaluate(async (chat) => { await window.db.chats.put(chat); await window.db.userWallet.put({ id: "main", balance: 123.45 }); await window.db.apiPresets.add({ name: "保留预设", proxyUrl: "https://saved.invalid", apiKey: "fake-saved", model: "saved-model" }); }, preserved);
     // Put a wrong model response in Cache Storage. An API fetch MUST ignore it.
-    await page.evaluate(async (url) => { const cache = await caches.open("ephone-cache-v1.7.79"); await cache.put(url + "/v1/models", new Response('{"data":[{"id":"wrong-cached-model"}]}', { headers: { "Content-Type": "application/json" } })); }, apiUrl);
+    await page.evaluate(async (url) => { const cache = await caches.open("ephone-cache-v1.7.80"); await cache.put(url + "/v1/models", new Response('{"data":[{"id":"wrong-cached-model"}]}', { headers: { "Content-Type": "application/json" } })); }, apiUrl);
     await page.evaluate(() => window.showScreen("api-settings-screen"));
     await page.locator("#proxy-url").fill(apiUrl + "/v1"); await page.locator("#api-key").fill("fake-primary-local"); await page.locator("#fetch-models-btn").click();
     await page.waitForFunction(() => [...document.querySelectorAll("#model-select option")].filter((el) => el.value.startsWith("local-model-")).length === 66);
     await page.locator("#secondary-proxy-url").fill(apiUrl + "/v1"); await page.locator("#secondary-api-key").fill("fake-secondary-local"); await page.locator("#fetch-secondary-models-btn").click();
     await page.waitForFunction(() => [...document.querySelectorAll("#secondary-model-select option")].filter((el) => el.value.startsWith("local-model-")).length === 66);
     await page.locator("#image-api-provider").selectOption("custom"); await page.locator("#image-api-baseUrl").fill(apiUrl + "/v1"); await page.locator("#image-api-apiKey").fill("fake-image-local"); await page.locator("#image-api-fetch-models").click();
-    await page.waitForFunction(() => document.querySelectorAll("#image-api-models option").length === 66);
+    await page.waitForFunction(() => document.querySelectorAll("#image-api-models option").length === 67);
+    await page.locator("#image-api-models").selectOption({ index: 2 }); await page.evaluate(() => window.ephoneImageApi.flush());
+    assert.equal(await page.locator("#image-api-model").inputValue(), await page.locator("#image-api-models").inputValue());
     const actualGets = apiLogs.filter((req) => req.method === "GET"); assert.equal(actualGets.length, 3); assert.ok(actualGets.every((req) => req.origin === origin));
     assert.deepEqual(actualGets.map((req) => req.authorization), ["Bearer fake-primary-local", "Bearer fake-secondary-local", "Bearer fake-image-local"]);
     assert.equal(responses.length, 3); assert.ok(responses.every((res) => res.status === 200 && !res.fromWorker));
     // Prove the worker is active and still handles a real cached static file.
-    const staticResponse = page.waitForResponse((response) => response.url() === origin + "/330/style.css?v=1.7.79");
-    await page.evaluate(() => fetch("./style.css?v=1.7.79").then((response) => response.text())); assert.equal((await staticResponse).fromServiceWorker(), true);
+    const staticResponse = page.waitForResponse((response) => response.url() === origin + "/330/style.css?v=1.7.80");
+    await page.evaluate(() => fetch("./style.css?v=1.7.80").then((response) => response.text())); assert.equal((await staticResponse).fromServiceWorker(), true);
     await page.reload({ waitUntil: "domcontentloaded" }); await page.waitForFunction(() => window.ephoneAppReady);
     assert.deepEqual(await page.evaluate(() => window.db.chats.get("keep-chat")), preserved); assert.equal(await page.evaluate(async () => (await window.db.userWallet.get("main")).balance), 123.45);
     assert.equal(await page.evaluate(async () => (await window.db.apiPresets.toArray()).find((p) => p.name === "保留预设").model), "saved-model");
