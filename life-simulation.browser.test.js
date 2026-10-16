@@ -81,15 +81,17 @@ const { chromium } = require("playwright-core");
     for (const pair of [["chat:p0", "chat:p1"], ["chat:p0", npcKeys[0]], npcKeys]) {
       await page.locator("#ls-person").selectOption(pair[0]); await page.locator('[data-ls-tab="messages"]').click();
       await page.locator("#ls-contact").selectOption(pair[1]); await page.locator('[data-ls-action="start-thread"]').click();
-      await page.waitForSelector('[data-ls-action="continue-thread"]'); withSchedule = pair[0] === npcKeys[0]; await page.locator('[data-ls-action="continue-thread"]').click(); await settled();
+      await page.waitForSelector('[data-ls-action="continue-thread"]'); withSchedule = pair[0] === "chat:p0" && pair[1] === "chat:p1"; await page.locator('[data-ls-action="continue-thread"]').click(); await settled();
       assert.match(await page.locator("#ls-content").innerText(), /工作确认第/);
     }
     assert.equal(await page.evaluate(async () => (await window.db.lifeSimulation.where("kind").equals("message").toArray()).length), 6);
     const lastPrompt = calls.at(-1); assert.doesNotMatch(lastPrompt, /林只猜测的私密消息/); assert.match(lastPrompt, /NPC甲.*NPC乙/s);
-    await page.locator('[data-ls-tab="life"]').click(); assert.match(await page.locator("#ls-content").innerText(), /临时行程调整 · 待确认/);
+    await page.locator("#ls-person").selectOption("chat:p0"); await page.locator('[data-ls-tab="life"]').click(); assert.match(await page.locator("#ls-content").innerText(), /临时行程调整 · 待确认/);
     await page.locator('[data-ls-action="confirm-schedule"]').click(); await page.waitForFunction(() => document.querySelector("#ls-notice").textContent.includes("已调整当天行程"));
-    assert.equal(await page.evaluate(async (key) => (await window.db.characterLives.get(key)).dailyPlans["2026-03-05"].items.at(-1).start, npcKeys[0]), "20:00");
-    await page.locator('[data-ls-tab="messages"]').click();
+    assert.equal(await page.evaluate(async () => (await window.db.characterLives.get("chat:p0")).dailyPlans["2026-03-05"].items.at(-1).start), "20:00");
+    assert.equal(await page.evaluate(async (key) => (await window.db.characterLives.get(key))?.dailyPlans?.["2026-03-05"], npcKeys[0]), undefined, "NPCs never generate plans");
+    await page.locator("#ls-person").selectOption(npcKeys[0]); await page.locator('[data-ls-tab="messages"]').click();
+    await page.locator('[data-ls-action="thread"]').filter({ hasText: "NPC乙" }).click();
     await page.locator("#ls-speaker").selectOption(npcKeys[1]); await page.locator("#ls-text").fill("NPC乙追加的新消息，请继续。");
     await page.locator('[data-ls-action="send-continue"]').click(); await settled(); assert.match(calls.at(-1), /NPC乙追加的新消息，请继续/);
     assert.equal(await page.evaluate(async () => (await window.db.lifeSimulation.where("kind").equals("message").toArray()).length), 9);

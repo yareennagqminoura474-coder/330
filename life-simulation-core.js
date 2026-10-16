@@ -69,7 +69,11 @@
     constructor(db, identity = root.ephonePlayerIdentity) {
       this.db = db.lifeSimulation.db; this.table = this.db.table("lifeSimulation"); this.social = new social.Service(this.db, identity); this.identity = this.social.identity;
     }
-    async snapshot() { const [data, rows] = await Promise.all([this.social.snapshot(), this.table.toArray()]); return { ...data, rows }; }
+    async snapshot() {
+      const [data, rows] = await Promise.all([this.social.snapshot(), this.table.toArray()]);
+      const npcs = new Set(data.people.filter((p) => p.kind === "npc").map((p) => p.key));
+      return { ...data, lives: data.lives.map((l) => npcs.has(l.key) ? { ...l, dailyPlans: {}, routine: [] } : l), rows };
+    }
     async settings() { return { enabled: false, intervalMinutes: 60, ...await this.table.get("settings") }; }
     async saveSettings(raw) {
       const intervalMinutes = Number(raw.intervalMinutes); if (!Number.isInteger(intervalMinutes) || intervalMinutes < 10 || intervalMinutes > 240) throw new Error("主动联系间隔请设为10至240个空间分钟。");
@@ -151,6 +155,7 @@
       const data = await this.snapshot(); let added = 0;
       await this.db.transaction("rw", this.table, async () => {
         for (const person of data.people) {
+          if (person.kind === "npc") continue;
           const life = data.lives.find((l) => l.key === person.key), plan = life?.dailyPlans?.[social.dayKey(vts)];
           if (!plan || life.enabled === false) continue;
           for (const item of plan.items) {
@@ -172,6 +177,7 @@
       }
     }
     itineraries(data, key, vts) {
+      if (data.people.find((p) => p.key === key)?.kind === "npc") return [];
       const life = data.lives.find((l) => l.key === key), current = life?.dailyPlans?.[social.dayKey(vts)];
       return visible(data.rows, "itinerary", vts).filter((r) => r.key === key && r.date === social.dayKey(vts) && r.planRevision === current?.revision).map((r) => ({ ...r, progress: r.status === "done" ? "done" : r.deferUntil && vts < r.deferUntil ? "deferred" : r.sceneDeferred && r.status !== "active" ? "scene" : vts >= r.until ? "done" : "running" }));
     }
@@ -205,7 +211,7 @@
       for (const key of pair) {
         const person = data.people.find((p) => p.key === key); if (!person) throw new Error("人物已移走或删除。");
         const life = data.lives.find((l) => l.key === key), own = await this.social.context(key);
-        people.push({ ...person, persona: person.persona.slice(0, 14000), todayPlan: life?.dailyPlans?.[social.dayKey(vts)], activity: social.activityAt(life, vts), state: stateAt(data.rows, key, vts, life),
+        people.push({ ...person, persona: person.persona.slice(0, 14000), todayPlan: person.kind !== "npc" && life?.enabled !== false ? life?.dailyPlans?.[social.dayKey(vts)] : undefined, activity: person.kind !== "npc" ? social.activityAt(life, vts) : null, state: stateAt(data.rows, key, vts, life),
           ownRecords: ["knowledge", "commitment", "rule"].flatMap((k) => visible(data.rows, k, vts).filter((r) => r.key === key || k !== "knowledge" && r.otherKey === key).slice(-16)).map((r) => ({ ...r, currentStatus: taskStatus(r, vts) })),
           ownChats: own.sources.filter((s) => Number(s.vts) <= vts).sort((a, b) => Number(b.vts) - Number(a.vts)).slice(0, 8) });
       }
@@ -269,9 +275,11 @@
     }
     async prompt(chat, vts) {
       const data = await this.snapshot(), people = this.identity.participants(chat, data.chats);
+      const focus = social.scheduleFocus(chat, people.map((p) => ({ ...p, kind: data.people.find((q) => q.key === p.key)?.kind })));
       const records = people.map((p) => {
         const own = (kind) => visible(data.rows, kind, vts).filter((r) => r.key === p.key || kind !== "knowledge" && r.otherKey === p.key);
-        return { key: p.key, name: p.name, state: stateAt(data.rows, p.key, vts, data.lives.find((l) => l.key === p.key)), itinerary: this.itineraries(data, p.key, vts),
+        return { key: p.key, name: p.name, state: stateAt(data.rows, p.key, vts, data.lives.find((l) => l.key === p.key)),
+          ...(focus.has(p.key) ? { itinerary: this.itineraries(data, p.key, vts).filter((r) => r.progress === "deferred" || r.vts <= vts && vts < r.until).slice(-2).map(({ title, place, vts, until, progress }) => ({ title, place, vts, until, progress })) } : {}),
           commitments: own("commitment").map((r) => ({ ...r, currentStatus: taskStatus(r, vts) })).slice(-20), rules: own("rule").slice(-20), knowledge: own("knowledge").slice(-20),
           privateMessages: visible(data.rows, "message", vts).filter((r) => r.participants.includes(p.key)).sort((a, b) => a.vts - b.vts || a.order - b.order).slice(-12),
           privateEvents: visible(data.rows, "event", vts).filter((r) => r.participants.includes(p.key)).slice(-8) };

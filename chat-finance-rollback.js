@@ -42,7 +42,7 @@
           if (String(r.id).startsWith(receiptPrefix) && roots.has(String(r.id).slice(receiptPrefix.length).split(":")[0])) return true;
           return selectedReceipts.some((m) => String(r.id) === `receipt:${before.id}:${m.forTimestamp}:${r.key}` &&
             (m.walletDestination === r.key || list(before.members).some((p) => [p.originalName, p.groupNickname, p.name].includes(m.recipientName) &&
-              ["chat:" + p.id, "member:" + p.id, "npc:" + String(p.id).replace(/^npc_/, "")].includes(r.key))));
+              [p.ephonePersonKey, "chat:" + p.id, "member:" + p.id, "npc:" + String(p.id).replace(/^npc_/, "")].includes(r.key))));
         };
         const selectedRows = rows.filter(belongs), rowIds = new Set(selectedRows.map((r) => r.id));
         for (const m of history) if (m.walletEntry && (rowIds.has(m.walletEntryId) || roots.has(String(m.walletSourceTimestamp)) || selectedRows.some((r) => r.noticeTimestamp != null && same(m.timestamp, r.noticeTimestamp)))) removed.add(String(m.timestamp));

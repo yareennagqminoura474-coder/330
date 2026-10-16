@@ -72,7 +72,7 @@
 
   function buildContext({ chat, chats = {}, npcs = [], formatTime }) {
     const profiles = list(chat.members).map((member) => memberProfile(member, chats, npcs));
-    const memberIds = new Set(profiles.map((profile) => String(profile.member.id)));
+    const memberIds = new Set(profiles.flatMap((profile) => [profile.member.id, profile.npc?.ephoneArchivedChatId].filter((id) => id != null).map(String)));
     const identityRules = "\n# 人物身份与关系核对（普通群聊和观看群聊共用）\n" +
       "先完整阅读每位成员的人设，再逐一核对人物之间的身份、年龄、辈分和关系。群昵称、私聊备注不是另一个人；JSON name 必须使用下列本名。" +
       "不同人设中的第一人称‘我’仅指该人设的主人，不能互换。{{char}}指该档案角色；{{user}}指该档案明确标注的原聊天对象，不能自动替换成当前发言角色。" +

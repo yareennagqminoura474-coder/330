@@ -88,7 +88,7 @@ const routine = { job: "医生", home: "自己的住处", note: "拟定，可编
     await service.saveLife(pausedKey, { enabled: false, routine: [], home: "暂停的生活" }, at(5, 10), 0);
     let targets = await service.scheduleTargets(key);
     assert.ok(targets.some((p) => p.key === key), "incomplete generated routines are included for repair");
-    assert.ok(targets.some((p) => p.key === newResult.created[0].key));
+    assert.ok(!targets.some((p) => p.key === newResult.created[0].key), "NPCs are excluded from legacy routine generation too");
     assert.ok(!targets.some((p) => p.key === "chat:b" || p.key === pausedKey), "manual or paused life is never silently overwritten");
     const plan = { schedules: targets.map((p) => ({ key: p.key, life: { ...week, job: p.name + "的职业", home: p.name + "自己的家" } })) };
     const oldLives = await db.characterLives.toArray();
@@ -108,8 +108,8 @@ const routine = { job: "医生", home: "自己的住处", note: "拟定，可编
     await service.saveSchedules({ schedules: [{ key: "chat:b", life: week }] }, replace, at(5, 10));
     assert.equal((await db.characterLives.get("chat:b")).home, "手动设定的家", "explicitly requested re-generation preserves identity and home");
     const pausedTargets = await service.scheduleTargets(pausedKey, { replaceOwner: true, includeCircle: false });
-    await service.saveSchedules({ schedules: [{ key: pausedKey, life: week }] }, pausedTargets, at(5, 10));
-    assert.equal((await db.characterLives.get(pausedKey)).enabled, false, "re-generating a paused person's routine does not unpause it");
+    assert.deepEqual(pausedTargets, [], "NPCs stay excluded even with explicit legacy re-generation options");
+    assert.equal((await db.characterLives.get(pausedKey)).enabled, false, "NPC legacy records remain untouched");
     const stale = await service.scheduleTargets(key, { replaceOwner: true, includeCircle: false });
     await service.saveLife(key, week, at(5, 10), stale[0].revision);
     await assert.rejects(service.saveSchedules({ schedules: [{ key, life: week }] }, stale, at(5, 10)), /作息已被修改/);

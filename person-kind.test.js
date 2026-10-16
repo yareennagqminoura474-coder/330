@@ -1,0 +1,48 @@
+const assert = require("node:assert/strict"); require("fake-indexeddb/auto");
+const Dexie = require("dexie"), identity = require("./player-identity.js"), { Service } = require("./person-kind.js"), social = require("./character-social-core.js");
+(async () => {
+  const db = new Dexie("person-kind-test-" + Date.now());
+  db.version(1).stores({ chats: "&id", npcs: "++id", characterRelations: "&id", characterLives: "&key", relationshipEvents: "&id", characterWallets: "&key", characterTransactions: "&id", marketOrders: "&id", spaceProfiles: "&id", lifeSimulation: "&id" }); await db.open();
+  try {
+    const day = new Date(2026, 2, 5, 10).getTime(), key = "chat:a";
+    const history = [{ role: "assistant", content: "完整私聊历史保留", timestamp: 1, vts: day }], memory = [{ content: "完整个人记忆保留", timestamp: 2, vts: day }];
+    await db.chats.put({ id: "a", name: "甲", originalName: "甲", avatar: "avatar", settings: { aiPersona: "甲是成年医生，有独立生活。", maxMemory: 99, custom: 42 }, history, longTermMemory: memory });
+    const npcId = await db.npcs.add({ name: "乙", persona: "乙是成年教师，有自己的朋友。", custom: "NPC资料保留", associatedWith: ["a"] });
+    await db.chats.put({ id: "g", name: "群", isGroup: true, members: [{ id: "a", originalName: "甲", persona: "群内专用人设", ephonePersonaOverride: true }, { id: "npc_" + npcId, originalName: "乙", isNpc: true }], history: [] });
+    const side = { characterRelations: { id: "relation", a: key, b: "npc:" + npcId, aToB: "朋友", bToA: "朋友" }, characterWallets: { key, balance: 12345 }, characterTransactions: { id: "tx", key, amount: 10 }, marketOrders: { id: "order", ownerKey: key, amount: 10 }, spaceProfiles: { id: "player", key }, characterLives: { key, dailyPlans: {} }, lifeSimulation: { id: "message", kind: "message", participants: [key, "npc:" + npcId], from: key, to: "npc:" + npcId, content: "私下记忆", vts: day } };
+    for (const [table, row] of Object.entries(side)) await db.table(table).put(row);
+    const service = new Service(db, identity), plans = new social.Service(db, identity);
+    const demoted = await service.convert(key, "npc");
+    assert.equal(demoted.key, key); assert.equal(demoted.kind, "npc");
+    assert.equal((await db.chats.get("a")).ephoneNpcArchive, true); assert.deepEqual((await db.chats.get("a")).history, history);
+    assert.deepEqual((await db.npcs.get(demoted.sourceId)).longTermMemory, memory);
+    let group = await db.chats.get("g"); assert.equal(group.members[0].id, "npc_" + demoted.sourceId); assert.equal(group.members[0].isNpc, true); assert.equal(group.members[0].persona, "群内专用人设");
+    let all = await db.chats.toArray(); assert.equal(identity.participants(group, all)[0].key, key);
+    assert.equal(identity.memberKey({ id: group.members[0].id, isNpc: true }, all), key, "new groups without extra metadata still resolve stable keys");
+    assert.equal((await identity.load(db)).key, key); assert.equal((await identity.load(db)).valid, true);
+    assert.deepEqual(await plans.dailyTargets(day), [], "demoted role and existing NPC generate no schedules");
+    assert.match(JSON.stringify(await plans.dailyContext(key, day)), /完整私聊历史保留/);
+    const promoted = await service.convert(key, "role"); assert.equal(promoted.sourceId, "a");
+    const restored = await db.chats.get("a"); assert.equal(restored.ephoneNpcArchive, undefined); assert.deepEqual(restored.history, history); assert.deepEqual(restored.longTermMemory, memory); assert.equal(restored.settings.custom, 42);
+    assert.equal(await db.npcs.count(), 1); assert.equal((await plans.dailyTargets(day)).length, 1);
+    const npcRole = await service.convert("npc:" + npcId, "role");
+    all = await db.chats.toArray(); const promotedChat = all.find((c) => c.id === npcRole.sourceId);
+    assert.equal(identity.memberKey({ id: promotedChat.id }, all), "npc:" + npcId);
+    assert.equal(identity.choices(all, await db.npcs.toArray()).length, 2);
+    assert.equal((await plans.dailyTargets(day)).length, 2, "promoted NPC now counts as a role despite stable npc-prefixed key");
+    const again = await service.convert("npc:" + npcId, "npc"); assert.equal(again.sourceId, npcId); assert.equal((await db.npcs.get(npcId)).custom, "NPC资料保留");
+    for (const [table, row] of Object.entries(side)) assert.deepEqual((await db.table(table).toArray())[0], row, table + " identity/state untouched");
+    const before = { chats: await db.chats.toArray(), npcs: await db.npcs.toArray() };
+    const rejectGroup = (changes, id) => { if (id === "g") throw new Error("test atomic failure"); };
+    db.chats.hook("updating", rejectGroup);
+    await assert.rejects(service.convert(key, "npc"), /atomic failure/); db.chats.hook("updating").unsubscribe(rejectGroup);
+    assert.deepEqual(await db.chats.toArray(), before.chats); assert.deepEqual(await db.npcs.toArray(), before.npcs);
+    await db.chats.put({ id: "only-group", name: "仅群内人物", isGroup: true, members: [{ id: "member-only", originalName: "丙", persona: "群内独立人物档案", avatar: "member-avatar" }], history: [] });
+    const memberKey = "member:member-only", memberNpc = await service.convert(memberKey, "npc");
+    assert.equal((await db.npcs.get(memberNpc.sourceId)).persona, "群内独立人物档案");
+    const memberRole = await service.convert(memberKey, "role");
+    assert.equal((await db.chats.get(memberRole.sourceId)).settings.aiPersona, "群内独立人物档案");
+    assert.equal(identity.participants(await db.chats.get("only-group"), await db.chats.toArray())[0].key, memberKey);
+    console.log("PASS: role/NPC round trips, stable keys/new groups, private history and full memory, profile overrides, wallet/binding/order/life/relationship preservation, role-only schedules, duplicate and atomic-failure protection");
+  } finally { db.close(); await Dexie.delete(db.name); }
+})().catch((e) => { console.error(e); process.exitCode = 1; });

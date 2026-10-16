@@ -79,6 +79,7 @@
     }
     const sorted = chats.slice().sort((a, b) => String(a.originalName || a.name || a.id).localeCompare(String(b.originalName || b.name || b.id)));
     for (const chat of sorted) {
+      if (chat.ephoneNpcArchive) continue;
       if (typeof chat.settings?.myPersona === "string" && chat.settings.myPersona.trim()) {
         const player = { name: clean(chat.settings.myNickname || nickname, 80) || "我",
           scope: clean(chat.name, 80), persona: clean(chat.settings.myPersona, 700),

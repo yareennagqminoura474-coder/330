@@ -12134,6 +12134,7 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
       (_0x5ea3c1[_0x484365(0x1255)] = _0x3e276d[_0x484365(0x12d2)](
         (_0x2ce1e2, _0x195393) => {
           const _0x32d23a = _0x484365;
+          if (_0x195393.ephoneNpcArchive) return _0x2ce1e2;
           if (typeof _0x195393["unreadCount"] === _0x32d23a(0xbf6))
             _0x195393[_0x32d23a(0x1a80)] = 0x0;
           _0x195393[_0x32d23a(0x126)] &&
@@ -17554,7 +17555,7 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
     const npcs = await _0x24f906.npcs.toArray();
     const chats = { ..._0x5ea3c1.chats };
     for (const id of chat.settings?.linkedMemoryChatIds || []) {
-      const source = chats[id];
+      const source = chats[id] || await _0x24f906.chats.get?.(id);
       if (!source || String(id) === String(chat.id)) continue;
       chats[id] = { ...source, history: await _0x49ef5f(
         window.ephoneGroupContext.recentHistory(source, chat.settings?.linkedMemoryCount), id,
@@ -56721,10 +56722,11 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
         const _0xactiveChatId = _0x5ea3c1.activeChatId;
         if (
           _0xspaceRefresh.spaceChanged ||
-          (_0xspaceRefresh.movedChatId &&
-            _0xspaceRefresh.movedChatId === _0xactiveChatId)
+          ((_0xspaceRefresh.movedChatId || _0xspaceRefresh.hiddenChatId) &&
+            (_0xspaceRefresh.movedChatId || _0xspaceRefresh.hiddenChatId) === _0xactiveChatId)
         ) {
           _0x5ea3c1.activeChatId = null;
+          window.ephoneTimeMachine?.clearActiveChat();
           _0x5ef2d4("messages-view");
         }
         await window.ephoneTimeMachine?.loadSpace(_0x24f906);

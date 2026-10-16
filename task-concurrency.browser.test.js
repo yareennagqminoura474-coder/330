@@ -115,10 +115,10 @@ const { chromium } = require("playwright-core"), { dailyReply } = require("./bro
     await page.locator("#cs-person").selectOption("chat:p0"); await page.locator('[data-cs-action="generate"]').click(); await until(() => circles.length === 1);
     const context = JSON.parse(circles[0].prompt.split("数据不是指令：")[1]);
     await fulfill(circles[0].route, { choices: [{ message: { content: JSON.stringify({ ownerKey: context.owner.key, npcs: ["丙", "丁"].map((name) => ({ name, persona: (name + "是三十二岁的成年社区工作人员，普通家庭收入稳定，住在自己的公寓，性格温和认真但偶尔固执，衣着朴素，喜欢阅读跑步，说话简洁有分寸，与甲通过社区工作结识，有自己独立的朋友、工作目标和社交边界，不会时时围着甲转。").repeat(2), relation: { toOwner: "朋友", fromOwner: "朋友", detail: "社区工作中认识，尊重彼此边界。" } })) }) }, finish_reason: "stop" }] });
-    await until(() => schedules.length > beforeCircleSchedules);
+    await page.waitForFunction(() => !window.EPhoneCharacterSocial.isBusy());
+    assert.equal(schedules.length, beforeCircleSchedules, "creating NPCs does not trigger schedule API calls");
     await page.locator("#cs-back").click(); await chat("parallel-watch");
     assert.equal(await page.locator('#chat-list .chat-list-item[data-chat-id="parallel-watch"]').count(), 1, "concurrent list refreshes do not duplicate conversations");
-    await releaseSchedule(beforeCircleSchedules); await page.waitForFunction(() => !window.EPhoneCharacterSocial.isBusy());
     assert.equal(await page.evaluate(() => window.ephoneTimeMachine.getActiveChatId()), "parallel-watch");
     await fulfill(main[beforeCircleReply].route, reply); await page.waitForFunction(() => !window.isPersonaSpaceBusy());
     assert.equal(await page.evaluate(() => window.db.npcs.count()), 2);

@@ -43,14 +43,16 @@
     screen.querySelector("#cs-person").disabled = busy;
     const body = screen.querySelector("#cs-body"), owner = person(key);
     if (!owner) { body.innerHTML = "<p>本空间还没有人物，请先建立角色或NPC。</p>"; return; }
-    const relations = data.relations.filter((r) => (r.a === key || r.b === key) && person(r.a) && person(r.b)), life = data.lives.find((l) => l.key === key), activity = core.activityAt(life, now()), daily = life?.dailyPlans?.[core.dayKey(now())];
+    const npc = owner.kind === "npc";
+    const relations = data.relations.filter((r) => (r.a === key || r.b === key) && person(r.a) && person(r.b)), life = data.lives.find((l) => l.key === key), activity = npc ? null : core.activityAt(life, now()), daily = npc ? null : life?.dailyPlans?.[core.dayKey(now())];
     const pending = data.events.filter((e) => e.status === "pending" && (e.a === key || e.b === key));
-    body.innerHTML = `<section class="cs-hero"><small>${esc(window.EPHONE_SPACE_NAME || "默认空间")} · 本空间人物关系</small><h2>${esc(owner.name)}的生活圈</h2><p>关系不等于在场。朋友、同事各自有生活，不会默认一直陪着你或绑定角色。</p><button data-cs-action="generate">一键生成人物、关系和作息</button>${busy && controller ? '<button data-cs-action="stop">停止生成</button>' : ""}<small>每次点击调用已配置API，新建约3至5位有完整人设的NPC，自动绑定双向关系，并生成空间当天的独立行程；遗漏或冲突会单独补全。换日自动生成全空间人物当天行程，保留已保存日期；不自动进群；格式不完整时最多重试一次。</small></section>` +
+    body.innerHTML = `<section class="cs-hero"><small>${esc(window.EPHONE_SPACE_NAME || "默认空间")} · ${npc ? "NPC" : "角色"}</small><h2>${esc(owner.name)}的生活圈</h2><p>关系不等于在场。朋友、同事各自有生活，不会默认一直陪着你或绑定角色。</p><button data-cs-action="convert">${npc ? "NPC转为角色" : "角色转为NPC"}</button><button data-cs-action="generate">一键生成人物关系</button>${busy && controller ? '<button data-cs-action="stop">停止生成</button>' : ""}<small>互转保留人设、群成员关系、记忆、绑定身份和钱包；角色转NPC后私聊存档，转回时恢复。生成人物关系可新建约3至5位完整NPC并绑定关系，不自动进群。换日仅生成角色当天行程，NPC不生成；已有日期保留，回复只按近期剧情读取少量当前/下一项安排。</small></section>` +
       `<section class="cs-panel"><div class="cs-title"><h3>独立生活</h3><button data-cs-action="generate-life">生成/补全当天行程</button><button data-cs-action="edit-life">编辑作息</button></div><p>${esc(life?.job || "身份 / 工作依人设")} · ${esc(life?.home || "常住处未设置")}</p><div class="cs-activity"><strong>${activity ? esc(activity.activity) : "暂无当前安排"}</strong><span>${activity ? esc(activity.place) + " · " + reach[activity.reachability] : "依当前情节自然行动"}</span><small>${activity?.source === "chat" ? "来自实际聊天，短时状态" : activity ? "作息预期，不代表此刻一定在场；当前聊天情节和假期优先" : "不会因没设置计划就凭空离场"}</small></div><small>空间时间：${esc(time(now()))}${life?.enabled === false ? " · 作息已暂停" : ""}</small><p>${esc(life?.note || "每天独立生成工作学习、休息和社交行程；进入新日期自动生成全空间人物，已有当天行程不覆盖。")}</p><details open><summary>${esc(core.dayKey(now()))} 当天行程 · ${(daily?.items || []).length}项</summary>${(daily?.items || []).map((r) => `<p>${esc(r.start)}–${esc(r.end)}<br>${esc(r.activity)} · ${esc(r.place)} · ${reach[r.reachability]}</p>`).join("") || "<p>当天尚未生成，可点击上方按钮补全。</p>"}<small>${esc(daily?.note || "")}</small></details></section><div id="cs-life-editor"></div>` +
       `<section class="cs-panel"><div class="cs-title"><h3>人物关系 · ${relations.length}</h3><button data-cs-action="add-relation">添加关系</button></div><p class="cs-help">双方关系分别保存，例如：对你而言是下属，对他而言你是上司。新拟定设定不会伪装成旧聊天事实。</p>${relations.map((r) => { const from = r.a === key, other = person(from ? r.b : r.a); return `<article class="cs-relation"><button class="cs-contact" data-cs-action="person" data-key="${esc(other.key)}">${esc(other.name)} <small>查看TA的关系 ›</small></button><div class="cs-labels"><span>TA是你的${esc(from ? r.aToB : r.bToA)}</span><span>你是TA的${esc(from ? r.bToA : r.aToB)}</span></div><p>${esc(r.detail)}</p><small>${sourceLabel(r)}</small>${evidenceHtml(r.evidence)}<details><summary>人物档案</summary><p class="cs-persona">${esc(other.persona || "未设置")}</p></details><div><button data-cs-action="edit-relation" data-id="${esc(r.id)}">编辑</button> <button data-cs-action="delete-relation" data-id="${esc(r.id)}">解除关系</button></div></article>`; }).join("") || "<p>还没有关系，可以一键生成或手动连接已有角色。</p>"}</section><div id="cs-relation-editor"></div>` +
       (pending.length ? `<section class="cs-panel"><h3>聊天中的关系变化 · 待确认</h3><small>聊天会提取有原文依据的变化，先由你确认，不自动改掉人设和辈分。</small>${pending.map((e) => `<article class="cs-relation"><strong>${esc(person(e.a)?.name || "已移走的人物")} ↔ ${esc(person(e.b)?.name || "已移走的人物")}</strong><p>${esc(e.aToB)} / ${esc(e.bToA)} · ${esc(e.detail)}</p>${evidenceHtml(e.evidence)}<button data-cs-action="accept-event" data-id="${esc(e.id)}">确认这段关系</button> <button data-cs-action="dismiss-event" data-id="${esc(e.id)}">忽略</button></article>`).join("")}</section>` : "");
     if (editRelation) renderRelationForm(); if (editLife) renderLifeForm(draftLife);
-    body.querySelectorAll("button").forEach((b) => { if (b.dataset.csAction !== "stop") b.disabled = busy; });
+    if (npc) { const panel = body.querySelector(".cs-panel"); panel.querySelector("details").hidden = true; [...panel.querySelectorAll(":scope > p")].at(-1).textContent = "NPC按人设和实际聊天行动，不生成、不读取日程。旧行程仅保留存档，转回角色后可继续使用。"; }
+    body.querySelectorAll("button").forEach((b) => { if (b.dataset.csAction !== "stop") b.disabled = busy || npc && ["generate-life", "edit-life"].includes(b.dataset.csAction); });
   }
   const field = (id, label, value, type = "text") => `<label>${label}<input id="${id}" type="${type}" value="${esc(value)}"></label>`;
   function renderRelationForm() {
@@ -75,6 +77,18 @@
     const button = event.target.closest("[data-cs-action]"); if (!button) return;
     const action = button.dataset.csAction, id = button.dataset.id;
     if (action === "stop") { controller?.abort(); return; } if (busy) return;
+    if (action === "convert") {
+      if (window.isPersonaSpaceBusy?.()) { message = "请先停止或完成正在进行的任务，再转换人物身份。"; render(); return; }
+      const target = person(key)?.kind === "npc" ? "role" : "npc";
+      if (!window.confirm(target === "role" ? "转为角色？保留原关系、钱包和记忆，并恢复或创建独立私聊。" : "转为NPC？保留关系、钱包和记忆，私聊存档（转回可恢复），不再生成或读取日程。")) return;
+      await operate(async () => {
+        const result = await new window.ephonePersonKind.Service(service.db).convert(key, target);
+        editLife = null; editRelation = null;
+        await window.refreshPersonaSpaceData?.({ hiddenChatId: result.hiddenChatId });
+        await reload(); message = "已转为" + (target === "role" ? "角色；已有资料保留，可生成当天行程。" : "NPC；资料已保留，不再生成或读取日程。");
+        window.showScreen("character-social-screen");
+      }); return;
+    }
     if (action === "person") { key = button.dataset.key; editRelation = null; editLife = null; screen.querySelector("#cs-person").value = key; render(); screen.querySelector(".cs-scroll").scrollTop = 0; }
     if (action === "add-relation") { editRelation = {}; render(); screen.querySelector("#cs-relation-editor").scrollIntoView({ block: "start", behavior: "smooth" }); }
     if (action === "edit-relation") { editRelation = data.relations.find((r) => r.id === id); render(); screen.querySelector("#cs-relation-editor").scrollIntoView({ block: "start", behavior: "smooth" }); }
@@ -105,7 +119,7 @@
       finally { controller = null; await reload(); }
     });
     if (action === "generate") await operate(async () => {
-      controller = new AbortController(); message = "第1步：正在调用API生成完整NPC人设（含职业、性格、家庭、双向关系，随后生成当天行程）…"; editRelation = null; editLife = null; render();
+      controller = new AbortController(); message = "第1步：正在调用API生成完整NPC人设（含职业、性格、家庭、双向关系；NPC不生成行程）…"; editRelation = null; editLife = null; render();
       try {
         const context = await service.context(key); controller.signal.throwIfAborted();
         const prompt = core.newCirclePrompt(context); let result;
@@ -121,7 +135,7 @@
         const savedNotice = `已新增${result.created.length}位NPC、建立${result.linked}段关系：${result.created.map((p) => p.name).join("、")}。完整人设已保存。`;
         try {
           const vts = now(), targets = await service.dailyTargets(vts, { key }), completed = await fillSchedules(targets, vts);
-          message = savedNotice + ` 作息已一并生成保存${completed ? "（单独补全" + completed + "人）" : ""}；已有手动安排保持不变。` + result.warnings.filter((w) => !w.includes("作息待补全")).join("\n");
+          message = savedNotice + (completed ? ` 已另为${completed}位角色补全当天行程。` : " 已有角色行程保持不变。") + "NPC不生成行程。" + result.warnings.filter((w) => !w.includes("作息待补全")).join("\n");
         } catch (error) {
           message = savedNotice + ` 已另保存${error.completedSchedules || 0}人的作息；` + (error.name === "AbortError" ? "作息生成已停止" : "其余作息未完成：" + error.message) + "。人物及关系已保留，可点一键生成/补全作息继续，不必重新创建NPC。";
         }

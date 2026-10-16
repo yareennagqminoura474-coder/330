@@ -288,14 +288,14 @@
       : JSON.parse(JSON.stringify(value));
   }
 
-  function recordBelongsToChat(tableName, record, chatId) {
+  function recordBelongsToChat(tableName, record, chatId, personKey = "chat:" + chatId) {
     const id = String(chatId);
     const relatedFields =
       tableName === "qzonePosts"
         ? ["authorId", "characterId", "chatId"]
         : ["chatId", "characterId", "contactId", "targetChatId", "authorId"];
     const matches = (value) => value != null && String(value) === id;
-    if (["characterWallets", "characterTransactions", "characterLives", "lifeSimulation"].includes(tableName)) return record.key === "chat:" + id;
+    if (["characterWallets", "characterTransactions", "characterLives", "lifeSimulation"].includes(tableName)) return record.key === personKey;
     if (relatedFields.some((field) => matches(record[field]))) return true;
     const content = record.content;
     return Boolean(
@@ -322,7 +322,7 @@
       const table = source.table(name);
       if (!table) continue;
       relatedRows[name] = (await table.toArray()).filter((record) =>
-        recordBelongsToChat(name, record, chatId),
+        recordBelongsToChat(name, record, chatId, chat.ephonePersonKey || "chat:" + chatId),
       );
       if (name === "lifeSimulation") {
         const ids = new Set(relatedRows[name].map((r) => r.id));

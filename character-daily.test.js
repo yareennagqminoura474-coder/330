@@ -16,7 +16,8 @@ const items = [
     await service.saveLife(key, { home: "手动公寓", job: "手动职业", routine: [{ days: [0,1,2,3,4,5,6], start: "10:00", end: "11:00", activity: "旧一周计划", place: "旧地点" }] }, at(5), 0);
     await db.characterLives.update(key, { actual: { since: at(5), until: at(5, 11), activity: "剧情活动", place: "剧情地点" } });
     await service.saveLife("chat:b", { enabled: false, routine: [] }, at(5), 0);
-    const targets = await service.dailyTargets(at(5)); assert.equal(targets.length, 3, "automatic targets include all people, unrelated NPCs and paused life");
+    const targets = await service.dailyTargets(at(5)); assert.equal(targets.length, 2, "only roles generate daily plans, never NPCs");
+    assert.deepEqual(await service.dailyTargets(at(5), { key: "npc:" + npc }), [], "manual NPC generation also stays excluded");
     const raw = { schedules: targets.map((p) => ({ key: p.key, plan: { date: "2026-03-05", note: "当天拟定", items } })) };
     const prior = await db.characterLives.toArray();
     for (const mutation of [
@@ -35,7 +36,7 @@ const items = [
     assert.equal(core.activityAt(a, at(5, 23)).activity, "睡眠");
     assert.equal(core.activityAt(await db.characterLives.get("chat:b"), at(5)), null, "paused life stays paused");
     assert.deepEqual(await service.dailyTargets(at(5)), [], "already saved day is reused");
-    assert.equal((await service.dailyTargets(at(6))).length, 3, "new day plans every person again");
+    assert.equal((await service.dailyTargets(at(6))).length, 2, "new day plans roles only");
     await assert.rejects(service.saveDailySchedules(raw, targets, at(5)), /刚被修改/);
     const tomorrow = await service.dailyTargets(at(6));
     await service.saveDailySchedules({ schedules: tomorrow.map((p) => ({ key: p.key, plan: { date: p.date, items: items.map((r) => ({ ...r, activity: "次日不同安排" })) } })) }, tomorrow, at(6));
