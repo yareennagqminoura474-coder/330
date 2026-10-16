@@ -687,7 +687,7 @@
     setSpaceClock(config);
     preparation.revision = spaceClock.revision;
     preparation.changed = true;
-    preparation.ready = persistSpaceClock().then(() => window.EPhoneCharacterDaily?.onTimeChange(beforeMs, preparation.afterMs, { signal: options.signal }));
+    preparation.ready = persistSpaceClock().then(() => { window.EPhoneCharacterDaily?.onTimeChange(beforeMs, preparation.afterMs); });
     updateUi();
     return preparation;
   }
@@ -866,7 +866,7 @@
     modal
       .querySelector("#time-machine-confirm")
       .addEventListener("click", async () => {
-        if (window.isPersonaSpaceBusy?.()) {
+        if (window.isEPhoneTimeChangeBusy?.()) {
           modal.querySelector(".time-machine-hint").textContent = "正在回复或处理付款，请先停止或等它完成，再调整时间。";
           return;
         }

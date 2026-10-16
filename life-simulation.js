@@ -31,6 +31,7 @@
     const toast = toastElement(); toast.hidden = false; toast.dataset.processing = "true";
     toast.querySelector("span").textContent = pair.map((key) => people.find((p) => p.key === key)?.name || "角色").join(" ↔ ") + " · 正在主动联系…";
     toast.querySelector("[data-stop]").hidden = false; toast.querySelector("[data-view]").hidden = true;
+    window.EPhoneCharacterDaily?.positionNotices();
   }
   function messageToast(pair, count, people) {
     const toast = toastElement(); toast.dataset.processing = "false";
@@ -38,8 +39,9 @@
     toast.hidden = false;
     toast.querySelector("[data-stop]").hidden = true; toast.querySelector("[data-view]").hidden = false;
     toast.querySelector("span").textContent = pair.map((key) => people.find((p) => p.key === key)?.name || "角色").join(" ↔ ") + " · " + count + "条新私聊";
+    window.EPhoneCharacterDaily?.positionNotices();
     toast.querySelector("[data-view]").onclick = async () => {
-      if (window.isPersonaSpaceBusy?.()) return;
+      if (window.isEPhoneMutationBusy?.()) return;
       if (database()?.name !== spaceName) { toast.hidden = true; return; }
       toast.hidden = true; await open(); selected = pair[0]; tab = "messages"; threadId = "thread:" + social.pairId(...pair); await refresh();
     };
@@ -85,10 +87,11 @@
     }
   }
   async function proactiveTick() {
-    if (!window.ephoneAppReady || window.isPersonaSpaceBusy?.() || hasDraft() || document.visibilityState === "hidden" || Date.now() - attemptReal < 30000) return;
+    if (!window.ephoneAppReady || busy || mutating || window.isEPhoneMutationBusy?.() || hasDraft() || document.visibilityState === "hidden" || Date.now() - attemptReal < 30000) return;
     const db = database(); if (!db) return;
     const service = new core.Service(db), config = await service.settings(); if (!config.enabled) return;
     const vts = now(), snapshot = await service.snapshot(), pairs = service.eligible(snapshot, vts); if (!pairs.length) return;
+    if (database() !== db) return;
     // One bounded conversation per space tick, not one request per NPC or missed hour.
     let selectedPair = null;
     await db.transaction("rw", service.table, async () => {
@@ -107,7 +110,7 @@
       await service.table.put({ ...clock, cursor: clock.cursor + 1, lastAttempt: vts, lastReal: Date.now() });
       await service.table.put({ id: slot, kind: "slot", vts, participants: selectedPair });
     });
-    if (!selectedPair) return;
+    if (!selectedPair || database() !== db) return;
     attemptReal = Date.now();
     try { await generatePair(selectedPair); }
     catch (error) { notify(error.name === "AbortError" ? "主动联系已停止" : "主动联系失败，可手动重试"); }
@@ -117,7 +120,7 @@
     screen = document.createElement("section"); screen.id = "life-simulation-screen"; screen.className = "screen";
     screen.innerHTML = '<header class="header"><button id="ls-back" type="button">‹</button><span>生活与主动联系</span><button id="ls-stop" type="button">停止</button></header><div class="ls-scroll"><p id="ls-notice" role="status" aria-live="polite"></p><div id="ls-controls"></div><nav id="ls-tabs"></nav><div id="ls-content"></div><div id="ls-editor"></div></div>';
     document.getElementById("phone-screen").append(screen);
-    screen.querySelector("#ls-back").onclick = () => { controller?.abort(); window.showScreen("chat-list-screen"); document.querySelector('.nav-item[data-view="me-view"]')?.click(); };
+    screen.querySelector("#ls-back").onclick = () => { window.showScreen("chat-list-screen"); document.querySelector('.nav-item[data-view="me-view"]')?.click(); };
     screen.querySelector("#ls-stop").onclick = () => controller?.abort();
     screen.addEventListener("click", async (event) => { if (mutating) return; mutating = true; try { await handle(event); } catch (e) { message = e.name === "AbortError" ? "已停止，未保存本轮消息。" : e.message; render(); } finally { mutating = false; } });
     screen.addEventListener("change", (event) => {
@@ -132,7 +135,8 @@
     render();
   }
   async function open() {
-    if (window.isPersonaSpaceBusy?.()) { window.alert("请先完成或停止当前操作。"); return; }
+    if (busy || mutating) { window.showScreen("life-simulation-screen"); render(); return; }
+    if (window.isEPhoneMutationBusy?.()) { window.alert("正在保存数据，请稍后再试。"); return; }
     create(); formKind = ""; threadId = ""; message = ""; window.showScreen("life-simulation-screen"); await sync(); await refresh();
     notify("本空间独立生活");
   }
@@ -183,7 +187,7 @@
   async function handle(event) {
     const tabButton = event.target.closest("[data-ls-tab]"); if (tabButton && !busy) { tab = tabButton.dataset.lsTab; formKind = ""; render(); return; }
     const target = event.target.closest("[data-ls-action]"); if (!target || busy) return;
-    if (window.isPersonaSpaceBusy?.()) throw new Error("请先完成或停止当前操作。");
+    if (window.isEPhoneMutationBusy?.()) throw new Error("正在保存数据，请稍后再试。");
     const action = target.dataset.lsAction, recordId = target.dataset.id, service = new core.Service(database()), vts = now();
     const value = (id) => screen.querySelector("#" + id).value;
     if (action === "settings") { await service.saveSettings({ enabled: screen.querySelector("#ls-auto").checked, intervalMinutes: value("ls-interval") }); message = "已保存；开启后空闲时按空间时间自动联系，不会每个角色都同时请求。"; }
@@ -229,7 +233,7 @@
   document.addEventListener("DOMContentLoaded", () => {
     document.getElementById("me-life-simulation-button")?.addEventListener("click", () => open().catch((e) => { message = e.message; render(); }));
     setInterval(async () => {
-      if (!window.ephoneAppReady || window.isPersonaSpaceBusy?.() || document.visibilityState === "hidden") return;
+      if (!window.ephoneAppReady || busy || mutating || window.isEPhoneMutationBusy?.() || document.visibilityState === "hidden") return;
       try { await sync(); if (screen?.classList.contains("active") && !hasDraft()) await refresh(); await proactiveTick(); } catch (e) { notify("生活同步待重试"); }
     }, 30000);
   });

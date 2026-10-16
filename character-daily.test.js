@@ -48,6 +48,37 @@ const items = [
     const prompt = await service.prompt(await db.chats.get("a"), at(5, 12)); assert.match(prompt, /todayPlan/); assert.match(prompt, /2026-03-05/); assert.doesNotMatch(prompt, /次日不同安排/);
     const generated = core.dailyPrompt(tomorrow, at(6), "确定的公共假期信息"); assert.match(generated, /2026-03-06星期五/); assert.match(generated, /确定的公共假期信息/); assert.match(generated, /不生成一周/);
     assert.equal(await db.npcs.count(), 1); assert.equal(await db.characterRelations.count(), 0);
-    console.log("PASS: per-date schedules, all people/NPCs, midnight and overlap validation, atomic batch, stale/manual protection, paused state, scene priority, old-week preservation, no repeating days, history and prompt isolation");
+    const concurrentA = await service.dailyTargets(at(8)), concurrentB = await service.dailyTargets(at(9));
+    const plans = (targets) => ({ schedules: targets.map((p) => ({ key: p.key, plan: { date: p.date, items } })) });
+    await db.characterLives.update(key, { actual: { since: at(8), until: at(8, 11), activity: "并发剧情", place: "客厅" }, revision: a.revision + 10 });
+    await service.saveDailySchedules(plans(concurrentA), concurrentA, at(8));
+    await service.saveDailySchedules(plans(concurrentB), concurrentB, at(9));
+    const parallel = await db.characterLives.get(key);
+    assert.equal(parallel.actual.activity, "并发剧情");
+    assert.ok(parallel.dailyPlans["2026-03-08"] && parallel.dailyPlans["2026-03-09"], "different days merge, without rejecting unrelated revisions");
+    const stale = await service.dailyTargets(at(10));
+    await db.characterLives.update(key, { home: "生成期间新改的家" });
+    await assert.rejects(service.saveDailySchedules(plans(stale), stale, at(10)), /生活设置已修改/);
+    assert.equal((await db.characterLives.get(key)).dailyPlans["2026-03-10"], undefined);
+    const chat = await db.chats.get("a");
+    chat.history = Array.from({ length: 70 }, (_, i) => ({ timestamp: i + 1, vts: at(4), role: "assistant", content: "旧聊天".repeat(250) }));
+    chat.history.push({ timestamp: 100, vts: at(4, 20), role: "assistant", content: "明天上午九点去医院复查。" },
+      { timestamp: 101, vts: at(4, 21), role: "assistant", content: "改成明天下午三点复查，上午请假在家。" },
+      { timestamp: 102, vts: at(6), content: "未来秘密不该读" }, { timestamp: 103, vts: at(4), isHidden: true, content: "隐藏消息不该读" },
+      { timestamp: Date.now(), content: "没有vts的最新虚拟聊天约定" });
+    chat.longTermMemory = Array.from({ length: 6 }, (_, i) => ({ timestamp: i, vts: at(4), content: "旧总结".repeat(500) }));
+    await db.chats.put(chat);
+    await db.chats.update("b", { history: [{ timestamp: 110, vts: at(4), content: "乙的私聊秘密" }] });
+    globalThis.ephoneTimeMachine = { messageTime: (m) => m.timestamp === chat.history.at(-1).timestamp ? at(4, 22) : m.timestamp };
+    try {
+      const context = await service.dailyContext(key, at(5));
+      assert.match(JSON.stringify(context), /改成明天下午三点复查/);
+      assert.match(JSON.stringify(context), /没有vts的最新虚拟聊天约定/);
+      assert.equal(context.sources[0].when, "2026-03-04 22:00");
+      assert.doesNotMatch(JSON.stringify(context), /未来秘密|隐藏消息|乙的私聊秘密/);
+      assert.ok(context.sources.reduce((n, s) => n + s.content.length, 0) <= 12000);
+      assert.match(core.dailyPrompt([{ ...concurrentA[0], recentContext: context.sources }], at(5)), /最新的明确更正为准|原话的日期换算/);
+    } finally { delete globalThis.ephoneTimeMachine; }
+    console.log("PASS: dated plans, latest own-chat grounding and budget/privacy, virtual legacy dates, concurrent scene/day merging, manual stale protection, midnight validation, history and prompt isolation");
   } finally { db.close(); await Dexie.delete(db.name); }
 })().catch((e) => { console.error(e); process.exitCode = 1; });

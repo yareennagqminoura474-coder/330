@@ -12,7 +12,7 @@
     screen = document.createElement("section"); screen.id = "character-social-screen"; screen.className = "screen";
     screen.innerHTML = '<header class="header"><button id="cs-back" aria-label="返回">‹</button><span>人物关系</span><span class="cs-header-note">独立生活</span></header><div class="cs-scroll"><select id="cs-person" aria-label="选择关系主人"></select><p id="cs-notice" role="status" aria-live="polite"></p><div id="cs-body"></div></div>';
     document.getElementById("phone-screen").append(screen);
-    screen.querySelector("#cs-back").onclick = () => { controller?.abort(); window.showScreen("chat-list-screen"); document.querySelector('.nav-item[data-view="me-view"]')?.click(); };
+    screen.querySelector("#cs-back").onclick = () => { window.showScreen("chat-list-screen"); document.querySelector('.nav-item[data-view="me-view"]')?.click(); };
     screen.querySelector("#cs-person").onchange = (e) => { if (!busy) { key = e.target.value; editRelation = null; editLife = null; render(); } };
     screen.addEventListener("click", (event) => handle(event).catch((error) => { message = error.message; render(); }));
   }
@@ -21,13 +21,14 @@
     const select = screen.querySelector("#cs-person"); select.innerHTML = data.people.map((p) => `<option value="${esc(p.key)}">${esc(p.label)}</option>`).join(""); select.value = key;
   }
   async function open() {
-    if (window.isPersonaSpaceBusy?.()) { window.alert("请先停止回复或完成当前操作，再打开人物关系。"); return; }
+    if (busy) { window.showScreen("character-social-screen"); render(); return; }
+    if (window.isEPhoneMutationBusy?.()) { window.alert("正在保存数据，请稍后打开人物关系。"); return; }
     create(); window.showScreen("character-social-screen"); busy = true; const current = ++token;
     try { service = new core.Service(window.db); message = ""; editRelation = null; editLife = null; await reload(); }
     finally { if (current === token) { busy = false; render(); } }
   }
   async function operate(fn) {
-    if (busy || window.isPersonaSpaceBusy?.()) { message = "请先完成或停止当前操作。"; render(); return; }
+    if (busy || window.isEPhoneMutationBusy?.()) { message = "本功能正在处理，请稍后再试。"; render(); return; }
     busy = true;
     try { await fn(); } catch (error) { message = error.name === "AbortError" ? "已停止，未保存本次生成。" : error.message; }
     finally { busy = false; render(); }
@@ -124,7 +125,7 @@
         } catch (error) {
           message = savedNotice + ` 已另保存${error.completedSchedules || 0}人的作息；` + (error.name === "AbortError" ? "作息生成已停止" : "其余作息未完成：" + error.message) + "。人物及关系已保留，可点一键生成/补全作息继续，不必重新创建NPC。";
         }
-        await reload(); await window.refreshPersonaSpaceData?.();
+        await reload(); await window.refreshPersonaSpaceData?.({ peopleOnly: true });
       } finally { controller = null; }
     });
   }

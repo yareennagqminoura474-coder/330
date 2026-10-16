@@ -99,7 +99,10 @@ const { chromium } = require("playwright-core"), { dailyReply } = require("./bro
     await page.evaluate(async () => { const c = await window.db.chats.get("img-watch"); c.history.push({ role: "assistant", senderName: "林老师", type: "ai_image", content: "旧消息的机甲图片", timestamp: Date.now() + 10, vts: Date.now() }); await window.db.chats.put(c); });
     await reopen(); await chat("img-watch"); const beforeManual = imageCalls.length; assert.equal(await page.locator(".ephone-image-generate").count(), 1); assert.equal(imageCalls.length, beforeManual);
     hold = true; const held = new Promise((resolve) => { readyHold = resolve; }); await page.locator(".ephone-image-generate").click(); await held;
-    const duringManual = replyCalls.length; await page.locator("#spectator-propel-btn").click(); assert.equal(replyCalls.length, duringManual, "manual image generation blocks overlapping new chat replies");
+    hold = false;
+    const duringManual = replyCalls.length; await page.locator("#spectator-propel-btn").click(); await page.waitForFunction(() => !window.isEPhoneTimeChangeBusy());
+    assert.equal(replyCalls.length, duringManual + 1, "manual image generation and new chat reply run independently");
+    assert.equal(await page.evaluate(() => window.ephoneImageApi.isBusy()), true, "the reply does not stop the held manual image");
     await page.locator(".ephone-image-generate").click(); release(); hold = false; await page.waitForFunction(() => !window.isPersonaSpaceBusy());
     const afterStop = imageCalls.length; await page.locator(".ephone-image-generate").click(); await page.waitForFunction(() => !window.isPersonaSpaceBusy()); assert.equal(imageCalls.length, afterStop + 1);
     // The normal reply stop button also cancels a pending selected image API.
@@ -121,7 +124,7 @@ const { chromium } = require("playwright-core"), { dailyReply } = require("./bro
     failModels = false; await page.locator("#image-api-fetch-models").click(); await page.waitForFunction(() => document.querySelectorAll("#image-api-models option").length === 3);
     await page.locator("#image-api-baseUrl").fill("https://other-draw-test.invalid/v1"); await settle(); assert.equal(await page.locator("#image-api-models").isDisabled(), true, "changing service removes stale choices");
     await page.locator("#image-api-baseUrl").fill("https://draw-test.invalid/v1"); await settle();
-    assert.deepEqual(errors, []); assert.equal(pollinations.length, 0); assert.equal(modelCalls.length, 5); assert.equal(replyCalls.length, 5);
+    assert.deepEqual(errors, []); assert.equal(pollinations.length, 0); assert.equal(modelCalls.length, 5); assert.equal(replyCalls.length, 6);
     const bounds = await page.locator("#image-api-model").boundingBox(); assert.ok(bounds.x >= 0 && bounds.x + bounds.width <= 391, "mobile model field stays inside screen");
     console.log("PASS: mobile independent image presets and backup restoration without stale overwrites, images/chat/native generation in watch/group/private, saved images and zero reopen/preview billing, no main/aux changes or prompt leakage, redacted errors without fallback/retry, legacy manual generation and stop");
   } finally { await browser.close(); await new Promise((resolve) => server.close(resolve)); }

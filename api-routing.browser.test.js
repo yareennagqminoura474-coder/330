@@ -48,6 +48,7 @@ const { chromium } = require("playwright-core"), { dailyReply } = require("./bro
       await page.evaluate(() => window.showScreen("chat-list-screen")); await page.locator('.nav-item[data-view="messages-view"]').click(); await page.locator(`.chat-list-item[data-chat-id="${id}"]`).click(); await page.waitForSelector("#chat-interface-screen.active");
     }
     await chat("routing-watch"); await page.evaluate(() => window.ephoneTimeMachine.jumpTo(new Date(2026, 2, 5, 10).getTime(), "frozen"));
+    await page.waitForFunction(() => !window.EPhoneCharacterDaily.isBusy());
     assert.ok(requests.some((r) => !r.primary && r.prompt.includes("独立生活当天行程规划师")), "cross-day generation uses auxiliary API");
     await page.evaluate(() => { if (document.querySelector("#daily-schedule-status")) document.querySelector("#daily-schedule-status").hidden = true; });
     for (const id of ["routing-watch", "routing-group", "routing-role"]) {

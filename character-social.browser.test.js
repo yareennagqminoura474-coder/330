@@ -60,6 +60,7 @@ const { chromium } = require("playwright-core");
     }
     async function me() { await page.evaluate(() => window.showScreen("chat-list-screen")); await page.locator('.nav-item[data-view="me-view"]').click(); await page.locator("#me-character-social-button").click(); await page.waitForFunction(() => !window.EPhoneCharacterSocial.isBusy()); }
     await chat("social-watch"); await page.evaluate(() => window.ephoneTimeMachine.jumpTo(new Date(2026, 2, 5, 10).getTime(), "frozen"));
+    await page.waitForFunction(() => !window.EPhoneCharacterDaily.isBusy());
     const beforeOpen = calls.length; assert.ok(beforeOpen > 0, "first cross-date jump generates all characters"); await me(); await page.locator("#cs-person").selectOption("chat:s0"); assert.equal(calls.length, beforeOpen, "opening never generates behind the user's back");
     const beforeInvalid = calls.length; invalid = true; await page.locator('[data-cs-action="generate"]').click(); await page.waitForFunction(() => !window.EPhoneCharacterSocial.isBusy()); invalid = false;
     assert.match(await page.locator("#cs-notice").innerText(), /人设|不完整/); assert.equal(await page.evaluate(() => window.db.npcs.count()), 0); assert.equal(calls.length - beforeInvalid, 2, "invalid output retries only once");
@@ -106,14 +107,17 @@ const { chromium } = require("playwright-core");
     // Crossing a date automatically generates ALL roles/NPCs in bounded batches, not just this group.
     await chat("social-watch"); const beforeNextDay = calls.length;
     await page.evaluate(() => window.ephoneTimeMachine.jumpTo(new Date(2026, 2, 6, 10).getTime(), "frozen"));
+    await page.waitForFunction(() => !window.EPhoneCharacterDaily.isBusy());
     assert.equal(calls.length - beforeNextDay, 2, "8 people use two batches of four");
     assert.equal(await page.evaluate(async () => (await window.db.characterLives.toArray()).filter((l) => l.dailyPlans?.["2026-03-06"]).length), 8);
     const afterNextDay = calls.length;
     await page.evaluate(() => window.ephoneTimeMachine.jumpTo(new Date(2026, 2, 6, 11).getTime(), "frozen"));
     await page.evaluate(() => window.ephoneTimeMachine.jumpTo(new Date(2026, 2, 5, 10).getTime(), "frozen"));
+    await page.waitForFunction(() => !window.EPhoneCharacterDaily.isBusy());
     assert.equal(calls.length, afterNextDay, "same day and returning to a saved day never regenerate");
     failSchedules = true;
     await page.evaluate(() => window.ephoneTimeMachine.jumpTo(new Date(2026, 2, 7, 10).getTime(), "frozen"));
+    await page.waitForFunction(() => !window.EPhoneCharacterDaily.isBusy());
     assert.match(await page.locator("#daily-schedule-status").innerText(), /行程尚未完成/);
     assert.equal(await page.evaluate(async () => (await window.db.characterLives.toArray()).filter((l) => l.dailyPlans?.["2026-03-07"]).length), 0);
     failSchedules = false; await page.locator("#daily-schedule-status button").click();
@@ -121,8 +125,10 @@ const { chromium } = require("playwright-core");
     assert.equal(await page.evaluate(async () => (await window.db.characterLives.toArray()).filter((l) => l.dailyPlans?.["2026-03-07"]).length), 8);
     await page.locator("#daily-schedule-status button").click();
     await page.evaluate(() => window.ephoneTimeMachine.jumpTo(new Date(2026, 2, 10, 23, 59).getTime(), "frozen"));
+    await page.waitForFunction(() => !window.EPhoneCharacterDaily.isBusy());
     await page.evaluate(async () => { const hold = window.ephoneTimeMachine.prepareReplyTime([], { chatId: "social-watch" }); await hold.ready; const next = window.ephoneTimeMachine.prepareReplyTime([], { chatId: "social-watch" }); await next.ready; });
-    assert.equal(await page.evaluate(async () => (await window.db.characterLives.toArray()).filter((l) => l.dailyPlans?.["2026-03-11"]).length), 8, "story advancing across midnight generates that date before replying");
+    await page.waitForFunction(() => !window.EPhoneCharacterDaily.isBusy());
+    assert.equal(await page.evaluate(async () => (await window.db.characterLives.toArray()).filter((l) => l.dailyPlans?.["2026-03-11"]).length), 8, "story advancing across midnight generates that date independently");
     await page.locator("#daily-schedule-status button").click();
     await page.evaluate(() => window.ephoneTimeMachine.jumpTo(new Date(2026, 2, 5, 10).getTime(), "frozen"));
     holdSchedules = true;
@@ -136,16 +142,20 @@ const { chromium } = require("playwright-core");
     await page.waitForFunction(() => !window.EPhoneCharacterDaily.isBusy());
     await page.locator("#daily-schedule-status button").click();
     await page.evaluate(() => window.ephoneTimeMachine.jumpTo(new Date(2026, 2, 5, 10).getTime(), "frozen"));
-    // The existing reply button must still stop a cross-midnight schedule API request.
+    // Cross-midnight daily generation no longer blocks either reply path.
     for (const [chatId, day, buttonId] of [["social-group", 14, "#wait-reply-btn"], ["social-watch", 16, "#spectator-propel-btn"]]) {
       await chat(chatId);
       await page.evaluate((day) => window.ephoneTimeMachine.jumpTo(new Date(2026, 2, day, 23, 59).getTime(), "frozen"), day);
+      await page.waitForFunction(() => !window.EPhoneCharacterDaily.isBusy());
       await page.evaluate(async (chatId) => { const prep = window.ephoneTimeMachine.prepareReplyTime([], { chatId }); await prep.ready; }, chatId);
       const historySize = await page.evaluate(async (chatId) => (await window.db.chats.get(chatId)).history.length, chatId);
       holdSchedules = true; await page.locator(buttonId).click(); await page.waitForFunction(() => window.EPhoneCharacterDaily.isBusy());
-      await page.locator(buttonId).click(); await page.waitForFunction(() => !window.isPersonaSpaceBusy());
+      await page.waitForFunction(() => !window.isEPhoneTimeChangeBusy());
+      assert.ok(await page.evaluate(async (chatId) => (await window.db.chats.get(chatId)).history.length, chatId) > historySize, "reply completes while schedule API is held");
+      assert.equal(await page.evaluate(() => window.EPhoneCharacterDaily.isBusy()), true);
+      await page.locator("#daily-schedule-status button").filter({ hasText: "停止" }).click();
+      await page.waitForFunction(() => !window.isPersonaSpaceBusy());
       holdSchedules = false; if (pendingRoute) { await pendingRoute.abort().catch(() => {}); pendingRoute = null; }
-      assert.equal(await page.evaluate(async (chatId) => (await window.db.chats.get(chatId)).history.length, chatId), historySize);
       const nextDate = "2026-03-" + String(day + 1).padStart(2, "0");
       assert.equal(await page.evaluate(async (date) => (await window.db.characterLives.toArray()).filter((l) => l.dailyPlans?.[date]).length, nextDate), 0);
       await page.evaluate(() => { document.querySelector("#daily-schedule-status").hidden = true; });
@@ -170,6 +180,7 @@ const { chromium } = require("playwright-core");
     assert.equal(await page.evaluate(() => window.db.npcs.count()), 6); assert.equal(await page.evaluate(() => window.db.characterRelations.count()), 7);
     await chat("social-watch"); const beforeReloadJump = calls.length;
     await page.evaluate(() => window.ephoneTimeMachine.jumpTo(new Date(2026, 2, 6, 10).getTime(), "frozen"));
+    await page.waitForFunction(() => !window.EPhoneCharacterDaily.isBusy());
     assert.equal(calls.length, beforeReloadJump, "saved day survives refresh and is never regenerated");
     const count = calls.length;
     await page.evaluate(async () => { const spaces = JSON.parse(localStorage.getItem("ephone-persona-spaces-v1")); localStorage.setItem("ephone-persona-spaces-v1", JSON.stringify([...spaces, { id: "social-other", name: "另一空间" }])); await window.EPhoneSpaces.switchSpace("social-other"); await window.EPhoneCharacterSocial.open(); });

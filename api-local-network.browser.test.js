@@ -1,6 +1,7 @@
 // Live Service Worker + local CORS server. All data/keys are isolated fakes.
 const assert = require("node:assert/strict"), fs = require("node:fs"), path = require("node:path"), http = require("node:http");
 const { chromium } = require("playwright-core");
+const version = /const CACHE_VERSION = "([^"]+)"/.exec(fs.readFileSync(path.join(__dirname, "sw.js"), "utf8"))[1];
 (async () => {
   let origin; const apiLogs = [], responses = [], errors = [], dialogs = [];
   const api = http.createServer((req, res) => {
@@ -34,7 +35,7 @@ const { chromium } = require("playwright-core");
     const preserved = { id: "keep-chat", name: "保留聊天", settings: {}, history: [{ role: "user", content: "不得清空", timestamp: 123 }] };
     await page.evaluate(async (chat) => { await window.db.chats.put(chat); await window.db.userWallet.put({ id: "main", balance: 123.45 }); await window.db.apiPresets.add({ name: "保留预设", proxyUrl: "https://saved.invalid", apiKey: "fake-saved", model: "saved-model" }); }, preserved);
     // Put a wrong model response in Cache Storage. An API fetch MUST ignore it.
-    await page.evaluate(async (url) => { const cache = await caches.open("ephone-cache-v1.7.82"); await cache.put(url + "/v1/models", new Response('{"data":[{"id":"wrong-cached-model"}]}', { headers: { "Content-Type": "application/json" } })); }, apiUrl);
+    await page.evaluate(async ({ url, version }) => { const cache = await caches.open("ephone-cache-" + version); await cache.put(url + "/v1/models", new Response('{"data":[{"id":"wrong-cached-model"}]}', { headers: { "Content-Type": "application/json" } })); }, { url: apiUrl, version });
     await page.evaluate(() => window.showScreen("api-settings-screen"));
     await page.locator("#proxy-url").fill(apiUrl + "/v1"); await page.locator("#api-key").fill("fake-primary-local"); await page.locator("#fetch-models-btn").click();
     await page.waitForFunction(() => [...document.querySelectorAll("#model-select option")].filter((el) => el.value.startsWith("local-model-")).length === 66);
@@ -48,8 +49,8 @@ const { chromium } = require("playwright-core");
     assert.deepEqual(actualGets.map((req) => req.authorization), ["Bearer fake-primary-local", "Bearer fake-secondary-local", "Bearer fake-image-local"]);
     assert.equal(responses.length, 3); assert.ok(responses.every((res) => res.status === 200 && !res.fromWorker));
     // Prove the worker is active and still handles a real cached static file.
-    const staticResponse = page.waitForResponse((response) => response.url() === origin + "/330/style.css?v=1.7.82");
-    await page.evaluate(() => fetch("./style.css?v=1.7.82").then((response) => response.text())); assert.equal((await staticResponse).fromServiceWorker(), true);
+    const staticPath = "./style.css?v=" + version.slice(1), staticResponse = page.waitForResponse((response) => response.url() === origin + "/330/" + staticPath.slice(2));
+    await page.evaluate((url) => fetch(url).then((response) => response.text()), staticPath); assert.equal((await staticResponse).fromServiceWorker(), true);
     await page.reload({ waitUntil: "domcontentloaded" }); await page.waitForFunction(() => window.ephoneAppReady);
     assert.deepEqual(await page.evaluate(() => window.db.chats.get("keep-chat")), preserved); assert.equal(await page.evaluate(async () => (await window.db.userWallet.get("main")).balance), 123.45);
     assert.equal(await page.evaluate(async () => (await window.db.apiPresets.toArray()).find((p) => p.name === "保留预设").model), "saved-model");

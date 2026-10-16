@@ -14420,10 +14420,11 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
         },
       ));
   }
+  let _ephoneChatListRenderRevision = 0;
   async function _0x4bb316() {
+    const _ephoneRenderRevision = ++_ephoneChatListRenderRevision;
     const _0x22e3f5 = _0x3ce505,
       _0x2c0159 = document[_0x22e3f5(0x1023)](_0x22e3f5(0xb5b));
-    _0x2c0159[_0x22e3f5(0x1bf6)] = "";
     const _0x2512ef = Object[_0x22e3f5(0x1568)](_0x5ea3c1["chats"])[
         _0x22e3f5(0xc2d)
       ]((_0x2cfe60, _0x594f75) => {
@@ -14440,6 +14441,9 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
         );
       }),
       _0x17df49 = await _0x24f906[_0x22e3f5(0x3a3)]["toArray"]();
+    if (_ephoneRenderRevision !== _ephoneChatListRenderRevision) return;
+    _0x2c0159.innerHTML = "";
+    _0x356e9a = false;
     if (_0x2512ef[_0x22e3f5(0xa5d)] === 0x0) {
       _0x2c0159[_0x22e3f5(0x1bf6)] = _0x22e3f5(0x11cc);
       return;
@@ -14524,6 +14528,7 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
   }
   function _0x547b9d() {
     const _0x5b7cc3 = _0x3ce505;
+    const _ephoneRenderRevision = _ephoneChatListRenderRevision;
     if (_0x356e9a) return;
     const _0x19e450 = document["getElementById"](_0x5b7cc3(0xb5b)),
       _0x19f44e = document[_0x5b7cc3(0x1023)](_0x5b7cc3(0xe5d));
@@ -14532,6 +14537,7 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
     _0x356e9a = !![];
     const _0x3baac4 = _0x2e133b === 0x0,
       _0xc7933c = () => {
+        if (_ephoneRenderRevision !== _ephoneChatListRenderRevision) return;
         const _0x11d796 = _0x5b7cc3;
         _0x370ae0(_0x19e450);
         const _0x4b5b1f = _0x5ea3c1[_0x11d796(0x9b1)][_0x11d796(0xe63)] || 0x1e,
@@ -17579,7 +17585,7 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
   }
   async function _ephoneSocialPrompt(chat, vts, referenceText = "") {
     if (!window.ephoneCharacterSocialCore || !_0x24f906.characterRelations) return "";
-    await window.EPhoneCharacterDaily?.beforeReply(vts, { signal: (_0xephoneSpectatorController || _0xephoneGenerationController)?.signal });
+    window.EPhoneCharacterDaily?.beforeReply(vts);
     await window.EPhoneLifeSimulation?.sync(vts, chat);
     const continuity = window.ephoneLifeSimulationCore && _0x24f906.lifeSimulation ? await new window.ephoneLifeSimulationCore.Service(_0x24f906).prompt(chat, vts) : "";
     return (await new window.ephoneCharacterSocialCore.Service(_0x24f906).prompt(chat, vts, { referenceText })) + continuity;
@@ -17769,7 +17775,7 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
       _0xephoneSpectatorController?.abort();
       return;
     }
-    if (_0xephoneGenerationController || _ephoneSpectatorMoneyBusy || window.ephoneImageApi?.isBusy() || window.EPhoneCharacterWallet?.isBusy() || window.EPhoneCharacterSocial?.isBusy() || window.EPhoneCharacterDaily?.isBusy() || window.EPhoneLifeSimulation?.isBusy()) return;
+    if (_0xephoneGenerationController || _ephoneSpectatorMoneyBusy || window.isEPhoneMutationBusy?.()) return;
     _0xephoneSpectatorGenerating = true;
     const _ephoneSpectatorController = new AbortController();
     _0xephoneSpectatorController = _ephoneSpectatorController;
@@ -18177,12 +18183,12 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
     const _0x25f1e5 = _0x3ce505;
     if (!_0x5ea3c1["activeChatId"]) return;
     const _0xephoneContinue = _0xephoneMode === "__ephone_continue__";
-    if (_0xephoneSpectatorGenerating || window.EPhoneCharacterWallet?.isBusy() || window.EPhoneCharacterSocial?.isBusy()) return;
+    if (_0xephoneSpectatorGenerating) return;
     if (_0xephoneGenerationController && !_0xephoneContinue) {
       _0xephoneGenerationController.abort();
       return;
     }
-    if (window.ephoneImageApi?.isBusy() || window.EPhoneCharacterDaily?.isBusy() || window.EPhoneLifeSimulation?.isBusy()) return;
+    if (window.isEPhoneMutationBusy?.()) return;
     if (!_0xephoneGenerationController) {
       _0xephoneGenerationController = new AbortController();
     }
@@ -56705,6 +56711,13 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
       (window[_0x274136(0x12f6)] = _0x4bf560),
       (window[_0x274136(0x11f4)] = _0x1aa49f),
       (window.refreshPersonaSpaceData = async (_0xspaceRefresh = {}) => {
+        if (_0xspaceRefresh.peopleOnly) {
+          // NPC generation must not reload/replace a concurrent reply's chat
+          // objects or reset the active screen and time binding.
+          _0x5ea3c1.npcs = await _0x24f906.npcs.toArray();
+          await _0x1f4e90();
+          return;
+        }
         const _0xactiveChatId = _0x5ea3c1.activeChatId;
         if (
           _0xspaceRefresh.spaceChanged ||
@@ -56731,7 +56744,11 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
           _0xspaceLabel.textContent = window.EPHONE_SPACE_NAME || "默认空间";
         await window.ephonePlayerIdentity?.render?.();
       }),
-      (window.isPersonaSpaceBusy = () => Boolean(_0xephoneGenerationController || _0xephoneSpectatorGenerating || _ephoneSpectatorMoneyBusy || _ephoneWalletPending || window.ephoneImageApi?.isBusy() || window.EPhoneLifeMarket?.isBusy() || window.EPhoneCharacterWallet?.isBusy() || window.EPhoneCharacterSocial?.isBusy() || window.EPhoneCharacterDaily?.isBusy() || window.EPhoneLifeSimulation?.isBusy() || window.ephonePlayerIdentity?.isBusy?.())),
+      // API tasks have their own controllers/results. Only actual mutations
+      // serialize; broad busy stays reserved for switching/deleting space data.
+      (window.isEPhoneMutationBusy = () => Boolean(_ephoneSpectatorMoneyBusy || _ephoneWalletPending || window.ephonePlayerIdentity?.isBusy?.() || window.EPhoneCharacterWallet?.isMutating?.())),
+      (window.isEPhoneTimeChangeBusy = () => Boolean(_0xephoneGenerationController || _0xephoneSpectatorGenerating || window.isEPhoneMutationBusy())),
+      (window.isPersonaSpaceBusy = () => Boolean(window.isEPhoneTimeChangeBusy() || window.ephoneImageApi?.isBusy() || window.EPhoneLifeMarket?.isBusy() || window.EPhoneCharacterWallet?.isBusy() || window.EPhoneCharacterSocial?.isBusy() || window.EPhoneCharacterDaily?.isBusy() || window.EPhoneLifeSimulation?.isBusy())),
       (window.EPhoneMarketAdapter = {
         now: (chatId) => window.ephoneTimeMachine?.nowMs(chatId || _0x5ea3c1.activeChatId) || Date.now(),
         formatTime: (value) => window.ephoneTimeMachine?.formatDateTime(value, { withWeekday: true }) || new Date(value).toLocaleString("zh-CN"),
@@ -65405,7 +65422,10 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
           if (index == null || index < 0 || JSON.stringify(latest.history[index]) !== JSON.stringify(original)) throw new Error("图片消息已修改或删除，未重新插入聊天；不会自动重试生图。");
           latest.history[index] = { ...latest.history[index], ...fields }; await table.put(latest); return latest;
         });
-        const current = _0x5ea3c1.chats[id]; if (current) current.history = saved.history;
+        // Patch only this image, never replace a history that a concurrent reply
+        // has already extended in memory while the image API was pending.
+        const current = _0x5ea3c1.chats[id], currentImage = current?.history.find((m) => m.timestamp === timestamp);
+        if (currentImage) Object.assign(currentImage, fields);
         if (_0x5ea3c1.activeChatId === id) {
           const bubble = document.querySelector(`#chat-messages .message-bubble[data-timestamp="${timestamp}"]`), old = bubble?.closest(".message-wrapper");
           if (old) old.replaceWith(await _0x426585(saved.history.find((message) => message.timestamp === timestamp), saved));

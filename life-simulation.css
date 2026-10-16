@@ -17,6 +17,6 @@
 #ls-notice { font-size:12px; color:#4b6489; line-height:1.8; overflow-wrap:anywhere; }
 .ls-message { background:#f4f7fc; padding:12px!important; border:0!important; border-radius:12px; margin:12px 0; }
 .ls-form [hidden] { display:none!important; }
-#life-message-toast { position:fixed; top:calc(env(safe-area-inset-top,0px) + 112px); left:50%; transform:translateX(-50%); width:min(94vw,420px); z-index:99999; background:#fff; color:#263349; border:1px solid #cbd8ee; border-radius:12px; padding:12px; font-size:12px; box-shadow:0 3px 16px #0002; }
-#life-message-toast button { border:0; border-radius:8px; padding:8px; color:#3467a7; background:#edf3ff; margin-left:5px; }
+#life-message-toast { position:fixed; top:calc(env(safe-area-inset-top,0px) + 112px); left:50%; transform:translateX(-50%); box-sizing:border-box; width:min(94vw,420px); z-index:90; background:#fff; color:#263349; border:1px solid #cbd8ee; border-radius:12px; padding:12px; font-size:12px; box-shadow:0 3px 16px #0002; pointer-events:none; }
+#life-message-toast button { border:0; border-radius:8px; padding:8px; color:#3467a7; background:#edf3ff; margin-left:5px; pointer-events:auto; }
 #life-message-toast[hidden] { display:none; }

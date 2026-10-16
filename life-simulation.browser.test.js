@@ -60,6 +60,7 @@ const { chromium } = require("playwright-core");
     }
     async function settled() { await page.waitForFunction(() => !window.EPhoneLifeSimulation.isBusy()); await page.waitForTimeout(100); await page.locator("#life-message-toast [data-close]").click().catch(() => {}); }
     await chat("watch"); await page.evaluate(() => window.ephoneTimeMachine.jumpTo(new Date(2026, 2, 5, 10).getTime(), "frozen"));
+    await page.waitForFunction(() => !window.EPhoneCharacterDaily.isBusy());
     await page.evaluate(() => { if (document.querySelector("#daily-schedule-status")) document.querySelector("#daily-schedule-status").hidden = true; });
     const beforeOpen = calls.length; await open(); assert.equal(calls.length, beforeOpen, "opening does not generate unsolicited AI calls");
     assert.equal(await page.locator("#ls-auto").isChecked(), false);

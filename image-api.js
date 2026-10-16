@@ -120,7 +120,7 @@
     const stamp = Number(button.closest("[data-timestamp]")?.dataset.timestamp);
     if (!Number.isFinite(stamp)) return;
     if (manualController) { if (manualStamp === stamp) manualController.abort(); return; }
-    if (window.isPersonaSpaceBusy?.()) throw new Error("请先停止回复或完成当前操作，再生成图片。");
+    if (window.isEPhoneMutationBusy?.()) throw new Error("正在保存数据，请稍后生成图片。");
     if (!adapter.settings().enableAiDrawing) throw new Error("请先开启通用 AI 生图。");
     if (!selectedCustom()) { window.showScreen("api-settings-screen"); el("provider").focus(); return; }
     const controller = new AbortController(); manualController = controller; manualStamp = stamp; busy++;

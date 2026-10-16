@@ -2,7 +2,7 @@
   "use strict";
   const core = window.ephoneCharacterWalletCore, esc = (v) => String(v ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
   const money = (v) => Number(v || 0).toFixed(2), now = () => window.ephoneTimeMachine?.nowMs() || Date.now();
-  let screen, service, people = [], key = "", account, entries = [], busy = false, controller, message = "", editing = false, token = 0, space, draftCache;
+  let screen, service, people = [], key = "", account, entries = [], busy = false, mutating = false, controller, message = "", editing = false, token = 0, space, draftCache;
   async function sync(vts = now()) {
     if (!window.db?.characterWallets) return;
     const result = await new core.Service(window.db).settle(vts);
@@ -13,7 +13,7 @@
     screen = document.createElement("section"); screen.id = "character-wallet-screen"; screen.className = "screen";
     screen.innerHTML = '<header class="header"><button type="button" id="cw-back" aria-label="返回">‹</button><span>角色钱包</span><button type="button" id="cw-settle">结算</button></header><div class="cw-scroll"><select id="cw-person" aria-label="选择角色"></select><div id="cw-notice" role="status"></div><div id="cw-body"></div></div>';
     document.getElementById("phone-screen").append(screen);
-    screen.querySelector("#cw-back").onclick = () => { if (controller) controller.abort(); window.showScreen("chat-list-screen"); document.querySelector('.nav-item[data-view="me-view"]')?.click(); };
+    screen.querySelector("#cw-back").onclick = () => { window.showScreen("chat-list-screen"); document.querySelector('.nav-item[data-view="me-view"]')?.click(); };
     screen.querySelector("#cw-person").onchange = async (e) => { if (!busy) { key = e.target.value; editing = false; await load(); } };
     screen.querySelector("#cw-settle").onclick = () => operate(async () => { const result = await sync(); message = result?.pending ? "已结算一批，还有未结算日期；再点结算继续，不会漏记或重复记账。" : "已按本空间时间结算，没有重复入账。"; await load(); });
     screen.addEventListener("click", async (event) => {
@@ -46,13 +46,14 @@
       });
     });
   }
-  async function operate(fn) {
-    if (window.isPersonaSpaceBusy?.()) { message = "请先停止回复或完成当前操作，再修改角色钱包。"; render(); return; }
-    busy = true;
-    try { await fn(); } catch (error) { message = error.message; } finally { busy = false; render(); }
+  async function operate(fn, { generation = false } = {}) {
+    if (busy || window.isEPhoneMutationBusy?.() || !generation && window.isEPhoneTimeChangeBusy?.()) { message = "请先完成当前收付款或回复，再修改钱包；资产生成可与回复同时进行。"; render(); return; }
+    busy = true; mutating = !generation;
+    try { await fn(); } catch (error) { message = error.name === "AbortError" ? "已停止生成。" : error.message; } finally { busy = false; mutating = false; render(); }
   }
   async function open() {
-    if (window.isPersonaSpaceBusy?.()) { window.alert("请先停止回复或完成当前操作，再打开角色钱包。"); return; }
+    if (busy) { window.showScreen("character-wallet-screen"); render(); return; }
+    if (window.isEPhoneMutationBusy?.()) { window.alert("正在保存收付款，请稍后打开角色钱包。"); return; }
     create(); window.showScreen("character-wallet-screen"); busy = true;
     try {
       service = new core.Service(window.db); space = window.EPHONE_SPACE_ID || "default"; editing = false; message = "";
@@ -102,7 +103,7 @@
     await operate(async () => {
       controller = new AbortController(); message = "正在按各角色本人的性格、家庭条件和职业拟定资产及收支…"; render();
       try {
-        const targets = all ? (await Promise.all(people.map(async (p) => ({ ...p, account: await service.account(p.key) })))).filter((p) => !p.account.configured).slice(0, 30) : people.filter((p) => p.key === key);
+        const targets = (await Promise.all(people.filter((p) => all || p.key === key).map(async (p) => ({ ...p, account: await service.account(p.key) })))).filter((p) => !all || !p.account.configured).slice(0, 30);
         if (!targets.length) { message = "所有角色都已经设置，未覆盖已有资产和计划。"; return; }
         const raw = await window.EPhoneMarketAdapter.generate(core.profilePrompt(targets), controller.signal); controller.signal.throwIfAborted();
         const parsed = JSON.parse(raw.trim().replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, ""));
@@ -110,18 +111,19 @@
         const clean = parsed.map((p) => ({ ...core.normalize(p), key: p.key }));
         if (all) {
           // One transaction for the whole generated set: partial saves are not a successful initialization.
-          await service.db.transaction("rw", ...service.tables(), service.chats, service.npcs, async () => {
-            for (const draft of clean) { const a = await service.account(draft.key); await service.save(draft.key, draft, now(), a.revision, { preserveBalance: a.bound || a.balance > 0 }); }
-          });
+          mutating = true;
+          try { await service.db.transaction("rw", ...service.tables(), service.chats, service.npcs, async () => {
+            for (const draft of clean) { const a = targets.find((p) => p.key === draft.key).account; await service.save(draft.key, draft, now(), a.revision, { preserveBalance: a.bound || a.balance > 0 }); }
+          }); } finally { mutating = false; }
           editing = false; message = `已初始化${clean.length}个未设置角色；工资、资产与消费均为人设拟定，可编辑。已有余额保留，未回溯结算。`; await load();
         } else {
           const draft = clean[0]; if (account.bound || account.configured || account.balance > 0) draft.balance = account.balance;
           draftCache = draft; editing = true; render(); message = "已拟定，请检查资产、工资与日常开销，点击保存后才生效。已有余额没有被生成结果覆盖。";
         }
       } finally { controller = null; }
-    });
+    }, { generation: true });
   }
-  window.EPhoneCharacterWallet = { open, sync, isBusy: () => busy };
+  window.EPhoneCharacterWallet = { open, sync, isBusy: () => busy, isMutating: () => mutating };
   document.addEventListener("DOMContentLoaded", () => {
     for (const id of ["me-character-wallet-button", "alipay-character-wallet-button"]) document.getElementById(id)?.addEventListener("click", () => open().catch((error) => { message = error.message; render(); }));
   });
