@@ -102,39 +102,30 @@
     });
   }
 
-  const recoveryPrompt = "【本轮回复完整性修复】刚才接口返回的这一轮不完整、格式未闭合或只有时间开头，尚未发送任何内容。请重新生成本轮完整回复，不要接着残缺的 JSON 续写。输出一个合法、闭合的 JSON 数组；时间地点旁白之后必须有实际动作、剧情或台词。人设、历史和本轮当前时间不变，不重复历史，不再次推进时间。若输出空间不足，精简本轮铺陈，优先完整表达并闭合格式，不要只写开头。条数随情境，不设固定数量。";
-
   async function complete(request, { signal, parse, isRenderable } = {}) {
-    let issue = "";
-    for (let attempt = 0; attempt < 2; attempt++) {
+    // One user-triggered reply is exactly one generation request. Never retry,
+    // regenerate or use another API to repair a paid answer automatically.
+    signal?.throwIfAborted();
+    let response;
+    try { response = await request(); }
+    catch (error) {
       signal?.throwIfAborted();
-      let response;
-      try { response = await request(attempt ? recoveryPrompt : ""); }
-      catch (error) {
-        signal?.throwIfAborted();
-        // A broken HTTP JSON envelope is not a valid partial chat either.
-        if (!(error instanceof SyntaxError)) throw error;
-        issue = "接口响应数据未完整传输";
-        continue;
-      }
-      signal?.throwIfAborted();
-      assertNotBlocked(response);
-      if (response?.error) throw new Error("API 返回错误：" + String(response.error.message || response.error));
-      let raw = extractText(response);
-      // Thinking models can exhaust their output budget before emitting ANY
-      // visible parts. Preserve the finish reason and recover that empty batch.
-      if (raw === null && (Array.isArray(response?.choices) || Array.isArray(response?.candidates))) raw = "";
-      if (raw === null) throw new Error("API 没有返回可读取的回复内容，请检查所选模型。");
-      const report = inspect(raw);
-      const items = report.structured ? report.items : [{ type: "text", content: raw }];
-      const parsed = !report.incomplete && parse ? parse(raw) : items;
-      issue = /^(LENGTH|MAX_TOKENS)$/.test(finishReason(response)) ? "达到服务商输出长度上限" :
-        report.incomplete ? "回复格式被截断或未闭合" :
-        !raw.trim() || !hasBody(parsed, isRenderable) ? "回复为空或只有时间开头" : "";
-      if (!issue) return { raw, items: parsed, response };
-      // No history, wallet, or clock writes until a complete batch is accepted.
+      if (!(error instanceof SyntaxError)) throw error;
+      throw new Error("接口响应数据未完整传输。本轮仅调用一次，未自动重试；请检查服务商响应后再手动重试。");
     }
-    throw new Error("回复仍不完整（" + issue + "），已自动重试一次。本轮未发送，请稍后重试或检查服务商的模型输出上限。");
+    signal?.throwIfAborted();
+    assertNotBlocked(response);
+    if (response?.error) throw new Error("API 返回错误：" + String(response.error.message || response.error));
+    let raw = extractText(response);
+    if (raw === null && (Array.isArray(response?.choices) || Array.isArray(response?.candidates))) raw = "";
+    if (raw === null) throw new Error("API 没有返回可读取的回复内容，请检查所选模型；未自动重试。");
+    const report = inspect(raw), items = report.structured ? report.items : [{ type: "text", content: raw }];
+    const parsed = !report.incomplete && parse ? parse(raw) : items;
+    const issue = /^(LENGTH|MAX_TOKENS)$/.test(finishReason(response)) ? "达到服务商输出长度上限" :
+      report.incomplete ? "回复格式被截断或未闭合" :
+      !raw.trim() || !hasBody(parsed, isRenderable) ? "回复为空或只有时间开头" : "";
+    if (issue) throw new Error("回复不完整（" + issue + "）。本轮仅调用一次，未自动重试，本轮未发送；可检查输出上限后手动重试。");
+    return { raw, items: parsed, response };
   }
 
   return { extractText, inspect, finishReason, isTimeHeader, hasBody, complete };

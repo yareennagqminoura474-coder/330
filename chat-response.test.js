@@ -29,13 +29,12 @@ const gemini = (parts, reason = "STOP") => ({ candidates: [{ content: { parts },
   for (const first of [openai(JSON.stringify([header])), openai(raw.slice(0, -1)), openai(raw, "length"), gemini([{ text: raw }], "MAX_TOKENS"),
     { candidates: [{ finishReason: "MAX_TOKENS" }] }, openai(null, "length"), openai(""), openai("[]")]) {
     const calls = [];
-    const result = await response.complete(async (instruction) => { calls.push(instruction); return calls.length === 1 ? first : openai(raw); });
-    assert.equal(calls.length, 2); assert.equal(calls[0], ""); assert.match(calls[1], /本轮当前时间不变/);
-    assert.equal(result.raw, raw);
+    await assert.rejects(response.complete(async (instruction) => { calls.push(instruction); return first; }), /仅调用一次，未自动重试/);
+    assert.equal(calls.length, 1); assert.equal(calls[0], undefined, "no repair prompt or paid replacement request");
   }
   let calls = 0;
-  await assert.rejects(response.complete(async () => { calls++; return openai(JSON.stringify([header])); }), /已自动重试一次/);
-  assert.equal(calls, 2);
+  await assert.rejects(response.complete(async () => { calls++; return openai(JSON.stringify([header])); }), /仅调用一次，未自动重试/);
+  assert.equal(calls, 1);
   calls = 0;
   for (const blocked of [openai(raw, "content_filter"), gemini([{ text: raw }], "SAFETY"), { promptFeedback: { blockReason: "OTHER" } }, { choices: [{ message: { refusal: "拒绝" } }] }]) {
     const before = calls;
@@ -46,20 +45,18 @@ const gemini = (parts, reason = "STOP") => ({ candidates: [{ content: { parts },
   await assert.rejects(response.complete(async () => { calls++; throw new TypeError("Failed to fetch"); }), /Failed to fetch/);
   assert.equal(calls, 1, "Do not retry arbitrary network failures");
   calls = 0;
-  const syntaxRecovered = await response.complete(async () => { if (++calls === 1) throw new SyntaxError("Unexpected end"); return openai(raw); });
-  assert.equal(syntaxRecovered.raw, raw); assert.equal(calls, 2);
+  await assert.rejects(response.complete(async () => { calls++; throw new SyntaxError("Unexpected end"); }), /接口响应数据未完整传输.*仅调用一次/);
+  assert.equal(calls, 1);
   const controller = new AbortController(); calls = 0;
   await assert.rejects(response.complete(async () => { calls++; controller.abort(); return openai(raw); }, { signal: controller.signal }), { name: "AbortError" });
   assert.equal(calls, 1);
-  const stopRetry = new AbortController(); calls = 0;
-  await assert.rejects(response.complete(async () => {
-    calls++; if (calls === 2) stopRetry.abort(); return calls === 1 ? openai("[]") : openai(raw);
-  }, { signal: stopRetry.signal }), { name: "AbortError" });
-  assert.equal(calls, 2);
+  const stoppedBeforeSend = new AbortController(); calls = 0; stoppedBeforeSend.abort();
+  await assert.rejects(response.complete(async () => { calls++; return openai(raw); }, { signal: stoppedBeforeSend.signal }), { name: "AbortError" });
+  assert.equal(calls, 0);
   for (const count of [1, 12, 80]) {
     const many = Array.from({ length: count }, () => body); let requests = 0;
     const result = await response.complete(async () => { requests++; return openai(JSON.stringify(many)); });
     assert.equal(result.items.length, count); assert.equal(requests, 1);
   }
-  console.log("PASS: multipart visible-text extraction, nested/multiple JSON batches, no silent partial success, one bounded recovery, length metadata, short/long replies, safety/refusal/network errors, cancellation");
+  console.log("PASS: single-request replies, no automatic retry/repair/fallback, multipart/nested JSON, atomic incomplete failure, length/empty/envelope/safety/network handling, short/long replies and cancellation");
 })().catch((error) => { console.error(error); process.exitCode = 1; });

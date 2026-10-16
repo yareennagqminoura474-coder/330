@@ -57,11 +57,13 @@ const { chromium } = require("playwright-core"), { dailyReply } = require("./bro
     // A summary/helper request cannot overwrite the main reply's usage.
     const beforeAux = await page.evaluate(() => window.db.spaceProfiles.get("context-usage:context-role"));
     await page.evaluate(() => window.EPhoneMarketAdapter.generate("辅助任务")); assert.deepEqual(await page.evaluate(() => window.db.spaceProfiles.get("context-usage:context-role")), beforeAux);
-    // Missing usage clears old provider totals; an automatic recovery is marked.
+    // Missing usage clears old provider totals; an incomplete reply is still
+    // exactly one paid request, with attempt=1 and no automatic recovery.
     reportUsage = false; shortReply = true; await chat("context-watch"); const beforeRetry = requests.length;
-    await page.locator("#spectator-propel-btn").click(); await page.waitForFunction(() => !window.isPersonaSpaceBusy());
-    assert.equal(requests.length, beforeRetry + 2); const retryStats = await page.evaluate(() => window.db.spaceProfiles.get("context-usage:context-watch")); assert.equal(retryStats.attempt, 2); assert.equal(retryStats.inputTokens, null);
-    await page.locator("#chat-settings-btn").click(); await page.waitForSelector("#chat-settings-screen.active"); await page.waitForFunction(() => document.getElementById("request-context-actual").textContent.includes("未返回")); assert.match(await page.locator("#request-context-details").innerText(), /本轮发生补发/);
+    await page.locator("#spectator-propel-btn").click(); await page.waitForFunction(() => document.getElementById("custom-modal-overlay")?.textContent.includes("未自动重试"));
+    assert.equal(requests.length, beforeRetry + 1); const retryStats = await page.evaluate(() => window.db.spaceProfiles.get("context-usage:context-watch")); assert.equal(retryStats.attempt, 1); assert.equal(retryStats.inputTokens, null);
+    await page.locator("#custom-modal-overlay button").last().click(); await page.waitForFunction(() => !window.isPersonaSpaceBusy());
+    await page.locator("#chat-settings-btn").click(); await page.waitForSelector("#chat-settings-screen.active"); await page.waitForFunction(() => document.getElementById("request-context-actual").textContent.includes("未返回")); assert.doesNotMatch(await page.locator("#request-context-details").innerText(), /本轮发生补发/);
     reportUsage = true;
     // Real native Gemini reply path is counted from its final contents/parts.
     await page.evaluate(async () => { await window.db.apiConfig.update("main", { proxyUrl: "https://generativelanguage.googleapis.com/v1beta/models", apiKey: "fake-native-key", model: "native-model" }); });

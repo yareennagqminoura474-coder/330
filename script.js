@@ -17803,7 +17803,7 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
         proxyUrl: _0x4dfdb5,
         apiKey: _0x570fe9,
         model: _0x45d813,
-      } = _0x5ea3c1[_0xd07074(0x162b)];
+      } = _ephoneApiFor("reply");
       if (!_0x4dfdb5 || !_0x570fe9 || !_0x45d813)
         throw new Error(_0xd07074(0x9f6));
       _ephoneSpectatorTimePreparation =
@@ -17910,10 +17910,9 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
         }));
       _0x235416.push({ role: "user", content: "请按以上人设、人物关系及当前时间，从最后一条消息继续推进剧情；不要复述已有消息。" });
       _ephoneSpectatorController.signal.throwIfAborted();
-      const _ephoneSpectatorComplete = await window.ephoneChatResponse.complete(async (_ephoneRecoveryPrompt) => {
-        const _ephoneContextRequest = window.ephoneRequestContext?.start(_0x24f906, _0x326f3d.id, _0x45d813, _ephoneRecoveryPrompt ? 2 : 1) || { finish: async (raw) => raw };
-        const _ephoneRequestMessages = _ephoneRecoveryPrompt
-          ? [..._0x235416, { role: "user", content: _ephoneRecoveryPrompt }] : _0x235416;
+      const _ephoneSpectatorComplete = await window.ephoneChatResponse.complete(async () => {
+        const _ephoneContextRequest = window.ephoneRequestContext?.start(_0x24f906, _0x326f3d.id, _0x45d813, 1) || { finish: async (raw) => raw };
+        const _ephoneRequestMessages = _0x235416;
         let _0x4799c0 = _0x4dfdb5[_0xd07074(0x1507)](_0xd07074(0x328)),
           _0x13b518;
         if (_0x4799c0) {
@@ -18180,12 +18179,11 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
     }
     requestAnimationFrame(_ephoneRestoreChatScrolling);
   }
-  async function _0x456d1d(_0xephoneMode = null) {
+  async function _0x456d1d() {
     const _0x25f1e5 = _0x3ce505;
     if (!_0x5ea3c1["activeChatId"]) return;
-    const _0xephoneContinue = _0xephoneMode === "__ephone_continue__";
     if (_0xephoneSpectatorGenerating) return;
-    if (_0xephoneGenerationController && !_0xephoneContinue) {
+    if (_0xephoneGenerationController) {
       _0xephoneGenerationController.abort();
       return;
     }
@@ -18224,28 +18222,9 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
             _0x47be92[_0x8d2d1c(0xd57)][_0x8d2d1c(0x17db)]("typing-status"),
             (_0x47be92[_0x8d2d1c(0x791)][_0x8d2d1c(0x24c)] = 0x1));
         }, 0xc8));
-    let _0x8d5b3f = ![],
-      _0xephoneTimePreparation = null,
+    let _0xephoneTimePreparation = null,
       _0xephoneTimeCommitted = ![];
     try {
-      const {
-        proxyUrl: _0x275228,
-        apiKey: _0xdbefc3,
-        model: _0x1d2298,
-      } = _0x5ea3c1[_0x25f1e5(0x162b)];
-      if (!_0x275228 || !_0xdbefc3 || !_0x1d2298) {
-        alert(_0x25f1e5(0xe0e));
-        if (_0x5b16cb["isGroup"]) {
-          if (_0x4dc728)
-            _0x4dc728[_0x25f1e5(0x791)]["display"] = _0x25f1e5(0x1099);
-        } else
-          _0x47be92 &&
-            _0x5ea3c1[_0x25f1e5(0x1255)][_0x973a29] &&
-            ((_0x47be92[_0x25f1e5(0x71a)] =
-              _0x5ea3c1[_0x25f1e5(0x1255)][_0x973a29]["name"]),
-            _0x47be92[_0x25f1e5(0xd57)][_0x25f1e5(0x1aa6)](_0x25f1e5(0x267)));
-        return;
-      }
       const _0x1844db =
           _0x5b16cb[_0x25f1e5(0x8e6)][_0x25f1e5(0x1655)](-0x1)[0x0],
         _0x279d4b =
@@ -18253,6 +18232,7 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
           _0x1844db["role"] === _0x25f1e5(0xd77) &&
           _0x1844db[_0x25f1e5(0xfd7)][_0x25f1e5(0x1507)](_0x25f1e5(0x1234));
       if (_0x279d4b) {
+        const { proxyUrl: _0x275228, apiKey: _0xdbefc3, model: _0x1d2298 } = _ephoneApiFor("auxiliary");
         console[_0x25f1e5(0x13f0)](
           _0x25f1e5(0x177e) + _0x5b16cb[_0x25f1e5(0xeda)] + _0x25f1e5(0x8bf),
         );
@@ -18385,6 +18365,7 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
         !_0x5b16cb["isGroup"] &&
         _0x5b16cb[_0x25f1e5(0x2cd)]?.[_0x25f1e5(0x162f)] === _0x25f1e5(0x126c)
       ) {
+        const { proxyUrl: _0x275228, apiKey: _0xdbefc3, model: _0x1d2298 } = _ephoneApiFor("auxiliary");
         console["log"](
           _0x25f1e5(0x1115) + _0x5b16cb[_0x25f1e5(0xeda)] + _0x25f1e5(0x558),
         );
@@ -18489,9 +18470,10 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
         }
         return;
       }
+      const { proxyUrl: _0x275228, apiKey: _0xdbefc3, model: _0x1d2298 } = _ephoneApiFor("reply");
       _0xephoneTimePreparation = window.ephoneTimeMachine?.prepareReplyTime
         ? window.ephoneTimeMachine.prepareReplyTime(_0x5b16cb["history"], {
-            advance: !_0xephoneIsRerolling && !_0xephoneContinue,
+            advance: !_0xephoneIsRerolling,
             chatId: _0x973a29,
             signal: _0xephoneGenerationController?.signal,
           })
@@ -20627,10 +20609,9 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
             "【继续当前对话】请根据以上完整聊天记录，自然接续互动并推动后续。最后一条 assistant 是已经发送的角色消息，不是尚未完成的生成前缀；不要续写或复述它本身。",
         });
       }
-      const _ephoneCompleteReply = await window.ephoneChatResponse.complete(async (_ephoneRecoveryPrompt) => {
-        const _ephoneContextRequest = window.ephoneRequestContext?.start(_0x24f906, _0x5b16cb.id, _0x1d2298, _ephoneRecoveryPrompt ? 2 : 1) || { finish: async (raw) => raw };
-        const _ephoneRequestMessages = _ephoneRecoveryPrompt
-          ? [..._0x4e7a2c, { role: "user", content: _ephoneRecoveryPrompt }] : _0x4e7a2c;
+      const _ephoneCompleteReply = await window.ephoneChatResponse.complete(async () => {
+        const _ephoneContextRequest = window.ephoneRequestContext?.start(_0x24f906, _0x5b16cb.id, _0x1d2298, 1) || { finish: async (raw) => raw };
+        const _ephoneRequestMessages = _0x4e7a2c;
         let _0x401894 = _0x275228 === GEMINI_API_URL,
           _0x25b2a9 = _0x20e281(_0x1d2298, _0xdbefc3, _0x539674, _ephoneRequestMessages),
           _0x114828;
@@ -20712,7 +20693,7 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
       });
       const _0x5eb79b = _ephoneCompleteReply.raw;
       ((lastRawAiResponse = _0x5eb79b),
-        (lastResponseTimestamps = _0xephoneContinue ? lastResponseTimestamps : []),
+        (lastResponseTimestamps = []),
         (_0x5b16cb[_0x25f1e5(0x8e6)] = _0x5b16cb[_0x25f1e5(0x8e6)][
           _0x25f1e5(0x1916)
         ]((_0x15fb5f) => !_0x15fb5f[_0x25f1e5(0x1563)])));
@@ -23263,10 +23244,6 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
             }),
             _0x275208(_0x25f1e5(0xbf1)),
             alert(_0x25f1e5(0x126b))));
-      if (_0x8d5b3f) {
-        await _0x456d1d("__ephone_continue__");
-        return;
-      }
       _ephoneRememberReplyBatch(_0x5b16cb, "standard");
       await _0x24f906[_0x25f1e5(0x1255)][_0x25f1e5(0x114d)](_0x5b16cb);
       const _0x136ca8 = _0x899a3d["some"](
@@ -28885,9 +28862,10 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
         proxyUrl: _0x57cec5,
         apiKey: _0x5ce1a6,
         model: _0x1b24ae,
-      } = _0x5ea3c1[_0x30571f(0x162b)],
+      } = _ephoneApiFor("auxiliary", false),
       _0x26c7c4 = document["getElementById"](_0x30571f(0x1790)),
       _0x284fe1 = _0x3a5c98[_0x30571f(0x17c5)][_0x30571f(0xc7f)] || "我";
+    if (!_0x57cec5 || !_0x5ce1a6 || !_0x1b24ae) { alert(window.ephoneApiRoutingCore.MISSING_AUXILIARY); return; }
     let _0x195de3 = "";
     if (
       _0x3a5c98[_0x30571f(0x17c5)][_0x30571f(0x188e)] &&
@@ -37339,7 +37317,7 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
         proxyUrl: _0xb4e835,
         apiKey: _0x379c8c,
         model: _0x599322,
-      } = _0x5ea3c1[_0x5e36a5(0x162b)];
+      } = _ephoneApiFor("auxiliary", false);
       if (!_0xb4e835 || !_0x379c8c || !_0x599322)
         throw new Error(_0x5e36a5(0x1170));
       const _0x41d7eb =
@@ -40515,7 +40493,7 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
         proxyUrl: _0x295bed,
         apiKey: _0x2431b1,
         model: _0x1d8182,
-      } = _0x5ea3c1["apiConfig"];
+      } = _ephoneApiFor("auxiliary", false);
       if (!_0x295bed || !_0x2431b1 || !_0x1d8182)
         throw new Error("API未配置，无法生成对话。");
       const _0x4e5816 =
@@ -43449,7 +43427,7 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
         proxyUrl: _0x535219,
         apiKey: _0x52f3ee,
         model: _0x13e52,
-      } = _0x5ea3c1[_0x3175d5(0x162b)];
+      } = _ephoneApiFor("auxiliary", false);
       if (!_0x535219 || !_0x52f3ee || !_0x13e52)
         throw new Error("API未配置，无法生成内容。");
       const _0x2ad4fe = _0x5ea3c1[_0x3175d5(0x46b)][_0x3175d5(0xb38)] || "我",
@@ -46434,7 +46412,7 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
       proxyUrl: _0x3ff0bf,
       apiKey: _0x49e6a3,
       model: _0x39fc8a,
-    } = _0x5ea3c1[_0x1084bf(0x162b)];
+    } = _ephoneApiFor("auxiliary", false);
     if (!_0x3ff0bf || !_0x49e6a3 || !_0x39fc8a) {
       alert(_0x1084bf(0x9f6));
       return;
@@ -47203,7 +47181,7 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
       proxyUrl: _0x4dc81a,
       apiKey: _0x43fb50,
       model: _0x5f5d81,
-    } = _0x5ea3c1[_0xbc0c93(0x162b)];
+    } = _ephoneApiFor("auxiliary", false);
     if (!_0x4dc81a || !_0x43fb50 || !_0x5f5d81) {
       alert(_0xbc0c93(0x9f6));
       return;
@@ -47282,7 +47260,7 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
       proxyUrl: _0x3e82fb,
       apiKey: _0x31a42d,
       model: _0x3da933,
-    } = _0x5ea3c1[_0x1853eb(0x162b)];
+    } = _ephoneApiFor("auxiliary", false);
     if (!_0x3e82fb || !_0x31a42d || !_0x3da933) {
       alert(_0x1853eb(0x9f6));
       return;

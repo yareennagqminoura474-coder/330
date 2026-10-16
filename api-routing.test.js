@@ -11,12 +11,18 @@ assert.equal(snapshot.secondaryModel, "preset-model"); assert.equal(snapshot.sec
 preset.model = "changed-model"; preset.apiKey = "changed-key"; preset.name = "changed-name";
 assert.equal(snapshot.secondaryModel, "preset-model"); assert.equal(snapshot.secondaryApiKey, "fake-preset"); assert.equal(snapshot.secondaryPresetSnapshot.name, "低价生成");
 assert.throws(() => core.presetSnapshot({ name: "不完整" }), /原副 API 没有改动/);
-const s = fs.readFileSync("script.js", "utf8"), primary = new Set(["_0x135d5c", "_0x456d1d", "_0x26253f", "_0x1e1f0e", "_0x2f1675", "_0x1e50aa", "_0x434d40", "_0x207404", "_0x29edc2"]);
+const s = fs.readFileSync("script.js", "utf8"), primary = new Set(["_0x135d5c", "_0x456d1d"]);
 let found = 0;
 for (const m of s.matchAll(/\{\s*proxyUrl: _0x[0-9a-f]+,\s*apiKey: _0x[0-9a-f]+,\s*model: _0x[0-9a-f]+,\s*\}\s*=\s*_0x5ea3c1\[(?:"apiConfig"|_0x[0-9a-f]+\(0x162b\))\]/g)) {
   const fn = [...s.slice(0, m.index).matchAll(/^  (?:async )?function (_0x[0-9a-f]+)/gm)].at(-1)?.[1];
-  assert.ok(primary.has(fn), "non-reply function must not use primary API: " + fn); found++;
+  assert.fail("generation must use explicit purpose routing, not raw primary config: " + fn); found++;
 }
-assert.equal(found, 9); assert.equal((s.match(/= _ephoneApiFor\("auxiliary"/g) || []).length, 28);
+assert.equal(found, 0);
+for (const m of s.matchAll(/= _ephoneApiFor\("reply"\)/g)) {
+  const fn = [...s.slice(0, m.index).matchAll(/^  (?:async )?function (_0x[0-9a-f]+)/gm)].at(-1)?.[1];
+  assert.ok(primary.delete(fn), "only main chat reply paths use primary: " + fn);
+}
+assert.equal(primary.size, 0); assert.equal((s.match(/= _ephoneApiFor\("auxiliary"/g) || []).length, 37);
+assert.doesNotMatch(s, /__ephone_continue__|_ephoneRecoveryPrompt|_0xephoneContinue/);
 assert.doesNotMatch(s.slice(s.indexOf("async function _0x1cf16a"), s.indexOf("async function _0x4a6dc1")), /secondaryProxyUrl:|secondaryApiKey:|secondaryModel:/);
 console.log("PASS: strict reply/auxiliary routing, no missing-secondary fallback, preset value snapshots, legacy call-site audit, independent primary preset switching");
