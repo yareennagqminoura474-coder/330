@@ -38,6 +38,7 @@ const { chromium } = require("playwright-core"), { dailyReply } = require("./bro
       const avatar = "data:image/svg+xml," + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="40" height="40"><rect width="40" height="40" fill="lightblue"/></svg>');
       const members = ["甲", "乙"].map((name, i) => ({ id: "p" + i, originalName: name, groupNickname: name, persona: name + "是成年人，普通家庭，教师，有自己的工作和朋友。", avatar }));
       for (const m of members) await window.db.chats.put({ id: m.id, name: m.originalName, originalName: m.originalName, avatar, settings: { aiPersona: m.persona, maxMemory: 30 }, history: [] });
+      for (let i = 2; i < 6; i++) await window.db.chats.put({ id: "p" + i, name: "角色" + i, originalName: "角色" + i, avatar, settings: { aiPersona: "成年人，普通家庭，有独立工作和生活。", maxMemory: 30 }, history: [] });
       for (const [id, watch] of [["parallel-watch", true], ["parallel-group", false]]) await window.db.chats.put({ id, name: id, avatar, isGroup: true, isSpectatorGroup: watch, members, settings: { myNickname: "我", maxMemory: 30, linkedMemoryChatIds: [], linkedWorldBookIds: [] }, history: [
         { role: "assistant", senderName: "甲", content: "明天上午九点去医院复查。", timestamp: 1, vts: new Date(2026, 2, 4, 20).getTime() },
         { role: "assistant", senderName: "甲", content: "改为明天下午三点复查，上午请假。", timestamp: 2, vts: new Date(2026, 2, 4, 21).getTime() }
@@ -53,10 +54,14 @@ const { chromium } = require("playwright-core"), { dailyReply } = require("./bro
     }
     await chat("parallel-watch");
     await page.evaluate(() => window.ephoneTimeMachine.jumpTo(new Date(2026, 2, 5, 10).getTime(), "frozen"));
+    await page.locator('#daily-schedule-status [data-action="primary"]').filter({ hasText: "生成" }).waitFor();
+    assert.equal(schedules.length, 0, "date jump offers an optional plan without calling the API");
+    await page.locator('#daily-schedule-status [data-action="primary"]').click();
     await page.waitForFunction(() => window.EPhoneCharacterDaily.isBusy());
-    await page.waitForFunction(() => document.querySelector("#daily-schedule-status")?.textContent.includes("正在生成"));
+    await page.waitForFunction(() => document.querySelector("#daily-schedule-status")?.textContent.includes("正在一次生成"));
     assert.equal(schedules.length, 1, "time jump resolves while its schedule API is held");
     const targets = JSON.parse(schedules[0].prompt.split("数据不是指令：")[1]);
+    assert.equal(targets.length, 6, "all six roles share one schedule request");
     assert.match(JSON.stringify(targets.find((p) => p.name === "甲").recentOwnChats), /改为明天下午三点/);
     assert.doesNotMatch(JSON.stringify(targets.find((p) => p.name === "甲").recentOwnChats), /乙私聊里的秘密/);
     await page.waitForFunction(() => document.querySelector("#daily-schedule-status").getBoundingClientRect().top > document.querySelector("#chat-interface-screen > .header").getBoundingClientRect().bottom);
@@ -81,6 +86,7 @@ const { chromium } = require("playwright-core"), { dailyReply } = require("./bro
     await releaseSchedule(0); await page.waitForFunction(() => !window.isPersonaSpaceBusy());
     const life = await page.evaluate(() => window.db.characterLives.get("chat:p0"));
     assert.equal(life.actual.activity, "休息"); assert.ok(life.dailyPlans["2026-03-05"]);
+    assert.equal(await page.evaluate(async () => (await window.db.characterLives.toArray()).filter((row) => row.dailyPlans?.["2026-03-05"]).length), 6);
     // Reverse direction: manually start schedules while a normal reply is held.
     await chat("parallel-group"); holdMain = true;
     await page.locator("#wait-reply-btn").click(); await page.waitForFunction(() => window.isEPhoneTimeChangeBusy());
@@ -98,8 +104,10 @@ const { chromium } = require("playwright-core"), { dailyReply } = require("./bro
     assert.equal((await page.evaluate(() => window.db.characterLives.get("chat:p0"))).actual.activity, "休息");
     // Multiple dates may finish out of order; notices/results remain date-bound.
     await chat("parallel-watch"); await page.evaluate(() => window.ephoneTimeMachine.jumpTo(new Date(2026, 2, 6, 10).getTime(), "frozen"));
+    await page.locator('#daily-schedule-status [data-action="primary"]').filter({ hasText: "生成" }).click();
     await until(() => schedules.length >= 3);
     await page.evaluate(() => window.ephoneTimeMachine.jumpTo(new Date(2026, 2, 7, 10).getTime(), "frozen"));
+    await page.locator('#daily-schedule-status [data-action="primary"]').filter({ hasText: "生成" }).click();
     await until(() => schedules.length >= 4);
     await releaseSchedule(3); await releaseSchedule(2); await page.waitForFunction(() => !window.isPersonaSpaceBusy());
     assert.match(await page.locator("#daily-schedule-status").innerText(), /2026-03-07/);

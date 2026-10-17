@@ -1,7 +1,7 @@
 (function () {
   "use strict";
   const core = window.ephoneCharacterSocialCore;
-  const seen = new Map(), jobs = new Map(); let banner, statusJob, layoutPending = false;
+  const seen = new Map(), jobs = new Map(), offers = new Map(), dismissed = new Set(); let banner, statusJob, layoutPending = false;
   const database = () => window.db?.characterLives?.db;
   const now = () => window.ephoneTimeMachine?.nowMs() ?? Date.now();
   function positionBanner() {
@@ -19,44 +19,53 @@
   function hideBanner() { if (banner) { banner.hidden = true; banner.style.display = "none"; positionBanner(); } }
   function status(job, message, controls = "") {
     // Slow results from another date or space must not replace this notice.
-    if (database() !== job.db || core.dayKey(now()) !== job.date) return;
+    if (database() !== job.db || core.dayKey(now()) !== job.date || dismissed.has(job.id)) return;
     statusJob = job;
     if (!banner) {
       banner = document.createElement("aside"); banner.id = "daily-schedule-status"; banner.setAttribute("role", "status");
       banner.style.cssText = "position:fixed;top:90px;left:50%;transform:translateX(-50%);box-sizing:border-box;width:min(94vw,420px);z-index:90;background:#fffc;color:#263349;padding:8px 10px;border:1px solid #cbd8ee;border-radius:12px;font-size:12px;box-shadow:0 3px 16px #0002;pointer-events:none;display:flex;gap:8px;align-items:center";
-      banner.innerHTML = '<span style="flex:1;min-width:0"></span><button type="button" style="pointer-events:auto;flex:none;min-height:32px"></button>'; document.body.append(banner);
+      banner.innerHTML = '<span style="flex:1;min-width:0"></span><button type="button" data-action="primary" style="pointer-events:auto;flex:none;min-height:32px"></button><button type="button" data-action="close" style="pointer-events:auto;flex:none;min-height:32px">关闭</button>'; document.body.append(banner);
     }
     banner.hidden = false; banner.style.display = "flex"; positionBanner(); banner.querySelector("span").textContent = message;
-    const button = banner.querySelector("button"); button.textContent = controls || "关闭";
+    const button = banner.querySelector('[data-action="primary"]'); button.hidden = !controls; button.textContent = controls;
     button.onclick = () => {
       if (controls === "停止") job.controller.abort();
       else if (controls === "重试") ensureDay(now()).catch(() => {});
-      else hideBanner();
+      else if (controls === "生成") ensureDay(now()).catch(() => {});
+    };
+    banner.querySelector('[data-action="close"]').onclick = () => {
+      dismissed.add(job.id);
+      job.controller?.abort();
+      hideBanner();
     };
   }
   async function generate(service, targets, vts, { signal, onProgress = () => {} } = {}) {
-    let completed = 0;
+    if (!targets.length) return 0;
+    signal?.throwIfAborted();
+    const snapshot = await service.snapshot();
+    const grounded = await Promise.all(targets.map(async (p) => {
+      signal?.throwIfAborted();
+      const context = await service.dailyContext(p.key, vts, snapshot);
+      const lifeContinuity = window.ephoneLifeSimulationCore && service.db.tables.some((t) => t.name === "lifeSimulation") ? await new window.ephoneLifeSimulationCore.Service(service.db).dayContext(p.key, vts) : null;
+      return { ...p, lifeContinuity, recentContext: context.sources };
+    }));
+    signal?.throwIfAborted(); onProgress(0, targets.length, targets, 0);
     try {
-      for (let offset = 0; offset < targets.length; offset += 4) {
-        const group = targets.slice(offset, offset + 4), snapshot = await service.snapshot();
-        const grounded = await Promise.all(group.map(async (p) => {
-          signal?.throwIfAborted();
-          const context = await service.dailyContext(p.key, vts, snapshot);
-          const lifeContinuity = window.ephoneLifeSimulationCore && service.db.tables.some((t) => t.name === "lifeSimulation") ? await new window.ephoneLifeSimulationCore.Service(service.db).dayContext(p.key, vts) : null;
-          return { ...p, lifeContinuity, recentContext: context.sources };
-        }));
-        const prompt = core.dailyPrompt(grounded, vts, window.ephoneHolidayCalendar?.prompt(vts) || "");
-        let reason = "";
-        for (let attempt = 0; attempt < 2; attempt++) {
-          signal?.throwIfAborted(); onProgress(completed, targets.length, group, attempt);
-          const raw = await window.EPhoneMarketAdapter.generate(prompt + (reason ? "\n上一轮未保存，原因：" + reason + "。请修正后重新返回本批所有人的完整当天行程。" : ""), signal);
-          signal?.throwIfAborted();
-          try { completed += await service.saveDailySchedules(raw, group, vts); break; }
-          catch (error) { if (attempt || error.code !== "SOCIAL_GENERATION_INVALID") throw error; reason = error.message; }
-        }
-      }
-      return completed;
-    } catch (error) { error.completedSchedules = completed; throw error; }
+      const raw = await window.EPhoneMarketAdapter.generate(core.dailyPrompt(grounded, vts, window.ephoneHolidayCalendar?.prompt(vts) || ""), signal);
+      signal?.throwIfAborted();
+      return await service.saveDailySchedules(raw, targets, vts, { signal });
+    } catch (error) { error.completedSchedules = 0; throw error; }
+  }
+  async function offerDay(vts) {
+    const db = database(); if (!db || !window.EPhoneMarketAdapter) return;
+    const date = core.dayKey(vts), id = db.name + ":" + date;
+    if (dismissed.has(id) || jobs.has(id) || offers.has(id)) return;
+    const promise = (async () => {
+      const targets = await new core.Service(db).dailyTargets(vts);
+      if (targets.length) status({ id, db, date }, date + " 有" + targets.length + "位角色的行程待生成。可生成或关闭，聊天不受影响。", "生成");
+    })();
+    offers.set(id, promise);
+    try { await promise; } finally { if (offers.get(id) === promise) offers.delete(id); }
   }
   async function ensureDay(vts, { signal } = {}) {
     const db = database(); if (!db || !window.EPhoneMarketAdapter) return 0;
@@ -69,8 +78,8 @@
       controller.signal.throwIfAborted();
       const service = new core.Service(db), targets = await service.dailyTargets(vts);
       if (!targets.length) return 0;
-      const count = await generate(service, targets, vts, { signal: controller.signal, onProgress(completed, total, group, attempt) {
-        status(job, date + " 当天行程：已保存" + completed + "/" + total + "人，正在生成" + group.map((p) => p.name).join("、") + (attempt ? "（修正后重试）" : ""), "停止");
+      const count = await generate(service, targets, vts, { signal: controller.signal, onProgress(completed, total, group) {
+        status(job, date + " 当天行程：正在一次生成" + total + "位角色（" + group.map((p) => p.name).join("、") + "）。", "停止");
       } });
       status(job, date + " 已为" + count + "位人物生成当天行程；已有行程未覆盖。");
       return count;
@@ -78,7 +87,7 @@
     job.promise = (async () => {
       try { return await (navigator.locks ? navigator.locks.request("ephone-daily:" + id, { signal: controller.signal }, work) : work()); }
       catch (error) {
-        status(job, date + " 已保存" + (error.completedSchedules || 0) + "人；" + (error.name === "AbortError" ? "已停止，其余行程可稍后补全。" : "行程尚未完成：" + error.message), "重试");
+        status(job, date + " 行程" + (error.name === "AbortError" ? "已停止，未保存；可稍后手动生成。" : "未保存：" + error.message + "。本次只调用了一次副 API。"), "重试");
         if (signal?.aborted) throw error;
         return 0;
       } finally {
@@ -99,7 +108,7 @@
     if (statusJob?.date !== date) hideBanner();
     // Independent job; replying/jumping waits for clock writes, not the API.
     // Stopping a reply must not abort daily plans already being generated.
-    if (core.dayKey(before) !== date || previous && previous !== date) ensureDay(after).catch(() => {});
+    if (core.dayKey(before) !== date || previous && previous !== date) offerDay(after).catch(() => {});
   }
   function checkTime() {
     if (!window.ephoneAppReady) return;
