@@ -9885,13 +9885,25 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
         _0x27ecb3 = document[_0x48a369(0x8ad)](_0x48a369(0x1311));
       const _ephonePreviousFooterStyle = _0x27ecb3.getAttribute("style");
       let _ephoneChoiceFinished = false;
+      const _ephoneChoiceViewport = window.visualViewport;
+      const _ephoneSizeChoice = () => {
+        _0x1492e0.style.setProperty("--ephone-choice-height", `${_ephoneChoiceViewport?.height || window.innerHeight}px`);
+        _0x1492e0.style.setProperty("--ephone-choice-top", `${_ephoneChoiceViewport?.offsetTop || 0}px`);
+      };
       const _ephoneFinishChoice = (_ephoneValue) => {
         if (_ephoneChoiceFinished) return;
         _ephoneChoiceFinished = true;
         if (document.activeElement instanceof HTMLElement)
           document.activeElement.blur();
         _0x1492e0.classList.remove("visible");
+        _0x1492e0.classList.remove("ephone-choice-open");
         _0x1492e0.setAttribute("aria-hidden", "true");
+        _0x1492e0.style.removeProperty("--ephone-choice-height");
+        _0x1492e0.style.removeProperty("--ephone-choice-top");
+        _ephoneChoiceViewport?.removeEventListener("resize", _ephoneSizeChoice);
+        _ephoneChoiceViewport?.removeEventListener("scroll", _ephoneSizeChoice);
+        window.removeEventListener("resize", _ephoneSizeChoice);
+        if (_0x1bdc12 === _ephoneFinishChoice) _0x1bdc12 = null;
         if (_ephonePreviousFooterStyle == null)
           _0x27ecb3.removeAttribute("style");
         else _0x27ecb3.setAttribute("style", _ephonePreviousFooterStyle);
@@ -9901,6 +9913,14 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
         });
         _0x5a37ce(_ephoneValue);
       };
+      if (document.activeElement instanceof HTMLElement)
+        document.activeElement.blur();
+      _0x1bdc12 = _ephoneFinishChoice;
+      _0x1492e0.classList.add("ephone-choice-open");
+      _ephoneSizeChoice();
+      _ephoneChoiceViewport?.addEventListener("resize", _ephoneSizeChoice);
+      _ephoneChoiceViewport?.addEventListener("scroll", _ephoneSizeChoice);
+      window.addEventListener("resize", _ephoneSizeChoice);
       ((_0x1a9cdf[_0x48a369(0x71a)] = _0x2af20b),
         (_0x11b0bd[_0x48a369(0x1bf6)] = ""),
         (_0x27ecb3["innerHTML"] = ""),
@@ -9912,6 +9932,11 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
         (_0x27ecb3[_0x48a369(0x791)][_0x48a369(0xadf)] = _0x48a369(0x13fb)),
         (_0x27ecb3["style"]["gap"] = "8px"));
       _0x27ecb3.style.minHeight = "0";
+      // Shared input/confirmation dialogs leave flex-end alignment behind.
+      // Overflowing choices must start at the top to keep early roles reachable.
+      _0x27ecb3.style.justifyContent = "flex-start";
+      _0x27ecb3.style.alignItems = "stretch";
+      _0x27ecb3.style.maxHeight = "none";
       _0x27ecb3.style.webkitOverflowScrolling = "touch";
       _0x27ecb3.style.touchAction = "pan-y";
       _0x27ecb3.style.overscrollBehavior = "contain";
@@ -9949,10 +9974,9 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
       };
       ((_0x1e21cf["onclick"] = (_0x77ce59) => {
         const _ephoneScrollTop = _0x27ecb3.scrollTop;
+        _0x1e21cf.blur();
         (_0x77ce59["stopPropagation"](), _0x4524ba());
-        requestAnimationFrame(() => {
-          _0x27ecb3.scrollTop = _ephoneScrollTop;
-        });
+        _0x27ecb3.scrollTop = _ephoneScrollTop;
       }),
         _0x27ecb3["appendChild"](_0x1e21cf),
         _0x4524ba());
@@ -9971,6 +9995,7 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
         _0x27ecb3[_0x48a369(0x3fe)](_0x29bc6e),
         _0x1492e0.setAttribute("aria-hidden", "false"),
         _0x1492e0["classList"][_0x48a369(0x17db)](_0x48a369(0x2fb)));
+      _0x27ecb3.scrollTop = 0;
     })[_0x314e82(0x1a32)](() => {});
   }
   async function _0x449dbf() {

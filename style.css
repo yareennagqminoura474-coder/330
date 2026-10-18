@@ -12334,6 +12334,37 @@ input[type=range] {
 }
 
 /* 2. 支付选项按钮 (原来那些蓝色的字) */
+/* Choice lists also serve the chat identity picker. Keep overflow inside the
+   visible viewport and never distribute overflowing rows from the bottom. */
+#custom-modal-overlay.ephone-choice-open {
+    top: var(--ephone-choice-top, 0px);
+    height: var(--ephone-choice-height, 100dvh);
+    box-sizing: border-box;
+    padding: max(12px, env(safe-area-inset-top)) 12px max(12px, env(safe-area-inset-bottom));
+}
+#custom-modal-overlay.ephone-choice-open > #custom-modal {
+    max-width: 100%;
+    max-height: 100%;
+    min-height: 0;
+    overflow: hidden;
+}
+#custom-modal-overlay.ephone-choice-open > #custom-modal > .custom-modal-header {
+    flex: 0 0 auto;
+}
+#custom-modal-overlay.ephone-choice-open > #custom-modal > .custom-modal-body {
+    display: none;
+}
+#custom-modal-overlay.ephone-choice-open > #custom-modal > .custom-modal-footer {
+    flex: 0 1 auto;
+    min-height: 0;
+    overflow-anchor: none;
+}
+#custom-modal-overlay.ephone-choice-open > #custom-modal > .custom-modal-footer > button {
+    flex: 0 0 auto;
+    white-space: normal;
+    overflow-wrap: anywhere;
+}
+
 .payment-option-item {
     display: flex !important;
     align-items: center;
