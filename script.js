@@ -15101,11 +15101,56 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
       }
     });
   }
+  let _ephoneHistoryView = null;
+  function _ephoneHistoryStart(view) {
+    if (!view || view !== _ephoneHistoryView || !view.ready) return 0;
+    if (!view.first) return 0;
+    // History order, not timestamp order: edited/split messages keep stable IDs.
+    const index = view.chat.history.findIndex((message) => message.timestamp === view.first.timestamp);
+    return Math.max(0, index);
+  }
+  function _ephoneAnchorHistory(scroller, view) {
+    view.releaseAnchor?.();
+    const top = scroller.getBoundingClientRect().top;
+    const node = Array.from(scroller.children).find((child) =>
+      child.matches(".message-wrapper") && child.getBoundingClientRect().bottom > top);
+    if (!node) return { restore() {}, release() {} };
+    const offset = node.getBoundingClientRect().top - top;
+    let active = true;
+    const restore = () => {
+      if (!active || view !== _ephoneHistoryView || !node.isConnected) return;
+      const delta = node.getBoundingClientRect().top - scroller.getBoundingClientRect().top - offset;
+      if (Math.abs(delta) > 0.5) scroller.scrollTop += delta;
+    };
+    // Late image/layout changes above the reading position must not move it.
+    const observer = new ResizeObserver(restore);
+    const events = ["touchstart", "wheel", "pointerdown", "keydown"];
+    const release = () => {
+      active = false;
+      observer.disconnect();
+      for (const event of events) scroller.removeEventListener(event, release);
+    };
+    for (const event of events) scroller.addEventListener(event, release, { passive: true });
+    view.releaseAnchor = release;
+    return {
+      restore,
+      release,
+      observe() {
+        for (const child of scroller.children) {
+          observer.observe(child);
+          if (child === node) break;
+        }
+      },
+    };
+  }
   async function _0x57e676(_0x37236d) {
     const _0x2ad8a8 = _0x3ce505;
     (_0x50e90a(), _0x232053());
     const _0xc04a0d = _0x5ea3c1[_0x2ad8a8(0x1255)][_0x37236d];
     if (!_0xc04a0d) return;
+    _ephoneHistoryView?.releaseAnchor?.();
+    const historyView = _ephoneHistoryView = { chat: _0xc04a0d, ready: false, autoBottom: true };
+    _0x5baa4a = false;
     if (window.ephoneActiveChatForSendAs !== String(_0xc04a0d.id || _0x37236d)) {
       _0xephoneSendAsName = null;
       _0xephoneSpectatorIdentity = null;
@@ -15281,10 +15326,17 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
           _0x51d2f0[_0x2ad8a8(0x3fe)](_0xac0bca(_0x2ec7e1[_0x2ad8a8(0x18df)])),
         (_0x3a0aa2 = _0x2ec7e1["timestamp"]));
       const _0x421ffc = await _0x426585(_0x2ec7e1, _0xc04a0d, !![]);
+      if (historyView !== _ephoneHistoryView) return;
       _0x421ffc && _0x51d2f0[_0x2ad8a8(0x3fe)](_0x421ffc);
     }
     (_0x4cac0d[_0x2ad8a8(0x3fe)](_0x51d2f0),
       (_0x1fc256 = _0x5634d1[_0x2ad8a8(0xa5d)]));
+    historyView.first = _0x5634d1[0] || null;
+    historyView.ready = true;
+    const scrollToLatest = () => {
+      if (historyView === _ephoneHistoryView && historyView.autoBottom)
+        _0x4cac0d.scrollTop = _0x4cac0d.scrollHeight;
+    };
     const _0x7ca9ca = document["createElement"]("div");
     ((_0x7ca9ca["id"] = _0x2ad8a8(0x1838)),
       (_0x7ca9ca[_0x2ad8a8(0x791)][_0x2ad8a8(0xab9)] = _0x2ad8a8(0x1099)),
@@ -15306,77 +15358,67 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
       Promise["all"](_0x174b29)
         ["then"](() => {
           const _0x27f8ec = _0x2ad8a8;
-          ((_0x4cac0d[_0x27f8ec(0xa06)] = _0x4cac0d[_0x27f8ec(0xb2d)]),
+          (scrollToLatest(),
             console[_0x27f8ec(0x13f0)](_0x27f8ec(0x938)));
         })
         [_0x2ad8a8(0x98d)]((_0x38aacb) => {
           const _0xe40c83 = _0x2ad8a8;
           (console[_0xe40c83(0x110f)](_0xe40c83(0x1464), _0x38aacb),
-            (_0x4cac0d["scrollTop"] = _0x4cac0d[_0xe40c83(0xb2d)]));
+            scrollToLatest());
         }),
       setTimeout(
-        () => (_0x4cac0d[_0x2ad8a8(0xa06)] = _0x4cac0d[_0x2ad8a8(0xb2d)]),
+        scrollToLatest,
         0x0,
       ));
   }
   async function _0x1dfcdf() {
-    const _0x461f9d = _0x3ce505;
-    if (_0x5baa4a) return;
-    _0x5baa4a = !![];
-    const _0xe8ccb1 = document[_0x461f9d(0x1023)]("chat-messages"),
-      _0x5b7a9e = _0x5ea3c1[_0x461f9d(0x1255)][_0x5ea3c1[_0x461f9d(0x1aba)]];
-    if (!_0x5b7a9e) {
-      _0x5baa4a = ![];
-      return;
-    }
+    const view = _ephoneHistoryView;
+    if (_0x5baa4a || !view?.ready || view.chat.id !== _0x5ea3c1.activeChatId) return;
+    const end = _ephoneHistoryStart(view);
+    if (!end) return;
+    const scroller = document.getElementById("chat-messages");
+    const pageSize = Math.max(1, Number(_0x5ea3c1.globalSettings[_0x3ce505(0x180c)]) || 50);
+    const messages = view.chat.history.slice(Math.max(0, end - pageSize), end);
+    const firstVisible = scroller.querySelector(".message-wrapper [data-timestamp]");
+    const anchor = _ephoneAnchorHistory(scroller, view);
+    view.autoBottom = false;
+    _0x5baa4a = true;
+    _0x41934c(scroller);
+    anchor.restore();
     try {
-      _0x41934c(_0xe8ccb1, _0x461f9d(0x9a5));
-      const _0x256588 = _0xe8ccb1[_0x461f9d(0xb2d)];
-      await new Promise((_0x4e1b6a) => setTimeout(_0x4e1b6a, 0x64));
-      const _0x12ed44 = _0x5b7a9e[_0x461f9d(0x8e6)][_0x461f9d(0xa5d)],
-      _0x579e8e = _0x5ea3c1[_0x461f9d(0x9b1)][_0x461f9d(0x180c)] || 0x32,
-      _0x586a43 = _0x12ed44 - _0x1fc256 - _0x579e8e,
-      _0x5097c3 = _0x12ed44 - _0x1fc256,
-      _0x30c4a2 = _0x5b7a9e["history"][_0x461f9d(0x1655)](
-        Math[_0x461f9d(0x159c)](0x0, _0x586a43),
-        _0x5097c3,
-      );
-    if (_0x30c4a2[_0x461f9d(0xa5d)] === 0x0) {
-      (_0x370ae0(_0xe8ccb1), (_0x5baa4a = ![]));
-      return;
-    }
-    _0x1fc256 += _0x30c4a2["length"];
-    const _0x5e1e97 = [];
-    for (const _0x49c772 of _0x30c4a2) {
-      const _0x3b218b = await _0x426585(_0x49c772, _0x5b7a9e);
-      _0x5e1e97[_0x461f9d(0x3e6)](_0x3b218b);
-    }
-    const _0x44163a = document[_0x461f9d(0x6dd)](),
-      _0x58c3df = _0xe8ccb1["querySelector"](_0x461f9d(0x316));
-    let _0x4fe509 = _0x58c3df
-        ? parseInt(_0x58c3df[_0x461f9d(0x151)][_0x461f9d(0x18df)])
-        : 0x0,
-      _0x5d7820 = 0x0;
-    _0x30c4a2[_0x461f9d(0x9bb)]((_0x3dc9a6, _0x48b699) => {
-      const _0x317b29 = _0x461f9d;
-      !_0x3dc9a6[_0x317b29(0x7ca)] &&
-        (_0x5d7820 > 0x0 &&
-          _0x3dc9a6[_0x317b29(0x18df)] - _0x5d7820 > 0x927c0 &&
-          _0x44163a["appendChild"](_0xac0bca(_0x3dc9a6[_0x317b29(0x18df)])),
-        (_0x5d7820 = _0x3dc9a6[_0x317b29(0x18df)]));
-      const _0x493a67 = _0x5e1e97[_0x48b699];
-      _0x493a67 && _0x44163a[_0x317b29(0x3fe)](_0x493a67);
-    });
-    _0x4fe509 > 0x0 &&
-      _0x4fe509 - _0x5d7820 > 0x927c0 &&
-      _0x44163a[_0x461f9d(0x3fe)](_0xac0bca(_0x4fe509));
-    (_0x370ae0(_0xe8ccb1), _0xe8ccb1[_0x461f9d(0x18b9)](_0x44163a));
-      const _0xb4fea5 = _0xe8ccb1["scrollHeight"];
-      _0xe8ccb1[_0x461f9d(0xa06)] = _0xb4fea5 - _0x256588;
+      const fragment = document.createDocumentFragment();
+      let previous = 0;
+      for (const message of messages) {
+        const node = await _0x426585(message, view.chat);
+        if (view !== _ephoneHistoryView) return;
+        if (!message.isHidden) {
+          if (previous > 0 && message.timestamp - previous > 600000)
+            fragment.appendChild(_0xac0bca(message.timestamp));
+          previous = message.timestamp;
+        }
+        if (node) fragment.appendChild(node);
+      }
+      const nextTimestamp = Number(firstVisible?.dataset.timestamp);
+      if (previous > 0 && nextTimestamp - previous > 600000)
+        fragment.appendChild(_0xac0bca(nextTimestamp));
+      _0x370ae0(scroller);
+      scroller.prepend(fragment);
+      // Commit the boundary only after the whole page was rendered successfully.
+      view.first = messages[0];
+      _0x1fc256 = view.chat.history.length - _ephoneHistoryStart(view);
+      anchor.restore();
+      anchor.observe?.();
+    } catch (error) {
+      _0x370ae0(scroller);
+      anchor.restore();
+      anchor.release();
+      console.error("加载历史消息失败，保留当前分页位置，可重试。", error);
     } finally {
-      _0x370ae0(_0xe8ccb1);
-      _0x5baa4a = ![];
-      requestAnimationFrame(_ephoneRestoreChatScrolling);
+      if (view === _ephoneHistoryView) {
+        _0x370ae0(scroller);
+        _0x5baa4a = false;
+        requestAnimationFrame(_ephoneRestoreChatScrolling);
+      }
     }
   }
   function _0x1aa49f(_0x154698 = null) {
@@ -17484,6 +17526,12 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
       : _0x2894ca["prepend"](_0x319a9e);
   }
   async function _0xbb356a(_0x5e47bd, _0x759d78, _0x29b05b = ![]) {
+    const appendView = _ephoneHistoryView;
+    if (appendView?.chat.id !== _0x759d78.id || _0x5ea3c1.activeChatId !== _0x759d78.id) return;
+    if (!_0x29b05b) {
+      appendView.releaseAnchor?.();
+      appendView.autoBottom = true;
+    }
     const _0x3a11f9 = _0x3ce505,
       _0x2790bc = document[_0x3a11f9(0x1023)](_0x3a11f9(0x19b6)),
       _0x38299d = document[_0x3a11f9(0x1023)](_0x3a11f9(0x1838)),
@@ -17498,6 +17546,7 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
       _0x2790bc[_0x3a11f9(0x8b8)](_0x5796b5, _0x38299d);
     }
     const _0x81a38c = await _0x426585(_0x5e47bd, _0x759d78);
+    if (appendView !== _ephoneHistoryView) return;
     if (!_0x81a38c) return;
     _0x5e47bd["role"] === _0x3a11f9(0xca8) && !_0x29b05b && _0x4cc2da();
     !_0x29b05b &&
@@ -17506,7 +17555,8 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
     _0x2790bc[_0x3a11f9(0x8b8)](_0x81a38c, _0x38299d);
     const _0x16db3f = () => {
         const _0x537268 = _0x3a11f9;
-        !_0x29b05b && (_0x2790bc["scrollTop"] = _0x2790bc[_0x537268(0xb2d)]);
+        if (!_0x29b05b && appendView === _ephoneHistoryView && appendView.autoBottom && _0x81a38c.isConnected)
+          _0x2790bc.scrollTop = _0x2790bc.scrollHeight;
       },
       _0x1c1ad7 = _0x81a38c[_0x3a11f9(0xa9b)](
         "img.sticker-image,\x20img.chat-image,\x20img.ai-generated-image,\x20img.realimag-image,\x20.naiimag-image,\x20.ai-generated-image,\x20.char-photo-item",
@@ -17530,18 +17580,8 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
             _0x16db3f());
         }));
     } else _0x16db3f();
-    const _0x3ed7ce = 0x3c,
-      _0x5613cd = _0x2790bc[_0x3a11f9(0xa9b)](_0x3a11f9(0x57c));
-    if (_0x5613cd[_0x3a11f9(0xa5d)] > _0x3ed7ce) {
-      const _0xd4fbf6 = _0x5613cd[_0x3a11f9(0xa5d)] - _0x3ed7ce;
-      for (let _0x2cd873 = 0x0; _0x2cd873 < _0xd4fbf6; _0x2cd873++) {
-        !_0x5613cd[_0x2cd873]["id"] &&
-          !_0x5613cd[_0x2cd873]["classList"][_0x3a11f9(0x1928)](
-            "load-more-btn",
-          ) &&
-          _0x5613cd[_0x2cd873][_0x3a11f9(0x1aa6)]();
-      }
-    }
+    // Keep the loaded range contiguous. Removing old DOM rows while retaining
+    // their loaded count made the next history page skip those messages.
     _ephoneSyncRerollButtons(_0x759d78);
   }
   async function _0x7baf0e(_0x5e3a89) {
@@ -64209,14 +64249,15 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
         },
       ));
     const _0x3875f9 = document["getElementById"]("chat-messages");
+    for (const event of ["touchstart", "wheel", "pointerdown", "keydown"]) {
+      _0x3875f9.addEventListener(event, () => {
+        if (_ephoneHistoryView) _ephoneHistoryView.autoBottom = false;
+      }, { passive: true });
+    }
     _0x3875f9[_0x274136(0x111e)](_0x274136(0xee2), () => {
       const _0x51cd97 = _0x274136;
       if (_0x3875f9[_0x51cd97(0xa06)] < 0x1 && !_0x5baa4a) {
-        const _0x44d6cd =
-          _0x5ea3c1[_0x51cd97(0x1255)][_0x5ea3c1[_0x51cd97(0x1aba)]]?.[
-            _0x51cd97(0x8e6)
-          ][_0x51cd97(0xa5d)] || 0x0;
-        _0x44d6cd > _0x1fc256 && _0x1dfcdf();
+        _ephoneHistoryStart(_ephoneHistoryView) > 0 && _0x1dfcdf();
       }
     });
     const _0x4a165a = document[_0x274136(0x1023)](_0x274136(0x1532));

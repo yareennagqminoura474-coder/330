@@ -270,6 +270,7 @@
             -webkit-overflow-scrolling: touch;
             touch-action: pan-y;
             overscroll-behavior-y: contain;
+            overflow-anchor: none; /* History loading preserves its own visible-message anchor. */
             padding: 10px 15px; 
             padding-top: 110px;
             margin-top: -80px;
