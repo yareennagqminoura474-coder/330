@@ -85,6 +85,12 @@
           resetCards.set(String(card.timestamp), card);
         }
         const chat = { ...draft, history: list(draft.history).filter((m) => !removed.has(String(m.timestamp))).map((m) => resetCards.get(String(m.timestamp)) || m) };
+        const editor = before.ephoneReplyEditor || draft.ephoneReplyEditor ||
+          (Array.isArray(before.ephoneLastReplyBatch?.timestamps) ? { timestamps: before.ephoneLastReplyBatch.timestamps, privateMessages: [] } : null);
+        if (editor) {
+          const kept = new Set(chat.history.map((m) => String(m.timestamp)));
+          chat.ephoneReplyEditor = { ...editor, timestamps: list(editor.timestamps).filter((stamp) => kept.has(String(stamp))) };
+        }
         delete chat.ephoneLastReplyBatch;
         chat.lastMemorySummaryIndex = Math.min(Number(chat.lastMemorySummaryIndex) || 0, chat.history.length);
         const others = otherChats.filter((c) => !same(c.id, chat.id)).map((c) => structuredClone(c));

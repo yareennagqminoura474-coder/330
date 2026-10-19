@@ -14844,6 +14844,52 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
     }
     return timestamps;
   }
+  function _ephoneEditableReplyMessage(message) {
+    return message && !message.isHidden && !message.sentAsCharacter && !message.walletEntry && !message.moneyReceipt &&
+      (message.role === "assistant" || message.role === "system" && message.type === "narration");
+  }
+  function _ephoneReplyEditorMessages(chat) {
+    if (!chat || !Array.isArray(chat.history)) return [];
+    if (!chat.ephoneReplyEditor) {
+      let timestamps = chat.ephoneLastReplyBatch?.timestamps;
+      if (!Array.isArray(timestamps)) {
+        const end = chat.history.findLastIndex(_ephoneEditableReplyMessage);
+        let start = end;
+        while (start >= 0 && _ephoneEditableReplyMessage(chat.history[start])) start--;
+        timestamps = end < 0 ? [] : chat.history.slice(start + 1, end + 1).map((message) => message.timestamp);
+      }
+      chat.ephoneReplyEditor = { timestamps: [...timestamps], privateMessages: [] };
+    }
+    const selected = new Set(chat.ephoneReplyEditor.timestamps.map(String));
+    return chat.history.filter((message) => selected.has(String(message.timestamp)) && _ephoneEditableReplyMessage(message));
+  }
+  function _ephoneReplyEditorInstruction(message) {
+    const item = { type: message.type || "text", name: message.senderName || message.name || "旁白" };
+    for (const key of ["content", "dialogue", "description", "amount", "note", "receiverName", "recipientName", "totalAmount", "count", "packetType",
+      "status", "claimedBy", "acceptedBy", "isReceived", "title", "source_name", "url", "meaning", "prompt", "fullPrompt", "imageUrl", "image_prompt", "question", "options"]) {
+      if (message[key] !== undefined) item[key] = message[key];
+    }
+    if (message.quote) { item.type = "quote_reply"; item.target_timestamp = message.quote.timestamp; item.reply_content = message.content; }
+    if (item.type === "sticker") item.url = message.content;
+    if (item.type === "ai_image") { item.description = message.description || message.content; if (message.imagePrompt) item.image_prompt = message.imagePrompt; }
+    return item;
+  }
+  function _ephoneSetReplyEditorCache(chat) {
+    const messages = _ephoneReplyEditorMessages(chat);
+    if (String(_0x5ea3c1.activeChatId) === String(chat?.id)) {
+      lastResponseTimestamps = messages.map((message) => message.timestamp);
+      lastRawAiResponse = messages.length ? JSON.stringify(messages.map(_ephoneReplyEditorInstruction)) : "";
+      if (typeof lastPrivateMessagesSent !== "undefined") lastPrivateMessagesSent = [...(chat.ephoneReplyEditor?.privateMessages || [])];
+    }
+    return messages;
+  }
+  function _ephoneReplaceEditedReplyMessage(chat, timestamp, replacements) {
+    const replace = (timestamps) => timestamps.flatMap((value) => String(value) === String(timestamp) ? replacements.map((message) => message.timestamp) : [value]);
+    chat.ephoneReplyEditor.timestamps = replace(chat.ephoneReplyEditor.timestamps);
+    if (Array.isArray(chat.ephoneLastReplyBatch?.timestamps)) chat.ephoneLastReplyBatch.timestamps = replace(chat.ephoneLastReplyBatch.timestamps);
+    _ephoneSetReplyEditorCache(chat);
+    _ephoneSyncRerollButtons(chat);
+  }
   function _ephoneRememberReplyBatch(chat, kind) {
     if (!chat || !Array.isArray(chat.history)) return;
     const historyTimestamps = new Set(chat.history
@@ -14854,6 +14900,10 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
       historyTimestamps.has(String(timestamp)),
     );
     if (timestamps.length) chat.ephoneLastReplyBatch = { kind, timestamps };
+    const editable = new Set(lastResponseTimestamps.map(String));
+    const editorTimestamps = chat.history.filter((message) => editable.has(String(message.timestamp)) && _ephoneEditableReplyMessage(message)).map((message) => message.timestamp);
+    if (editorTimestamps.length) chat.ephoneReplyEditor = { timestamps: editorTimestamps,
+      privateMessages: typeof lastPrivateMessagesSent === "undefined" ? [] : lastPrivateMessagesSent.map((message) => ({ ...message })) };
     _ephoneSyncRerollButtons(chat);
   }
   function _ephoneSyncRerollButtons(chat) {
@@ -17663,8 +17713,7 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
     if (chat) Object.assign(chat, result.chat);
     window.ephoneTimeMachine?.adoptCommittedClock(_0x24f906, result.clock, result.chat.id);
     if (String(_0x5ea3c1.activeChatId) === String(result.chat.id)) {
-      const kept = new Set(result.chat.history.map((m) => m.timestamp));
-      lastResponseTimestamps = lastResponseTimestamps.filter((timestamp) => kept.has(timestamp));
+      _ephoneSetReplyEditorCache(chat || result.chat);
     }
     try { await window.EPhoneMarketAdapter?.onPaid({ balance: result.balance }); }
     catch (error) { console.warn("聊天与余额已回退，钱包界面稍后刷新", error); }
@@ -27609,6 +27658,7 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
         (_0x4725cf) => _0x4725cf[_0x47418a(0x18df)] === _0x433b6a,
       );
     if (_0x541449 === -0x1) return;
+    _ephoneReplyEditorMessages(_0x583283);
     const _0x5b0a4e = _0x583283[_0x47418a(0x8e6)][_0x541449];
     let _0x36c6ec = [];
     const _0x1a5cec =
@@ -27625,6 +27675,9 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
           senderName: _0x5b0a4e[_0x47418a(0xcac)],
           timestamp: _0x5b0a4e[_0x47418a(0x18df)],
           isHidden: _0x5b0a4e[_0x47418a(0x7ca)],
+          vts: _0x5b0a4e.vts,
+          sentAsCharacter: _0x5b0a4e.sentAsCharacter,
+          ephoneSummaryMessageId: _0x36c6ec.length ? undefined : _0x5b0a4e.ephoneSummaryMessageId,
         };
       switch (_0x15d1ba[_0x47418a(0x1140)]) {
         case _0x47418a(0x352):
@@ -27810,15 +27863,9 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
       0x1,
       ..._0x36c6ec,
     );
-    let _0x42a681 = _0x433b6a;
-    for (
-      let _0x8a1350 = _0x541449;
-      _0x8a1350 < _0x583283[_0x47418a(0x8e6)][_0x47418a(0xa5d)];
-      _0x8a1350++
-    ) {
-      ((_0x583283[_0x47418a(0x8e6)][_0x8a1350][_0x47418a(0x18df)] = _0x42a681),
-        _0x42a681++);
-    }
+    let _ephoneNextEditedTimestamp = _0x583283.history.reduce((maximum, message) => Math.max(maximum, Number(message.timestamp) || 0), Date.now()) + 1;
+    _0x36c6ec.forEach((message, index) => { message.timestamp = index ? _ephoneNextEditedTimestamp++ : _0x433b6a; });
+    _ephoneReplaceEditedReplyMessage(_0x583283, _0x433b6a, _0x36c6ec);
     (await _0x24f906[_0x47418a(0x1255)][_0x47418a(0x114d)](_0x583283),
       document["getElementById"](_0x47418a(0x194f))[_0x47418a(0xd57)][
         _0x47418a(0x1aa6)
@@ -33348,23 +33395,30 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
     }
     _0x238abb = requestAnimationFrame(_0x3007d1);
   }
+  let _ephoneReplyEditorBinding = null;
   function _0xe3e52() {
     const _0xc3cd1 = _0x3ce505;
-    if (!lastRawAiResponse) {
+    if (_0xephoneSpectatorGenerating || _0xephoneGenerationController) { alert("请先停止回复或等待本轮完成，再打开导演剪辑室。"); return; }
+    const _ephoneEditorChat = _0x5ea3c1.chats[_0x5ea3c1.activeChatId];
+    const _ephoneEditorMessages = _ephoneSetReplyEditorCache(_ephoneEditorChat);
+    if (!_ephoneEditorMessages.length) {
       alert(_0xc3cd1(0x712));
       return;
     }
     const _0x594efc = document["getElementById"](_0xc3cd1(0x342)),
       _0x10d529 = document[_0xc3cd1(0x1023)](_0xc3cd1(0x575));
     _0x10d529[_0xc3cd1(0x1bf6)] = "";
-    const _0x5ba199 = _0x297b4d(lastRawAiResponse);
+    const _0x5ba199 = _ephoneEditorMessages.map(_ephoneReplyEditorInstruction);
+    _ephoneReplyEditorBinding = { chatId: String(_ephoneEditorChat.id), database: _0x24f906.chats.db.name,
+      signature: JSON.stringify(_0x5ba199), sources: new Map(_ephoneEditorMessages.map((message) => [String(message.timestamp), structuredClone(message)])) };
     if (_0x5ba199 && _0x5ba199[_0xc3cd1(0xa5d)] > 0x0)
-      _0x5ba199[_0xc3cd1(0x9bb)]((_0x538322) => {
+      _0x5ba199[_0xc3cd1(0x9bb)]((_0x538322, _ephoneIndex) => {
         const _0x13f27c = _0xc3cd1;
         if (typeof _0x538322 === _0x13f27c(0x61a) && _0x538322 !== null)
           try {
             const _0x27267d = JSON[_0x13f27c(0x1baf)](_0x538322, null, 0x2),
               _0x251d88 = _0x5c3853(_0x27267d);
+            _0x251d88.dataset.ephoneSourceTimestamp = String(_ephoneEditorMessages[_ephoneIndex].timestamp);
             _0x10d529[_0x13f27c(0x3fe)](_0x251d88);
           } catch (_0x1dfb89) {
             console[_0x13f27c(0x110f)](_0x13f27c(0x1427), _0x538322, _0x1dfb89);
@@ -33409,7 +33463,7 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
     return (
       (_0x40ca76[_0x1d5ac1(0x1bf6)] =
         _0x1d5ac1(0x6aa) +
-        _0x21f1e7 +
+        _0x21f1e7.replace(/&/g, "&amp;").replace(/</g, "&lt;") +
         "</textarea>\x0a\x20\x20\x20\x20\x20\x20\x20\x20<div\x20class=\x22format-helpers\x22>\x0a\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20<button\x20class=\x22format-btn\x22\x20data-template=\x27" +
         JSON[_0x1d5ac1(0x1baf)](_0x56e5bf[_0x1d5ac1(0x352)]) +
         _0x1d5ac1(0xc8a) +
@@ -33462,42 +33516,33 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
     );
   }
   async function _0x1449be() {
+    const _ephoneEditorChat = _0x5ea3c1.chats[_0x5ea3c1.activeChatId], _ephoneBinding = _ephoneReplyEditorBinding;
+    if (!_ephoneEditorChat || !_ephoneBinding || _ephoneBinding.chatId !== String(_ephoneEditorChat.id) || _ephoneBinding.database !== _0x24f906.chats.db.name ||
+      _ephoneBinding.signature !== JSON.stringify(_ephoneReplyEditorMessages(_ephoneEditorChat).map(_ephoneReplyEditorInstruction))) {
+      alert("聊天内容已经变化，请重新打开导演剪辑室后修改。"); return;
+    }
+    const _ephoneEditorRows = [...document.querySelectorAll("#ai-response-editor-container textarea")].filter((input) => input.value.trim());
+    let _ephoneEditorObjects;
+    try {
+      _ephoneEditorObjects = _ephoneEditorRows.map((input) => {
+        const item = JSON.parse(input.value);
+        if (!item || typeof item !== "object" || !item.type) throw new Error();
+        return item;
+      });
+    } catch { alert("有一段回复格式不完整，请修正后再应用。当前聊天尚未修改。"); return; }
+    if (JSON.stringify(_ephoneEditorObjects) === _ephoneBinding.signature) {
+      document.getElementById("ai-response-editor-modal").classList.remove("visible"); return;
+    }
+    const _ephoneEditorSources = new Map(_ephoneEditorObjects.map((item, index) => [item,
+      _ephoneBinding.sources.get(_ephoneEditorRows[index].closest("[data-ephone-source-timestamp]")?.dataset.ephoneSourceTimestamp)]));
+    const _ephoneEditorOriginalIds = new Set(lastResponseTimestamps.map(String));
+    const _ephoneEditorInsertAt = _ephoneEditorChat.history.findIndex((message) => _ephoneEditorOriginalIds.has(String(message.timestamp)));
     const _0x23e348 = _0x3ce505,
       _0x1b1245 = new Map();
     let _0x3e14ec = null;
-    if (lastPrivateMessagesSent[_0x23e348(0xa5d)] > 0x0) {
-      console[_0x23e348(0x13f0)](
-        _0x23e348(0xf79) +
-          lastPrivateMessagesSent[_0x23e348(0xa5d)] +
-          _0x23e348(0x406),
-      );
-      const _0x4eeee8 = [...lastPrivateMessagesSent];
-      _0x3e14ec = _0x4eeee8[_0x23e348(0x1568)]();
-      const _0x50e2ce = [
-        ...new Set(
-          _0x4eeee8[_0x23e348(0xbc5)]((_0x1a87a6) => _0x1a87a6["chatId"]),
-        ),
-      ];
-      for (const _0x2e0a3b of _0x50e2ce) {
-        const _0x1d2e7f = await _0x24f906["chats"][_0x23e348(0x7eb)](_0x2e0a3b);
-        _0x1d2e7f && _0x1b1245["set"](_0x2e0a3b, _0x1d2e7f);
-      }
-      for (const _0x109012 of _0x4eeee8) {
-        const _0x3fe76d = _0x1b1245["get"](_0x109012["chatId"]);
-        _0x3fe76d &&
-          (_0x3fe76d[_0x23e348(0x8e6)] = _0x3fe76d[_0x23e348(0x8e6)][
-            _0x23e348(0x1916)
-          ](
-            (_0x1a9632) =>
-              _0x1a9632[_0x23e348(0x18df)] !== _0x109012[_0x23e348(0x18df)],
-          ));
-      }
-      (_0x1b1245[_0x23e348(0xb1e)] > 0x0 &&
-        (await _0x24f906[_0x23e348(0x1255)][_0x23e348(0x97c)](
-          Array["from"](_0x1b1245[_0x23e348(0x1568)]()),
-        )),
-        (lastPrivateMessagesSent = []));
-    }
+    // This editor projects this chat's current messages. Other chats' private
+    // messages are not editable rows and must not be undone as stale raw actions.
+    lastPrivateMessagesSent = [];
     const _0x3d176c = _0x5ea3c1["chats"][_0x5ea3c1[_0x23e348(0x1aba)]];
     if (!_0x3d176c) return;
     const _0x581070 = document[_0x23e348(0x1023)](_0x23e348(0x575)),
@@ -33506,10 +33551,7 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
         [_0x23e348(0xbc5)]((_0x1c7517) =>
           _0x1c7517[_0x23e348(0x16b0)][_0x23e348(0x1833)](),
         )
-        [_0x23e348(0x1916)](Boolean),
-      _0x5e9ea5 = _0x3d176c["history"]["filter"]((_0x3c3a5b) =>
-        lastResponseTimestamps[_0x23e348(0x1507)](_0x3c3a5b[_0x23e348(0x18df)]),
-      );
+        [_0x23e348(0x1916)](Boolean);
     _0x3d176c[_0x23e348(0x8e6)] = _0x3d176c[_0x23e348(0x8e6)][
       _0x23e348(0x1916)
     ](
@@ -33517,6 +33559,8 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
         !lastResponseTimestamps[_0x23e348(0x1507)](_0x104516["timestamp"]),
     );
     if (_0x1e5b49[_0x23e348(0xa5d)] === 0x0) {
+      _0x3d176c.ephoneReplyEditor = { timestamps: [], privateMessages: [] };
+      delete _0x3d176c.ephoneLastReplyBatch;
       (await _0x24f906[_0x23e348(0x1255)]["put"](_0x3d176c),
         _0x57e676(_0x5ea3c1[_0x23e348(0x1aba)]),
         _0x4bb316(),
@@ -33527,21 +33571,9 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
         (lastResponseTimestamps = []));
       return;
     }
-    let _0x58667f = [];
-    for (const _0x3b17e4 of _0x1e5b49) {
-      try {
-        const _0x511573 = JSON[_0x23e348(0x1698)](_0x3b17e4);
-        _0x58667f[_0x23e348(0x3e6)](_0x511573);
-      } catch (_0x59212a) {
-        console["warn"](_0x23e348(0x1e3), _0x3b17e4);
-      }
-    }
-    const _0x3b05e9 = _0x5e9ea5[_0x23e348(0x1916)](
-      (_0x7c9ad5) => _0x7c9ad5[_0x23e348(0x1140)] === _0x23e348(0x200),
-    );
-    let _0x5d691a = 0x0,
-      _0x3f6180 = [],
-      _0x18284c = Date[_0x23e348(0x902)]();
+    const _0x58667f = _ephoneEditorObjects;
+    let _0x3f6180 = [],
+      _0x18284c = [..._0x3d176c.history, ..._ephoneBinding.sources.values()].reduce((maximum, message) => Math.max(maximum, Number(message.timestamp) || 0), Date.now()) + 1;
     const _0x1bccb3 = new Map(),
       _0x1f4da2 = new Map();
     for (const _0x11da09 of _0x58667f) {
@@ -33553,11 +33585,19 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
         console[_0x23e348(0x65c)](_0x23e348(0x1038), _0x11da09);
         continue;
       }
+      const _ephoneOriginalMessage = _ephoneEditorSources.get(_0x11da09);
+      if (_ephoneOriginalMessage && JSON.stringify(_0x11da09) === JSON.stringify(_ephoneReplyEditorInstruction(_ephoneOriginalMessage))) {
+        _0x3d176c.history.push(structuredClone(_ephoneOriginalMessage));
+        _0x3f6180.push(_ephoneOriginalMessage.timestamp);
+        continue;
+      }
       let _0x27bc55 = null;
       const _0x33cb92 = {
         role: "assistant",
         senderName: _0x11da09[_0x23e348(0xeda)] || _0x3d176c[_0x23e348(0x1282)],
-        timestamp: _0x18284c++,
+        timestamp: _ephoneOriginalMessage?.timestamp ?? _0x18284c++,
+        vts: _ephoneOriginalMessage?.vts ?? _ephoneBinding.sources.values().next().value?.vts ?? window.ephoneTimeMachine?.nowMs(_0x3d176c.id),
+        ephoneSummaryMessageId: _ephoneOriginalMessage?.ephoneSummaryMessageId,
       };
       switch (_0x11da09["type"]) {
         case "narration":
@@ -33889,8 +33929,7 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
           const _0x19e5ae = _0x11da09[_0x23e348(0xecf)];
           let _0x56c8f8 = null,
             _0xa30d21 = null;
-          const _0x2ef546 = _0x3b05e9[_0x5d691a];
-          _0x5d691a++;
+          const _0x2ef546 = _ephoneOriginalMessage?.type === _0x23e348(0x200) ? _ephoneOriginalMessage : null;
           let _0x541d4c = ![];
           if (_0x2ef546) {
             const _0x1dcd8e = _0x2ef546[_0x23e348(0xecf)];
@@ -34099,6 +34138,12 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
         (_0x3d176c[_0x23e348(0x8e6)][_0x23e348(0x3e6)](_0x27bc55),
         _0x3f6180["push"](_0x27bc55[_0x23e348(0x18df)]));
     }
+    const _ephoneNewEditorIds = new Set(_0x3f6180.map(String));
+    const _ephoneEditedMessages = _0x3d176c.history.filter((message) => _ephoneNewEditorIds.has(String(message.timestamp)));
+    _0x3d176c.history = _0x3d176c.history.filter((message) => !_ephoneNewEditorIds.has(String(message.timestamp)));
+    _0x3d176c.history.splice(Math.max(0, _ephoneEditorInsertAt), 0, ..._ephoneEditedMessages);
+    lastResponseTimestamps = _0x3f6180;
+    _ephoneRememberReplyBatch(_0x3d176c, _0x3d176c.isSpectatorGroup ? "spectator" : "standard");
     (_0x1f4da2["size"] > 0x0 &&
       (await _0x24f906[_0x23e348(0x1255)]["bulkPut"](
         Array[_0x23e348(0x24d)](_0x1f4da2[_0x23e348(0x1568)]()),
@@ -34113,7 +34158,7 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
       document[_0x23e348(0x1023)](_0x23e348(0x342))["classList"][
         _0x23e348(0x1aa6)
       ](_0x23e348(0x2fb)),
-      (lastRawAiResponse = _0x1e5b49["join"]("\x0a\x0a")),
+      _ephoneSetReplyEditorCache(_0x3d176c),
       (lastResponseTimestamps = _0x3f6180),
       await _0x1e5953("导演模式", _0x23e348(0x1717)));
   }
