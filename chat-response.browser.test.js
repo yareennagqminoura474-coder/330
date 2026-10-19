@@ -73,23 +73,29 @@ const { chromium } = require("playwright-core");
     for (const id of ["reply-person", "reply-standard", "reply-watch"]) {
       await openChat(id); await page.evaluate((time) => window.ephoneTimeMachine.jumpTo(time, "frozen"), morning);
       const countBefore = await page.evaluate(async (id) => (await window.db.chats.get(id)).history.length, id);
-      const historyBefore = await page.evaluate(async (id) => (await window.db.chats.get(id)).history, id);
-      const requests = await generate(id, [openai(json([header]) + ', {"type":"transfer","amount":999')], "未自动重试");
+      const long = "这段已经生成的正文必须全部显示，不因长度或格式被丢弃。".repeat(250);
+      const tail = "最后已经收到的尾句也完整保留。";
+      const partial = json([header, reply(long)]).slice(0, -1) + ',{"type":"text","name":"林","content":"' + tail;
+      const requests = await generate(id, [openai(partial, "length")]);
       assert.equal(requests.length, 1, id);
-      assert.deepEqual(await page.evaluate(async (id) => (await window.db.chats.get(id)).history, id), historyBefore);
-      assert.equal(await page.evaluate(() => window.ephoneTimeMachine.nowMs()), morning);
-      assert.equal(await page.evaluate(async () => (await window.db.spaceClock.get("main"))?.holdNextReply), true);
-      const manualRequests = await generate(id, [openai(json([header, reply("手动再次请求的完整正文。")]))]);
-      assert.equal(manualRequests.length, 1);
-      assert.ok(!JSON.stringify(manualRequests).includes("本轮回复完整性修复"));
+      assert.equal(requests[0].max_tokens, undefined); assert.equal(requests[0].max_completion_tokens, undefined);
       const added = await page.evaluate(async ({ id, countBefore }) => (await window.db.chats.get(id)).history.slice(countBefore), { id, countBefore });
+      assert.equal(added.filter((item) => item.content === long).length, 1, id + ": keep all thousands of received characters");
+      assert.equal(added.filter((item) => item.content === tail).length, 1, id + ": keep the unclosed final text string");
       assert.equal(added.filter((item) => item.type === "narration" && /2026年3月5日/.test(item.content)).length, 1, id + ": no duplicate time header");
-      assert.equal(added.filter((item) => item.content === "手动再次请求的完整正文。").length, 1);
-      assert.ok(added.every((item) => item.type !== "transfer"));
       assert.equal(await page.evaluate(() => window.ephoneTimeMachine.nowMs()), morning);
+      const headerOnly = await generate(id, [openai(json([header]) + ', {"type":"transfer","amount":999')]);
+      assert.equal(headerOnly.length, 1, "a time-only response is displayed, without executing an incomplete payment");
+      assert.equal(await page.evaluate(async (id) => (await window.db.chats.get(id)).history.some((item) => item.type === "transfer"), id), false);
+      await generate(id, [openai("无需角色元数据也要显示的原始正文。")]);
+      assert.ok(await page.evaluate(async (id) => (await window.db.chats.get(id)).history.some((item) => item.content === "无需角色元数据也要显示的原始正文。"), id));
+      const combinedBody = "补齐时间标题之后，这里的剧情不能被一起删除。";
+      await generate(id, [openai(json([{ ...header, content: header.content + "\n\n" + combinedBody }]))]);
+      assert.ok(await page.evaluate(async ({ id, content }) => (await window.db.chats.get(id)).history.some((item) => item.content === content), { id, content: combinedBody }));
     }
     for (const id of ["reply-person", "reply-standard", "reply-watch"]) {
-      for (const [fixture, message] of [[{ httpStatus: 500 }, "500"], [{ rawHttp: '{"choices":[' }, "接口响应数据未完整传输"], [{ choices: [{ message: { refusal: "拒绝" } }] }, "拒绝"]]) {
+      for (const [fixture, message] of [[{ httpStatus: 500 }, "500"], [{ rawHttp: '{"choices":[' }, "接口响应数据未完整传输"],
+        [{ choices: [{ message: { content: null, reasoning_content: "not a final reply" } }], usage: { completion_tokens: 5000, completion_tokens_details: { reasoning_tokens: 5000 } } }, "最终正文确实为空"]]) {
         const before = await page.evaluate(async (id) => (await window.db.chats.get(id)).history, id);
         const requests = await generate(id, [fixture], message);
         assert.equal(requests.length, 1, id + ": failed API calls do not trigger retries");
@@ -101,10 +107,14 @@ const { chromium } = require("playwright-core");
     assert.ok(await page.evaluate(async () => (await window.db.chats.get("reply-watch")).history.some((item) => item.content === "第二个格式块也保留。")));
     await generate("reply-standard", [openai([{ type: "text", text: json([reply("数组格式的回复也保留。")]) }])]);
     assert.ok(await page.evaluate(async () => (await window.db.chats.get("reply-standard")).history.some((item) => item.content === "数组格式的回复也保留。")));
-    // An incomplete response must never silently create a second paid request.
+    await generate("reply-watch", [{ data: openai(json([reply("包装在data里面的正文也能显示。")])) }]);
+    assert.ok(await page.evaluate(async () => (await window.db.chats.get("reply-watch")).history.some((item) => item.content === "包装在data里面的正文也能显示。")));
+    await generate("reply-watch", [openai([reply("直接返回对象数组的第三方正文也能显示。")])]);
+    assert.ok(await page.evaluate(async () => (await window.db.chats.get("reply-watch")).history.some((item) => item.content === "直接返回对象数组的第三方正文也能显示。")));
+    // A genuinely empty response still cannot create a second paid request.
     await openChat("reply-watch"); await page.evaluate((time) => window.ephoneTimeMachine.jumpTo(time, "frozen"), morning);
     const historyBeforeFailure = await page.evaluate(async () => (await window.db.chats.get("reply-watch")).history);
-    fixtures = [openai(json([header]))]; const beforeFailure = calls.length;
+    fixtures = [openai("")]; const beforeFailure = calls.length;
     await page.locator("#spectator-propel-btn").click();
     await page.waitForFunction(() => { const modal = document.getElementById("custom-modal-overlay"); return modal?.classList.contains("visible") && modal.textContent.includes("未自动重试"); });
     assert.equal(calls.length - beforeFailure, 1);
@@ -123,7 +133,7 @@ const { chromium } = require("playwright-core");
     await heldRoute.fulfill({ contentType: "application/json", body: JSON.stringify(openai(json([reply("停止后不应出现。")])) ) }).catch(() => {});
     assert.deepEqual(await page.evaluate(async () => (await window.db.chats.get("reply-watch")).history), historyBeforeFailure);
     holdRequest = false;
-    // Native Gemini follows the same one-request rule even on MAX_TOKENS.
+    // Native Gemini preserves already-received text even on MAX_TOKENS.
     await page.evaluate(async () => {
       const config = await window.db.apiConfig.get("main");
       await window.db.apiConfig.put({ ...config, proxyUrl: "https://generativelanguage.googleapis.com/v1beta/models", model: "test-gemini" });
@@ -131,16 +141,17 @@ const { chromium } = require("playwright-core");
     await page.reload({ waitUntil: "domcontentloaded" }); await page.waitForFunction(() => window.ephoneAppReady);
     const gemini = (text, reason = "STOP") => ({ candidates: [{ content: { parts: [{ thought: true, text: "hidden thoughts" }, { text: text.slice(0, 20) }, { text: text.slice(20) }] }, finishReason: reason }] });
     for (const id of ["reply-person", "reply-standard", "reply-watch"]) {
-      const historyBefore = await page.evaluate(async (id) => (await window.db.chats.get(id)).history, id);
-      const requests = await generate(id, [gemini(json([header]), "MAX_TOKENS")], "未自动重试");
+      const content = "原生接口触及服务商长度上限，仍保留已收到的正文。";
+      const requests = await generate(id, [gemini(json([header, reply(content)]).slice(0, -1), "MAX_TOKENS")]);
       assert.equal(requests.length, 1); assert.ok(requests[0].contents);
-      assert.deepEqual(await page.evaluate(async (id) => (await window.db.chats.get(id)).history, id), historyBefore);
+      assert.equal(requests[0].generationConfig?.maxOutputTokens, undefined);
+      assert.ok(await page.evaluate(async ({ id, content }) => (await window.db.chats.get(id)).history.some((item) => item.content === content), { id, content }));
       const manualRequests = await generate(id, [gemini(json([header, reply("原生接口手动请求的正文。")]))]);
       assert.equal(manualRequests.length, 1);
       assert.ok(!JSON.stringify(manualRequests).includes("本轮回复完整性修复"));
       assert.ok(await page.evaluate(async (id) => (await window.db.chats.get(id)).history.some((item) => item.content === "原生接口手动请求的正文。"), id));
     }
     assert.deepEqual(errors, []);
-    console.log("PASS: all three mobile chat modes on compatible/native Gemini routes make one request only; incomplete replies roll back with no retry, manual retry is separate, double press stops, multipart/fences/content arrays remain intact");
+    console.log("PASS: all three chat modes preserve long/length-marked and incomplete-JSON text, unnamed replies and narration after time headers; no output caps or extra requests, unfinished payments stay inert, real empty/errors/cancellation still work");
   } finally { await browser.close(); await new Promise((resolve) => server.close(resolve)); }
 })().catch((error) => { console.error(error); process.exitCode = 1; });

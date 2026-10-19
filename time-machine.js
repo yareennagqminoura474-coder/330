@@ -747,9 +747,14 @@
     );
     let location = inferLocation(items);
     if (existingIndex >= 0) {
-      const match = String(items[existingIndex].content).match(/地点[：:]\s*(.+)$/);
+      const item = items[existingIndex], content = String(item.content), prefix = content.match(headerPattern)[0];
+      const boundary = content.slice(prefix.length).search(/[\r\n。！？!?；;]/);
+      const end = boundary < 0 ? content.length : prefix.length + boundary;
+      const match = content.slice(0, end).match(/地点[：:]\s*(.+)$/);
       if (match?.[1] && !match[1].includes("<")) location = match[1].trim();
-      items.splice(existingIndex, 1);
+      const body = content.slice(end).replace(/^[\r\n。！？!?；;\s]+/, "");
+      if (body) items[existingIndex] = { ...item, content: body, isReplyHeader: false };
+      else items.splice(existingIndex, 1);
     }
     const header = {
       type: "narration",

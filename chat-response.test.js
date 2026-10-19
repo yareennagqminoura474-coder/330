@@ -11,6 +11,12 @@ const gemini = (parts, reason = "STOP") => ({ candidates: [{ content: { parts },
   assert.equal(response.extractText(openai([{ type: "text", text: raw.slice(0, 15) }, { type: "reasoning", text: "hidden" }, { type: "text", text: raw.slice(15) }])), raw);
   assert.equal(response.extractText({ choices: [{ message: { content: "first" } }, { message: { content: "alternative" } }] }), "first");
   assert.equal(response.extractText(gemini([{ thought: true, text: "hidden" }])), "");
+  assert.equal(response.extractText({ data: openai(raw) }), raw);
+  assert.equal(response.extractText({ choices: [{ text: raw }] }), raw);
+  assert.equal(response.extractText({ output: [{ type: "reasoning", content: [{ text: "hidden" }] }, { type: "message", content: [{ type: "output_text", text: raw }] }] }), raw);
+  assert.equal(response.extractText({ output: { invalid: true } }), null);
+  assert.equal(response.extractText(openai([header, body])), raw);
+  assert.equal(response.extractText(openai({ messages: [body] })), JSON.stringify({ messages: [body] }));
   assert.deepEqual(response.inspect(raw).items, [header, body]);
   const nested = { type: "quote_reply", name: "林", reply_content: "完整", data: { target: { content: "包含 { 嵌套 }" } } };
   assert.deepEqual(response.inspect(JSON.stringify([nested])).items, [nested]);
@@ -26,21 +32,34 @@ const gemini = (parts, reason = "STOP") => ({ candidates: [{ content: { parts },
   assert.equal(response.hasBody([{ type: "text", content: "好。" }]), true);
   assert.equal(response.hasBody([{ type: "accept_transfer", for_timestamp: 1 }]), true);
   assert.equal(response.hasBody([body], () => false), false);
-  for (const first of [openai(JSON.stringify([header])), openai(raw.slice(0, -1)), openai(raw, "length"), gemini([{ text: raw }], "MAX_TOKENS"),
-    { candidates: [{ finishReason: "MAX_TOKENS" }] }, openai(null, "length"), openai(""), openai("[]")]) {
+  for (const first of [openai(JSON.stringify([header])), openai(raw.slice(0, -1)), openai(raw, "length"), gemini([{ text: raw }], "MAX_TOKENS")]) {
     const calls = [];
-    await assert.rejects(response.complete(async (instruction) => { calls.push(instruction); return first; }), /仅调用一次，未自动重试/);
+    const result = await response.complete(async (instruction) => { calls.push(instruction); return first; });
+    assert.ok(result.items.length > 0, "received text must not be rejected for length, header-only or missing closing bracket");
     assert.equal(calls.length, 1); assert.equal(calls[0], undefined, "no repair prompt or paid replacement request");
   }
   let calls = 0;
-  await assert.rejects(response.complete(async () => { calls++; return openai(JSON.stringify([header])); }), /仅调用一次，未自动重试/);
-  assert.equal(calls, 1);
-  calls = 0;
-  for (const blocked of [openai(raw, "content_filter"), gemini([{ text: raw }], "SAFETY"), { promptFeedback: { blockReason: "OTHER" } }, { choices: [{ message: { refusal: "拒绝" } }] }]) {
+  for (const empty of [{ candidates: [{ finishReason: "MAX_TOKENS" }] }, openai(null, "length"), openai(""), openai("[]"),
+    openai(JSON.stringify([{ type: "thought_chain", content: "hidden" }])),
+    { choices: [{ message: { content: null, reasoning_content: "hidden thinking" } }], usage: { completion_tokens: 5000, completion_tokens_details: { reasoning_tokens: 5000 } } }]) {
     const before = calls;
-    await assert.rejects(response.complete(async () => { calls++; return blocked; }), /拦截原因|拒绝/);
-    assert.equal(calls, before + 1, "Blocked replies must never trigger recovery");
+    await assert.rejects(response.complete(async () => { calls++; return empty; }), /最终正文确实为空.*仅调用一次/);
+    assert.equal(calls, before + 1);
   }
+  await assert.rejects(response.complete(async () => ({ choices: [{ message: { content: null } }], usage: { completion_tokens: 5000, completion_tokens_details: { reasoning_tokens: 5000 } } })), /输出 5000 tokens，其中思考 5000 tokens/);
+  for (const blocked of [openai("", "content_filter"), gemini([], "SAFETY"), { promptFeedback: { blockReason: "OTHER" } }]) await assert.rejects(response.complete(async () => blocked), /拦截原因/);
+  for (const content of [openai(raw, "content_filter"), gemini([{ text: raw }], "SAFETY")]) assert.deepEqual((await response.complete(async () => content)).items, [header, body], "finish metadata cannot discard text actually returned by the provider");
+  assert.equal((await response.complete(async () => ({ choices: [{ message: { refusal: "拒绝" } }] }))).items[0].content, "拒绝", "a visible provider refusal is a reply, not an empty result");
+  const broken = JSON.stringify([header, body]).slice(0, -1) + ',{"type":"text","name":"林","content":"尾句也要保留\\n收到多少显示多少';
+  const recovered = await response.complete(async () => openai(broken, "length"));
+  assert.equal(recovered.raw, broken); assert.deepEqual(recovered.items, [header, body, { type: "text", name: "林", content: "尾句也要保留\n收到多少显示多少" }]);
+  assert.deepEqual(response.recover('{"messages":' + broken), recovered.items, "an incomplete wrapper preserves its complete children and text tail");
+  assert.deepEqual(response.recover(JSON.stringify([body]).slice(0, -1) + ',{"type":"transfer","amount":999'), [body], "unfinished operational events cannot become executable payments");
+  assert.deepEqual(response.recover('[{"type":"text","content":"第一行\n第二行"},]'), [{ type: "text", content: "第一行\n第二行" }]);
+  assert.deepEqual(response.recover('[{"t":"text","n":"林","c":"字段兼容"}]'), [{ t: "text", n: "林", c: "字段兼容", type: "text", name: "林", content: "字段兼容" }]);
+  assert.equal(response.recover('[{"type":"text","name":"林","dialogue":"兼容台词字段"}]')[0].content, "兼容台词字段");
+  const unnamed = await response.complete(async () => openai("林轻轻放下了手里的书。"), { isRenderable: (item) => item.type === "narration" });
+  assert.equal(unnamed.items[0].type, "narration"); assert.equal(unnamed.items[0].content, "林轻轻放下了手里的书。");
   calls = 0;
   await assert.rejects(response.complete(async () => { calls++; throw new TypeError("Failed to fetch"); }), /Failed to fetch/);
   assert.equal(calls, 1, "Do not retry arbitrary network failures");
@@ -58,5 +77,7 @@ const gemini = (parts, reason = "STOP") => ({ candidates: [{ content: { parts },
     const result = await response.complete(async () => { requests++; return openai(JSON.stringify(many)); });
     assert.equal(result.items.length, count); assert.equal(requests, 1);
   }
-  console.log("PASS: single-request replies, no automatic retry/repair/fallback, multipart/nested JSON, atomic incomplete failure, length/empty/envelope/safety/network handling, short/long replies and cancellation");
+  const long = "完整长回复，不得裁剪。".repeat(12000), longResult = await response.complete(async () => openai(JSON.stringify([{ ...body, content: long }]), "length"));
+  assert.equal(longResult.items[0].content, long);
+  console.log("PASS: one-request replies preserve long/multipart/length-marked text, missing JSON closure and partial text tails; incomplete actions stay inert; visible refusal, true empty/reasoning, network failures and cancellation");
 })().catch((error) => { console.error(error); process.exitCode = 1; });

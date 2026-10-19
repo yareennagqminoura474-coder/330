@@ -44,6 +44,13 @@ vm.runInNewContext(fs.readFileSync("time-machine.js", "utf8"), {
   assert.match(reply[0].content, /2027年1月7日，23点59分，星期四，地点：学校/);
   assert.match(reply[1].content, /2028年2月29日，星期二/);
   assert.match(reply[2].content, /2027年2月30日，星期一/);
+  for (const separator of ["\n\n", "。", "；"]) {
+    const body = "放下手中的书后，角色继续说完了整段话。".repeat(100);
+    const combined = clock.ensureReplyHeader([{ type: "narration", content: "2027年1月7日，23点59分，星期三，地点：学校" + separator + body }]);
+    assert.equal(combined.filter((item) => item.isReplyHeader).length, 1);
+    assert.match(combined[0].content, /地点：学校$/);
+    assert.equal(combined[1].content, body, "replacing a time header must preserve narration after the header");
+  }
   assert.match(clock.getPromptRule(), /星期必须按该日期的日历计算/);
 
   const marchFifth = new Date(2026, 2, 5, 12).getTime();

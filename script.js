@@ -17985,12 +17985,12 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
       _ephoneSpectatorController.signal.throwIfAborted();
       lastRawAiResponse = _0x112a1d;
       const _0x56fb86 = window.ephoneTimeMachine?.ensureReplyHeader
-        ? window.ephoneTimeMachine.ensureReplyHeader(_0x297b4d(_0x112a1d), {
+        ? window.ephoneTimeMachine.ensureReplyHeader(_ephoneSpectatorComplete.items, {
             advancedMinutes: _ephoneSpectatorTimePreparation?.minutes || 0,
             chatId: _0x4203ee,
             replyTimeMs: _ephoneSpectatorReplyTimeMs,
           })
-        : _0x297b4d(_0x112a1d);
+        : _ephoneSpectatorComplete.items;
       const _ephoneSettled = await window.EPhoneCharacterWallet?.sync(_ephoneSpectatorReplyTimeMs);
       if (_ephoneSettled?.entries.length) _ephoneSpectatorTimeCommitted = true;
       let _0x47fd25 = Date["now"]();
@@ -20723,12 +20723,12 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
           _0x25f1e5(0x1916)
         ]((_0x15fb5f) => !_0x15fb5f[_0x25f1e5(0x1563)])));
       const _0x899a3d = window.ephoneTimeMachine?.ensureReplyHeader
-        ? window.ephoneTimeMachine.ensureReplyHeader(_0x297b4d(_0x5eb79b), {
+        ? window.ephoneTimeMachine.ensureReplyHeader(_ephoneCompleteReply.items, {
             advancedMinutes: _0xephoneTimePreparation?.minutes || 0,
             chatId: _0x973a29,
             replyTimeMs: _ephoneReplyTimeMs,
           })
-        : _0x297b4d(_0x5eb79b);
+        : _ephoneCompleteReply.items;
       if (_0xephoneController.signal.aborted) {
         throw new DOMException("回复已停止", "AbortError");
       }
