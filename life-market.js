@@ -54,7 +54,7 @@
     const grid = screen.querySelector(".market-products"); if (!grid) return;
     const items = state.items.filter((item) => item.kind === tab && (category === "全部" || category === (item.department || item.category)) &&
       (selection === "全部" || selection === item.selection) && `${item.name} ${item.description} ${item.reason} ${item.category} ${item.department || ""}`.toLowerCase().includes(search.toLowerCase()));
-    grid.innerHTML = items.map((item) => `<article class="market-card"><div class="market-art">${esc(item.emoji)}</div><div class="market-card-body"><small>${esc(item.category)} · ${esc(item.merchant)}</small><h3>${esc(item.name)}</h3><p>${esc(item.description)}</p><p class="market-reason">${esc(item.reason)}</p>${item.kind === "food" ? `<small>约${item.deliveryMinutes}分钟 · 配送¥${money(item.deliveryFee)}</small>` : ""}<div class="market-price"><strong>¥${money(item.price)}</strong><button type="button" data-item="${esc(item.id)}" data-delta="1" aria-label="加入购物车：${esc(item.name)}" ${busy ? "disabled" : ""}>＋</button></div></div></article>`).join("") || '<div class="market-empty">没有匹配的内容，试试其他分类。</div>';
+    grid.innerHTML = items.map((item) => `<article class="market-card"><div class="market-art">${esc(item.emoji)}</div><div class="market-card-body"><small>${esc(item.category)} · ${esc(item.merchant)}</small><h3>${esc(item.name)}</h3><p>${esc(item.description)}</p><p class="market-reason">${esc(item.reason)}</p>${item.kind === "food" ? `<small>约${item.deliveryMinutes}分钟${item.deliveryEstimated ? "（系统估计）" : ""} · 配送¥${money(item.deliveryFee)}</small>` : ""}<div class="market-price"><strong>¥${money(item.price)}</strong><button type="button" data-item="${esc(item.id)}" data-delta="1" aria-label="加入购物车：${esc(item.name)}" ${busy ? "disabled" : ""}>＋</button></div></div></article>`).join("") || '<div class="market-empty">没有匹配的内容，试试其他分类。</div>';
   }
   function render() {
     create();
@@ -94,12 +94,18 @@
     if (controller) { controller.abort(); return; }
     if (busy || !store) return;
     busy = true; controller = new AbortController(); confirmation = false;
-    message = "正在生成整批购物和外卖…旧列表会保留到刷新成功。"; renderBusy();
+    message = "正在通过副API生成购物和外卖…旧列表会保留到刷新成功。"; renderBusy();
     try {
       const adapter = window.EPhoneMarketAdapter, snapshot = await adapter.snapshot(store, spaceId);
       balance = snapshot.walletBalance;
-      state = await store.refresh({ ...snapshot, generate: adapter.generate, formatTime: adapter.formatTime, signal: controller.signal, batchId: crypto.randomUUID() });
-      category = "全部"; selection = "全部"; search = ""; message = "购物和外卖已全部更新，购物车和订单已保留。";
+      state = await store.refresh({ ...snapshot, generate: adapter.generate, formatTime: adapter.formatTime, signal: controller.signal, batchId: crypto.randomUUID(),
+        onProgress: ({ goods, food }) => { message = `本次已生成${goods}件商品、${food}款餐饮，正在补齐缺项…不会重生成已有新品。`; renderBusy(); } });
+      const info = state.refreshInfo;
+      category = "全部"; selection = "全部"; search = "";
+      message = `购物和外卖已全部更新：${info.counts.goods}件商品、${info.counts.food}款餐饮，购物车和订单已保留。` +
+        (info.skipped.duplicates ? ` 已过滤${info.skipped.duplicates}件重复项。` : "") +
+        (info.partial ? " 本批未完全达到目标数量或品类，已保留有效新品。" : "") +
+        (info.supplementFailed ? " 补充请求未成功，没有再次自动重试。" : "");
     } catch (error) { message = error.name === "AbortError" ? "已停止刷新，保留上一次的内容。" : `刷新失败，旧内容已保留：${error.message}`; }
     finally { controller = null; busy = false; render(); }
   }

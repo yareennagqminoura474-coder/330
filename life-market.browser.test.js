@@ -13,7 +13,7 @@ const { marketBatch: batch } = require("./market-test-fixtures");
   await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
   const origin = `http://127.0.0.1:${server.address().port}`;
   const browser = await chromium.launch({ executablePath: "C:/Program Files/Google/Chrome/Application/chrome.exe", headless: true });
-  let calls = 0, failure = false, duplicate = false; const prompts = [], errors = [];
+  let calls = 0, failure = false, duplicate = false; const prompts = [], errors = [], queued = [];
   try {
     const page = await browser.newPage({ viewport: { width: 420, height: 900 }, isMobile: true, hasTouch: true, serviceWorkers: "block" });
     page.on("pageerror", (error) => errors.push(error.message));
@@ -24,6 +24,11 @@ const { marketBatch: batch } = require("./market-test-fixtures");
       if (url.startsWith("https://market-test.invalid/")) {
         calls++; const body = route.request().postDataJSON(); prompts.push(body.messages[0].content);
         assert.equal(body.model, "auxiliary-test-model", "shopping always uses the saved secondary API");
+        if (queued.length) {
+          const fixture = queued.shift();
+          if (fixture.status) return route.fulfill({ status: fixture.status, body: "isolated supplemental failure" });
+          return route.fulfill({ contentType: "application/json", body: JSON.stringify({ choices: [{ message: { content: typeof fixture.raw === "string" ? fixture.raw : JSON.stringify(fixture.raw) }, finish_reason: fixture.finishReason || "stop" }] }) });
+        }
         if (failure) return route.fulfill({ status: 503, body: "Test unavailable" });
         const catalog = batch(`批${duplicate ? 4 : calls}`);
         if (duplicate) for (const item of [...catalog.goods, ...catalog.food]) { item.name = "精选" + item.name + "家庭装500g"; item.merchant = "换名店"; }
@@ -128,6 +133,49 @@ const { marketBatch: batch } = require("./market-test-fixtures");
     assert.equal(calls, 6, "at most one repair for invalid catalog, both on auxiliary model");
     await page.locator(".market-back").click(); await page.locator("#life-market-home").click();
     assert.equal(calls, 6, "even after rejected refresh, opening must not generate or retry");
+    const tolerant = batch("兼容新批");
+    tolerant.goods[0] = batch("批4").goods[0]; // One historical duplicate, not an entirely invalid response.
+    delete tolerant.goods[1].productIdentity; delete tolerant.goods[1].reason; delete tolerant.goods[1].selection;
+    tolerant.food[0].price = "￥19.90"; delete tolerant.food[0].deliveryMinutes;
+    queued.push({ raw: tolerant }, { raw: { goods: [batch("仅补一件").goods[0]], food: [] } });
+    await page.locator("#market-refresh").click();
+    await page.waitForFunction(() => !window.EPhoneLifeMarket.isBusy());
+    assert.equal(calls, 8); assert.match(prompts.at(-1), /本次只补缺项/); assert.match(prompts.at(-1), /"goods":1,"food":0/);
+    assert.equal(await page.locator(".market-card").count(), 24);
+    assert.match(await page.locator(".market-message").innerText(), /24件商品、16款餐饮/);
+    assert.match(await page.locator(".market-message").innerText(), /已过滤1件重复项/);
+    assert.doesNotMatch(await page.locator(".market-products").innerText(), /批4物/);
+    await page.locator('[data-tab="food"]').click();
+    assert.equal(await page.locator(".market-card").count(), 16);
+    assert.match(await page.locator(".market-products").innerText(), /系统估计/);
+    const cutoff = batch("断流新批");
+    const broken = '这里是商品：```json\n{"goods":' + JSON.stringify(cutoff.goods) + ',"food":[' + JSON.stringify(cutoff.food[0]) + ',{"name":"未完成菜品","price":';
+    queued.push({ raw: broken, finishReason: "length" }, { raw: { goods: [], food: cutoff.food.slice(1) } });
+    await page.locator("#market-refresh").click(); await page.waitForFunction(() => !window.EPhoneLifeMarket.isBusy());
+    assert.equal(calls, 10); assert.match(prompts.at(-1), /"goods":0,"food":15/);
+    assert.equal(await page.locator(".market-card").count(), 16);
+    assert.doesNotMatch(await page.locator(".market-products").innerText(), /未完成菜品/);
+    const shorter = batch("较短新批"); shorter.goods = shorter.goods.slice(0, 20); shorter.food = shorter.food.slice(0, 12);
+    queued.push({ raw: shorter }, { status: 503 });
+    await page.locator("#market-refresh").click(); await page.waitForFunction(() => !window.EPhoneLifeMarket.isBusy());
+    assert.equal(calls, 12); assert.equal(await page.locator(".market-card").count(), 12);
+    assert.match(await page.locator(".market-message").innerText(), /已全部更新：20件商品、12款餐饮/);
+    assert.match(await page.locator(".market-message").innerText(), /补充请求未成功/);
+    assert.doesNotMatch(await page.locator(".market-message").innerText(), /刷新失败/);
+    assert.equal(await page.evaluate(async () => (await window.db.userWallet.get("main")).balance), 189.85);
+    assert.equal(await page.evaluate(async () => window.db.marketOrders.count()), 1);
+    await page.locator(".market-back").click(); await page.locator("#life-market-home").click();
+    assert.equal(calls, 12); assert.equal(await page.locator(".market-card").count(), 12);
+    const compact = batch("混排新批"), entries = [];
+    for (let index = 0; index < 8; index++) for (const [kind, list] of [["goods", compact.goods.slice(index * 3, index * 3 + 3)], ["food", compact.food.slice(index * 2, index * 2 + 2)]])
+      entries.push(...list.map((item) => ({ kind, name: item.name, price: item.price, department: item.department, selection: item.selection,
+        ...(kind === "food" ? { deliveryFee: 2, deliveryMinutes: 30 } : {}) })));
+    queued.push({ raw: { items: entries } });
+    await page.locator("#market-refresh").click(); await page.waitForFunction(() => !window.EPhoneLifeMarket.isBusy());
+    assert.equal(calls, 13, "compact interleaved format updates the entire catalog in one auxiliary call");
+    assert.equal(await page.locator(".market-card").count(), 16);
+    assert.match(await page.locator(".market-message").innerText(), /24件商品、16款餐饮/);
+    assert.match(await page.locator(".market-products").innerText(), /混排新批餐/);
     assert.deepEqual(errors, []);
     console.log("PASS: actual mobile app, personality/family/consumption prompt grounding, profile edits only applied on manual refresh, both lists, no history/wallet assumptions, payment/order preservation, space isolation, scrolling, zero page errors");
   } finally { await browser.close(); await new Promise((resolve) => server.close(resolve)); }

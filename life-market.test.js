@@ -81,8 +81,8 @@ const { marketBatch: batch } = require("./market-test-fixtures");
   const controller = new AbortController();
   await assert.rejects(() => store.refresh({ generate: async () => { controller.abort(); return batch("中止"); }, context, signal: controller.signal, batchId: "stop" }), { name: "AbortError" });
   assert.deepEqual(await store.load(), second);
-  assert.throws(() => core.parseBatch({ ...batch("两类同名"), food: batch("两类同名").food.map((item, i) => ({ ...item, name: i ? item.name : "两类同名物0" })) }, undefined, "bad"), /重复/);
-  assert.throws(() => core.parseBatch(batch("第一批"), first, "bad"), /重复/);
+  assert.equal(core.parseBatch({ ...batch("两类同名"), food: batch("两类同名").food.map((item, i) => ({ ...item, name: i ? item.name : "两类同名物0" })) }, undefined, "filtered").skipped.duplicates, 1);
+  assert.equal(core.parseBatch(batch("第一批"), first, "filtered").items.length, 0);
   const quote = core.quote(savedCart); assert.equal(quote.total, 32.8); // 10.15 + 20.30 + 2.35
   await upgraded.userWallet.put({ id: "main", balance: 1 });
   await assert.rejects(() => store.checkout({ orderId: "poor", expectedCart: savedCart }), /余额不足/);
