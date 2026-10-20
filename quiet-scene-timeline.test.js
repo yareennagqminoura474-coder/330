@@ -8,7 +8,8 @@ require("fake-indexeddb/auto"); const Dexie = require("dexie");
     localStorage: { getItem: () => null, setItem() {} } });
   const clock = window.ephoneTimeMachine, history = [], start = new Date(2026, 2, 5, 7, 20).getTime();
   await clock.loadSpace(db); clock.bindChat({ id: "a", settings: { currentLocation: "家" }, getMessages: () => history, applyConfig: async () => {} });
-  const build = (items, time) => clock.ensureReplyHeader(items, { chatId: "a", sceneTimeline: true, quietTimeline: true, replyTimeMs: time });
+  const buildWithOpening = (items, time) => clock.ensureReplyHeader(items, { chatId: "a", sceneTimeline: true, quietTimeline: true, replyTimeMs: time });
+  const build = (items, time) => buildWithOpening(items, time).filter((item) => !item.isReplyHeader);
   const story = [
     { type: "narration", content: "他坐在桌旁。", scene_phase: "instant", scene_elapsed_minutes: 0 },
     { type: "text", content: "早上好。" },
@@ -19,6 +20,18 @@ require("fake-indexeddb/auto"); const Dexie = require("dexie");
   ];
   await clock.jumpTo(start, "frozen");
   const firstPrep = clock.prepareReplyTime(history, { chatId: "a", sceneTimeline: true }); await firstPrep.ready;
+  const complete = buildWithOpening(story, start);
+  assert.equal(complete[0].isReplyHeader, true);
+  assert.equal(complete[0].content, clock.formatReplyHeader(start, "家"));
+  assert.equal(complete.filter((m) => m.isReplyHeader).length, 1);
+  assert.ok(!complete.some((m) => m.isSceneTimeHeader));
+  const duplicated = buildWithOpening([
+    { type: "narration", content: "2026年3月5日，07点20分，星期四，地点：家" },
+    ...story.slice(0, 2),
+    { type: "narration", content: "2026年3月5日，07点24分，星期四，地点：家。继续剧情。" },
+  ], start);
+  assert.equal(duplicated.filter((m) => /地点：/.test(m.content)).length, 1);
+  assert.ok(duplicated.some((m) => m.content === "继续剧情。"));
   const first = build(story, firstPrep.afterMs);
   assert.equal(first.length, story.length); assert.equal(first[0].vts, start);
   assert.deepEqual(Array.from(first, (m) => (m.vts - start) / 60000), [0, 0, 4, 29, 49, 49]);
@@ -52,7 +65,7 @@ require("fake-indexeddb/auto"); const Dexie = require("dexie");
   assert.equal(frozen[4].content.length, "很长的消息。".repeat(10000).length, "time handling never truncates content");
   const overnight = build([story[0], { type: "narration", content: "交谈后。", scene_elapsed_minutes: 13, scene_time_reason: "夜间交谈", scene_phase: "elapsed" }, { type: "text", content: "今天星期四。" }], new Date(2026, 2, 5, 23, 58).getTime());
   assert.equal(overnight.at(-1).content, "今天星期五。");
-  assert.equal(clock.narrationDisplayText({ isReplyHeader: true, content: "2026年3月5日，07点20分，星期四，地点：家" }), "");
+  assert.equal(clock.narrationDisplayText({ isReplyHeader: true, content: "2026年3月5日，07点20分，星期四，地点：家" }), "2026年3月5日，07点20分，星期四，地点：家");
   assert.equal(clock.narrationDisplayText({ isSceneTimeHeader: true, content: "2026年3月5日，07点20分，星期四，地点：家。不能丢失的正文。" }), "不能丢失的正文。");
   assert.throws(() => build([{ type: "narration", content: "2026年3月5日，07点20分，星期四，地点：家" }], later), /没有剧情正文/);
   assert.match(clock.getPromptRule(), /scene_elapsed_minutes/); assert.match(clock.getPromptRule(), /不按消息条数、字数/);

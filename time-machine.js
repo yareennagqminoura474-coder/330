@@ -420,7 +420,7 @@
     if (config.mode === MODES.CUSTOM) {
       const flowRule =
         config.flow === FLOWS.FROZEN
-          ? "- 当前采用“按剧情推进”：本轮从上面的最新开场时刻起算，每轮重新起算，不能套用上一轮的绝对时间。时间按场景实际经过的时长推进，不按消息条数、字数或固定间隔加时间。开场动作和台词先发生在开场时刻。\n- 在实际发生时间流逝的自然 narration 对象中加 scene_elapsed_minutes（数字，表示距上一场景真实经过的分钟数，可为小数），正数同时提供 scene_time_reason（简短说明实际耗时的活动）、scene_phase:\"elapsed\"。后续台词和操作沿用累计后的时间。不必每条填写，不要创建专门报时的对象；不要再用 scene_time 填绝对时刻。\n- 连贯对答、拿杯子、开门、坐下等瞬时动作，不应突然过去几分钟或几十分钟，可用 scene_phase:\"instant\"、scene_elapsed_minutes:0。吃饭、换衣、洗漱、等待、通勤等，要根据实际完成程度、距离和场景节奏判断，不能把动作一出现就算整个过程做完，也不能把不同人同时做的事重复累加。\n- 计划、要求、约定、回忆和未来时刻不会让当前时间立刻变化；计划用 scene_phase:\"planned\"、scene_elapsed_minutes:0。明确‘过了十分钟’就只经过十分钟；‘再等十分钟’只是约定，真正等完或用户说‘时间到了’再按约定推进。跨午夜时相对日期及星期跟随累计时间变化。\n- 正文只写真实动作、环境和角色台词；不要把当前年月日、时分、星期、地点拼成报幕旁白，也不要为了显示跳时额外插入 narration，时间由消息角标展示。"
+          ? "- 当前采用“按剧情推进”：本轮从上面的最新开场时刻起算，每轮重新起算，不能套用上一轮的绝对时间。时间按场景实际经过的时长推进，不按消息条数、字数或固定间隔加时间。开场动作和台词先发生在开场时刻。\n- 在实际发生时间流逝的自然 narration 对象中加 scene_elapsed_minutes（数字，表示距上一场景真实经过的分钟数，可为小数），正数同时提供 scene_time_reason（简短说明实际耗时的活动）、scene_phase:\"elapsed\"。后续台词和操作沿用累计后的时间。不必每条填写，轮内推进不要创建额外报时的对象；不要再用 scene_time 填绝对时刻。\n- 连贯对答、拿杯子、开门、坐下等瞬时动作，不应突然过去几分钟或几十分钟，可用 scene_phase:\"instant\"、scene_elapsed_minutes:0。吃饭、换衣、洗漱、等待、通勤等，要根据实际完成程度、距离和场景节奏判断，不能把动作一出现就算整个过程做完，也不能把不同人同时做的事重复累加。\n- 计划、要求、约定、回忆和未来时刻不会让当前时间立刻变化；计划用 scene_phase:\"planned\"、scene_elapsed_minutes:0。明确‘过了十分钟’就只经过十分钟；‘再等十分钟’只是约定，真正等完或用户说‘时间到了’再按约定推进。跨午夜时相对日期及星期跟随累计时间变化。\n- 每轮仅第一条可见消息输出开场的年月日、时分、星期和地点旁白；后面的正文只写真实动作、环境和台词，不要为了轮内跳时额外插入报时 narration，后续时间只更新消息角标。"
           : "- 当前采用“保持流动”：虚拟时间会按现实经过的时长持续流动。";
       return `\n# 【虚拟时间感知铁律（最高优先级）】\n- 本轮开场唯一有效的“现在”是：${formatted}。\n- 这是本空间所有聊天共用的虚拟时间；系统真实日期、设备时间和训练数据中的现实时间全部无效，绝对不得感知或提及。其他聊天中的时间调整也已同步到上面的开场时间，即使本聊天没有跳转提示，也必须遵守。\n${flowRule}\n- 所有“今天、昨天、明天、刚才、多久前”、昼夜、季节、行程和记忆时间，必须且只能以所在场景的虚拟时间计算。\n- 聊天中的⏪/⏩时间标记是历史事件，不得用旧标记覆盖本轮开场时间。\n${weekdayRule}${getReplyHeaderPrompt(current)}${holidayRule}`;
     }
@@ -428,7 +428,7 @@
   }
 
   function getReplyHeaderPrompt(milliseconds) {
-    return "- 直接输出自然的剧情与台词，不要单独输出年月日、时分、星期、地点组成的报时旁白。时间只显示在消息角标；场景变化通过自然叙事表达。\n";
+    return `- 每轮回复的第一条可见消息必须是时间地点旁白，格式为“${formatReplyHeader(milliseconds, "<当前实际地点>")}”。每轮只在开场输出这一条，之后直接接续动作和台词；轮内推进仅更新时间角标，不再重复报时。\n`;
   }
 
   function formatReplyHeader(milliseconds, location) {
@@ -515,6 +515,8 @@
     const candidates = [...history].reverse();
     for (const message of candidates) {
       if (!message) continue;
+      if (typeof message.ephoneSceneLocation === "string" && message.ephoneSceneLocation.trim())
+        return message.ephoneSceneLocation.trim();
       if (message.type === "location_share" && message.content) {
         return String(message.content).trim();
       }
@@ -736,7 +738,7 @@
   }
 
   function narrationDisplayText(message) {
-    if (message?.isReplyHeader || message?.isSceneTimeHeader) {
+    if (message?.isSceneTimeHeader) {
       const header = splitSceneHeader(message.content);
       if (header) return header.body;
     }
@@ -819,6 +821,7 @@
     const result = [];
     let current = start, modelOpening = null, hasStory = false;
     let location = inferLocation([]);
+    let openingLocation = location;
     for (const source of items) {
       if (!source || typeof source !== "object") { result.push(source); continue; }
       const item = { ...source };
@@ -854,6 +857,7 @@
       }
       if (Number.isFinite(target) && Number.isFinite(new Date(target).getTime()) && target >= current) current = target;
       location = header?.location || (typeof item.scene_location === "string" && item.scene_location.trim()) || location;
+      if (!hasStory) openingLocation = location;
       if (header) item.content = header.body;
       if (typeof item.content === "string") item.content = normalizeWeekdayMentions(item.content, current);
       delete item.isReplyHeader; delete item.isSceneTimeHeader;
@@ -869,6 +873,12 @@
     }
     if (!result.some((item) => item && item.type !== "thought_chain"))
       throw new Error("模型只返回了报时信息，没有剧情正文或台词；未自动重试，也未推进时间。");
+    const firstVisible = result.findIndex((item) => item?.type !== "thought_chain");
+    result.splice(firstVisible, 0, {
+      type: "narration", name: "时间", content: formatReplyHeader(start, openingLocation),
+      vts: start, isReplyHeader: true, ephoneSceneLocation: openingLocation,
+      ephoneSceneTimeResolved: dynamic,
+    });
     return result;
   }
 

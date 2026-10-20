@@ -68,11 +68,13 @@ const { chromium } = require("playwright-core");
       const stored = await page.evaluate((id) => window.db.chats.get(id), id), visible = stored.history.filter((m) => m.role === "assistant" || m.type === "narration");
       assert.equal(visible.filter((m) => /^短句\d+。$/.test(m.content)).length, 115, `${id}: all reply items persist`);
       assert.equal(visible.find((m) => m.type === "narration").vts, start);
-      assert.equal(visible.filter((m) => m.isReplyHeader || m.isSceneTimeHeader).length, 0);
-      assert.deepEqual(visible.filter((m) => m.type === "narration").map((m) => m.vts), [start, start + 4 * 60000, start + 37 * 60000, start + 57 * 60000]);
+      assert.equal(visible[0].isReplyHeader, true, "opening must be the first visible reply");
+      assert.equal(visible.filter((m) => m.isReplyHeader).length, 1);
+      assert.equal(visible.filter((m) => m.isSceneTimeHeader).length, 0);
+      assert.deepEqual(visible.filter((m) => m.type === "narration").map((m) => m.vts), [start, start, start + 4 * 60000, start + 37 * 60000, start + 57 * 60000]);
       const badges = await page.locator("#chat-messages .narration-timestamp").allTextContents();
-      assert.deepEqual(badges, ["07:20", "07:24", "07:57", "08:17"]);
-      assert.ok(!await page.locator("#chat-messages").textContent().then((text) => text.includes("地点：")));
+      assert.deepEqual(badges, ["07:20", "07:20", "07:24", "07:57", "08:17"]);
+      assert.equal(await page.locator("#chat-messages .narration-bubble").filter({ hasText: "地点：" }).count(), 1);
       const firstText = visible.find((m) => m.content === "短句0。");
       assert.equal(await page.locator(`.message-bubble[data-timestamp="${firstText.timestamp}"]`).locator("..").locator(".timestamp").innerText(), "07:20");
       if (id === "scene-watch") {
@@ -91,6 +93,8 @@ const { chromium } = require("playwright-core");
     assert.match(JSON.stringify(calls.at(-1).messages.slice(1)), /07:57/);
     assert.match(JSON.stringify(calls.at(-1).messages.slice(1)), /08:17/);
     assert.equal(await page.evaluate(() => window.ephoneTimeMachine.nowMs()), start + 63 * 60000, "next reply advances again from the last end");
+    const twoRounds = await page.evaluate(() => window.db.chats.get("scene-watch"));
+    assert.equal(twoRounds.history.filter((m) => m.isReplyHeader).length, 2, "every round gets its own single opening header");
     // Exercise the real picker repeatedly; it must reflect the latest clock,
     // not retain the previous draft or the model's former absolute date.
     for (const value of ["2026-03-05T10:30", "2026-03-05T11:45"]) {

@@ -82,7 +82,7 @@ const { chromium } = require("playwright-core");
       const added = await page.evaluate(async ({ id, countBefore }) => (await window.db.chats.get(id)).history.slice(countBefore), { id, countBefore });
       assert.equal(added.filter((item) => item.content === long).length, 1, id + ": keep all thousands of received characters");
       assert.equal(added.filter((item) => item.content === tail).length, 1, id + ": keep the unclosed final text string");
-      assert.equal(added.filter((item) => item.type === "narration" && /2026年3月5日/.test(item.content)).length, 0, id + ": clock headers are metadata, not prose");
+      assert.equal(added.filter((item) => item.type === "narration" && /2026年3月5日/.test(item.content)).length, 1, id + ": exactly one opening clock header, without hiding prose");
       assert.equal(await page.evaluate(() => window.ephoneTimeMachine.nowMs()), morning);
       const headerOnly = await generate(id, [openai(json([header]) + ', {"type":"transfer","amount":999')], "没有剧情正文");
       assert.equal(headerOnly.length, 1, "a time-only response is explained without retry or executing an incomplete payment");

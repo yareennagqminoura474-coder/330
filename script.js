@@ -18034,9 +18034,9 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
           (await _ephoneFinancePrompt(_0x326f3d, _ephoneSpectatorReplyTimeMs)) +
           (await _ephoneSocialPrompt(_0x326f3d, _ephoneSpectatorReplyTimeMs, [_0x3e48fd, _0x50a753, _0x34a92d].join("\n"))) +
           "\n# 围观模式的旁白与台词\n" +
-          "直接接续剧情，不要生成单独报时的旁白。角色真正说出口或打出的内容用 text；动作、心理、神态、环境、场景和时间一律用 narration。每位发言角色的动作按情境穿插旁白。旁白对象格式为 {\"type\":\"narration\",\"name\":\"角色名或旁白\",\"content\":\"内容\"}。不要把动作放进 text，也不要以旁白代替角色说话。\n" +
+          "每轮第一条为时间地点旁白，之后直接接续剧情，不再重复报时。角色真正说出口或打出的内容用 text；动作、心理、神态、环境、场景和时间一律用 narration。每位发言角色的动作按情境穿插旁白。旁白对象格式为 {\"type\":\"narration\",\"name\":\"角色名或旁白\",\"content\":\"内容\"}。不要把动作放进 text，也不要以旁白代替角色说话。\n" +
           "无论最后一条是谁发送的，均从其内容继续往后推进。用户以角色身份输入的台词属于该角色，不属于额外的‘用户’，不要重写或忽略。根据剧情安排必要的多轮互动，条数不固定，不要每人只说一句就停止；同一条 text 只放一段自然发言，动作另用 narration。\n" +
-          `发送前再次核对：本轮开场时间为 ${window.ephoneTimeMachine?.formatDateTime(_ephoneSpectatorReplyTimeMs, { withWeekday: true }) || ""}。按剧情推进时，只累计本轮各场景实际发生的 scene_elapsed_minutes，不能复用上一轮的绝对时刻，台词感知与所在场景一致；不要报时旁白。真实时间或保持流动模式不得使用剧情跳时。\n`,
+          `发送前再次核对：本轮开场时间为 ${window.ephoneTimeMachine?.formatDateTime(_ephoneSpectatorReplyTimeMs, { withWeekday: true }) || ""}。按剧情推进时，只累计本轮各场景实际发生的 scene_elapsed_minutes，不能复用上一轮的绝对时刻，台词感知与所在场景一致；只在每轮第一条输出时间地点旁白，后续跳时不重复报时。真实时间或保持流动模式不得使用剧情跳时。\n`,
         _0x235416 = _0x3fcfdf[_0xd07074(0xbc5)]((_0x46891e) => ({
           role: "user",
           content: window.ephoneGroupContext.describeMessage(
@@ -20743,7 +20743,7 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
       _0x539674 +=
         "\n# 【发送前最终时间校验】\n" +
         `本轮开场时间是 ${window.ephoneTimeMachine?.formatDateTime(_ephoneReplyTimeMs, { withWeekday: true }) || _0x369e74}。` +
-        "开场必须使用此时刻；按剧情推进时，只累计本轮 narration 中实际发生的 scene_elapsed_minutes，不复用上一轮绝对时刻。回答当前时间也必须对应累计后的场景；不要报时旁白。忽略历史旧时间和设备时间；真实时间或保持流动模式不使用剧情跳时。\n";
+        "开场必须使用此时刻；按剧情推进时，只累计本轮 narration 中实际发生的 scene_elapsed_minutes，不复用上一轮绝对时刻。回答当前时间也必须对应累计后的场景；每轮第一条保留时间地点旁白，后续跳时不重复报时。忽略历史旧时间和设备时间；真实时间或保持流动模式不使用剧情跳时。\n";
       if (
         _0x4e7a2c.length > 0 &&
         _0x4e7a2c[_0x4e7a2c.length - 1]?.role === "assistant"
