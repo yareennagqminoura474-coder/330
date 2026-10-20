@@ -48,11 +48,11 @@ const { chromium } = require("playwright-core");
     const start = new Date(2026, 2, 5, 7, 20).getTime();
     async function jump(time) { await page.evaluate((time) => window.ephoneTimeMachine.jumpTo(time, "frozen"), time); const close = page.locator('#daily-schedule-status [data-action="close"]'); if (await close.isVisible()) await close.click(); }
     function longReply() {
-      const items = [{ type: "narration", content: "2026年3月5日，07点28分，星期五，地点：家" }];
+      const items = [{ type: "narration", content: "他坐在桌旁。", scene_phase: "instant", scene_elapsed_minutes: 0 }];
       for (let i = 0; i < 115; i++) {
-        if (i === 12) items.push({ type: "narration", content: "交谈了一会，准备吃早饭。", scene_time: "2026-03-05T07:24" });
-        if (i === 57) items.push({ type: "narration", content: "吃完早饭，收拾好餐桌，走到门口。", scene_time: "2026-03-05T07:57" });
-        if (i === 95) items.push({ type: "narration", content: "二十分钟后，车停在学校门口。", scene_time: "2026-03-05T08:17" });
+        if (i === 12) items.push({ type: "narration", content: "交谈了一会，准备吃早饭。", scene_elapsed_minutes: 4, scene_time_reason: "交谈", scene_phase: "elapsed" });
+        if (i === 57) items.push({ type: "narration", content: "吃完早饭，收拾好餐桌，走到门口。", scene_elapsed_minutes: 33, scene_time_reason: "用餐并收拾", scene_phase: "elapsed" });
+        if (i === 95) items.push({ type: "narration", content: "二十分钟后，车停在学校门口。", scene_elapsed_minutes: 20, scene_time_reason: "行车结束", scene_phase: "elapsed" });
         items.push({ type: "text", name: "林", content: `短句${i}。` });
       }
       return items;
@@ -63,23 +63,48 @@ const { chromium } = require("playwright-core");
       await page.locator(id === "scene-watch" ? "#spectator-propel-btn" : "#wait-reply-btn").click();
       await page.waitForFunction(() => !window.isPersonaSpaceBusy(), { timeout: 60000 });
       assert.equal(calls.length, count + 1, "one primary request for the whole long reply, no auxiliary or repair calls");
-      assert.match(calls.at(-1).messages[0].content, /scene_time/);
+      assert.match(calls.at(-1).messages[0].content, /scene_elapsed_minutes/);
       assert.ok(!calls.at(-1).messages[0].content.includes("所有台词、动作和旁白必须一致，不得自行再加几分钟"));
       const stored = await page.evaluate((id) => window.db.chats.get(id), id), visible = stored.history.filter((m) => m.role === "assistant" || m.type === "narration");
       assert.equal(visible.filter((m) => /^短句\d+。$/.test(m.content)).length, 115, `${id}: all reply items persist`);
-      assert.equal(visible.find((m) => m.isReplyHeader).vts, start);
-      assert.deepEqual(visible.filter((m) => m.isSceneTimeHeader).map((m) => m.vts), [start + 4 * 60000, start + 37 * 60000, start + 57 * 60000]);
+      assert.equal(visible.find((m) => m.type === "narration").vts, start);
+      assert.equal(visible.filter((m) => m.isReplyHeader || m.isSceneTimeHeader).length, 0);
+      assert.deepEqual(visible.filter((m) => m.type === "narration").map((m) => m.vts), [start, start + 4 * 60000, start + 37 * 60000, start + 57 * 60000]);
+      const badges = await page.locator("#chat-messages .narration-timestamp").allTextContents();
+      assert.deepEqual(badges, ["07:20", "07:24", "07:57", "08:17"]);
+      assert.ok(!await page.locator("#chat-messages").textContent().then((text) => text.includes("地点：")));
+      const firstText = visible.find((m) => m.content === "短句0。");
+      assert.equal(await page.locator(`.message-bubble[data-timestamp="${firstText.timestamp}"]`).locator("..").locator(".timestamp").innerText(), "07:20");
+      if (id === "scene-watch") {
+        await page.locator("#chat-messages .narration-timestamp").last().scrollIntoViewIfNeeded();
+        await page.screenshot({ path: path.join(require("node:os").tmpdir(), "ephone-quiet-time-v1792.png") });
+      }
       for (const [i, minutes] of [[0, 0], [12, 4], [57, 37], [95, 57], [114, 57]])
         assert.equal(visible.find((m) => m.content === `短句${i}。`).vts, start + minutes * 60000);
       assert.equal(await page.evaluate(() => window.ephoneTimeMachine.nowMs("scene-other")), start + 57 * 60000);
       const writes = await page.evaluate(() => window.__sceneWrites);
       assert.ok(writes.filter((m) => /^短句/.test(m.content)).every((m) => m.vts === m.now), "live clock follows each displayed scene, not the future end of the response");
     }
-    await open("scene-watch"); response = [{ type: "text", name: "林", content: "下一轮继续。" }];
+    await open("scene-watch"); response = [{ type: "narration", content: "下一轮开场。" }, { type: "narration", content: "又交谈了一会。", scene_elapsed_minutes: 6, scene_time_reason: "继续交谈", scene_phase: "elapsed" }, { type: "text", name: "林", content: "下一轮继续。" }];
     await page.locator("#spectator-propel-btn").click(); await page.waitForFunction(() => !window.isPersonaSpaceBusy());
     assert.match(calls.at(-1).messages[0].content, /2026-03-05 08:17 周四/);
     assert.match(JSON.stringify(calls.at(-1).messages.slice(1)), /07:57/);
     assert.match(JSON.stringify(calls.at(-1).messages.slice(1)), /08:17/);
+    assert.equal(await page.evaluate(() => window.ephoneTimeMachine.nowMs()), start + 63 * 60000, "next reply advances again from the last end");
+    // Exercise the real picker repeatedly; it must reflect the latest clock,
+    // not retain the previous draft or the model's former absolute date.
+    for (const value of ["2026-03-05T10:30", "2026-03-05T11:45"]) {
+      await page.locator('[data-spectator-action="time"]').click();
+      await page.locator("#time-machine-datetime").fill(value);
+      await page.locator("#time-machine-confirm").click();
+      response = [{ type: "narration", content: "2026年3月5日，07点20分，星期四，地点：家" }, { type: "narration", content: "这一轮开始。" }, { type: "narration", content: "2026年3月5日，07点24分，星期四，地点：家。聊完一段话。" }];
+      await page.locator("#spectator-propel-btn").click(); await page.waitForFunction(() => !window.isPersonaSpaceBusy());
+      const expected = new Date(value).getTime() + 4 * 60000;
+      assert.equal(await page.evaluate(() => window.ephoneTimeMachine.nowMs()), expected);
+      await page.locator('[data-spectator-action="time"]').click();
+      assert.equal(await page.locator("#time-machine-datetime").inputValue(), value.slice(0, 14) + String(Number(value.slice(14)) + 4).padStart(2, "0"));
+      await page.locator("#time-machine-cancel").click();
+    }
     for (const id of ["scene-watch", "scene-normal"]) {
       await open(id); await jump(start); response = longReply(); const beforeStop = calls.length;
       const button = page.locator(id === "scene-watch" ? "#spectator-propel-btn" : "#wait-reply-btn");
@@ -96,7 +121,8 @@ const { chromium } = require("playwright-core");
     response = [{ type: "text", name: "林", content: "先坐一会。" }, { type: "narration", content: "2026年3月6日，00点11分，星期四，地点：卧室。正文不能丢失。" }, { type: "text", name: "林", content: "今天星期四，明天星期五。" }];
     await page.locator("#spectator-propel-btn").click(); await page.waitForFunction(() => !window.isPersonaSpaceBusy());
     const overnight = await page.evaluate(() => window.db.chats.get("scene-watch"));
-    assert.match(overnight.history.findLast((m) => m.isSceneTimeHeader).content, /2026年3月6日，00点11分，星期五/);
+    assert.equal(overnight.history.findLast((m) => m.content === "正文不能丢失。").vts, new Date(2026, 2, 6, 0, 11).getTime());
+    assert.equal(await page.locator(".narration-timestamp").last().innerText(), "00:11");
     assert.equal(overnight.history.at(-1).content, "今天星期五，明天星期六。");
     assert.ok(overnight.history.some((m) => m.content === "正文不能丢失。"));
     await page.reload({ waitUntil: "domcontentloaded" }); await page.waitForFunction(() => window.ephoneAppReady); await open("scene-normal");

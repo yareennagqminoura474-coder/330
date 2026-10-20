@@ -420,7 +420,7 @@
     if (config.mode === MODES.CUSTOM) {
       const flowRule =
         config.flow === FLOWS.FROZEN
-          ? "- 当前采用“按剧情推进”：下方时间是本轮开场时刻，不是整轮锁死的时间。第一条时间旁白及开场动作、台词必须从这一时刻开始。之后按场景实际耗时持续推进：短对话可共用时刻，做事、吃饭、等待、路程或转场按情境经过几分钟、几十分钟或更久，不按固定消息条数、固定间隔推进。\n- 每次时间或场景发生变化，在对应 narration 对象附加 scene_time（完整本地日期时间，YYYY-MM-DDTHH:mm），地点变化时同时附 scene_location（如学校门口）；content 写时间地点旁白或转场动作；之后所有角色台词、动作和操作沿用最近的 scene_time，直到下一次变化。只在变化时标注即可，禁止倒流，不能从设备时间取值。例如几段交谈后推进4分钟，完成早餐后再推进25分钟；这只是情境示例，不是固定间隔，日期必须从本轮开场日期延续。\n- 明确‘过了十分钟’必须推进十分钟；‘再等十分钟’只是计划，不可在该句就算过完，真正等完或用户说‘时间到了’再推进。不要把未来约定、回忆、引用中的日期当成新场景时间。跨午夜要更新年月日及星期；开场的节假日、行程提示不能生搬到另一日期。"
+          ? "- 当前采用“按剧情推进”：本轮从上面的最新开场时刻起算，每轮重新起算，不能套用上一轮的绝对时间。时间按场景实际经过的时长推进，不按消息条数、字数或固定间隔加时间。开场动作和台词先发生在开场时刻。\n- 在实际发生时间流逝的自然 narration 对象中加 scene_elapsed_minutes（数字，表示距上一场景真实经过的分钟数，可为小数），正数同时提供 scene_time_reason（简短说明实际耗时的活动）、scene_phase:\"elapsed\"。后续台词和操作沿用累计后的时间。不必每条填写，不要创建专门报时的对象；不要再用 scene_time 填绝对时刻。\n- 连贯对答、拿杯子、开门、坐下等瞬时动作，不应突然过去几分钟或几十分钟，可用 scene_phase:\"instant\"、scene_elapsed_minutes:0。吃饭、换衣、洗漱、等待、通勤等，要根据实际完成程度、距离和场景节奏判断，不能把动作一出现就算整个过程做完，也不能把不同人同时做的事重复累加。\n- 计划、要求、约定、回忆和未来时刻不会让当前时间立刻变化；计划用 scene_phase:\"planned\"、scene_elapsed_minutes:0。明确‘过了十分钟’就只经过十分钟；‘再等十分钟’只是约定，真正等完或用户说‘时间到了’再按约定推进。跨午夜时相对日期及星期跟随累计时间变化。\n- 正文只写真实动作、环境和角色台词；不要把当前年月日、时分、星期、地点拼成报幕旁白，也不要为了显示跳时额外插入 narration，时间由消息角标展示。"
           : "- 当前采用“保持流动”：虚拟时间会按现实经过的时长持续流动。";
       return `\n# 【虚拟时间感知铁律（最高优先级）】\n- 本轮开场唯一有效的“现在”是：${formatted}。\n- 这是本空间所有聊天共用的虚拟时间；系统真实日期、设备时间和训练数据中的现实时间全部无效，绝对不得感知或提及。其他聊天中的时间调整也已同步到上面的开场时间，即使本聊天没有跳转提示，也必须遵守。\n${flowRule}\n- 所有“今天、昨天、明天、刚才、多久前”、昼夜、季节、行程和记忆时间，必须且只能以所在场景的虚拟时间计算。\n- 聊天中的⏪/⏩时间标记是历史事件，不得用旧标记覆盖本轮开场时间。\n${weekdayRule}${getReplyHeaderPrompt(current)}${holidayRule}`;
     }
@@ -428,7 +428,7 @@
   }
 
   function getReplyHeaderPrompt(milliseconds) {
-    return `- 每轮聊天回复的第一个可见 JSON 对象必须是 narration，content 严格写成“${formatReplyHeader(milliseconds, "<角色当前实际所在地点>")}”。地点必须根据人设、最近旁白和聊天情境推断，不能写系统设备的所在地；之后再输出动作或台词。\n`;
+    return "- 直接输出自然的剧情与台词，不要单独输出年月日、时分、星期、地点组成的报时旁白。时间只显示在消息角标；场景变化通过自然叙事表达。\n";
   }
 
   function formatReplyHeader(milliseconds, location) {
@@ -735,6 +735,14 @@
     return { time: parseSceneDate(match[1] + " " + match[2]), location: match[3].trim(), body: match[4].replace(/^[\r\n。！？!?；;\s]+/, "") };
   }
 
+  function narrationDisplayText(message) {
+    if (message?.isReplyHeader || message?.isSceneTimeHeader) {
+      const header = splitSceneHeader(message.content);
+      if (header) return header.body;
+    }
+    return String(message?.content || "");
+  }
+
   function sceneReadingSeconds(item) {
     const text = messageText(item);
     if (item.type === "text" || item.type === "voice_message" || item.type === "quote_reply")
@@ -805,6 +813,65 @@
     return result;
   }
 
+  function applyQuietReplySceneTimes(items, options) {
+    const config = getConfig(options.chatId), start = options.replyTimeMs;
+    const dynamic = config.mode === MODES.CUSTOM && config.flow === FLOWS.FROZEN;
+    const result = [];
+    let current = start, modelOpening = null, hasStory = false;
+    let location = inferLocation([]);
+    for (const source of items) {
+      if (!source || typeof source !== "object") { result.push(source); continue; }
+      const item = { ...source };
+      if (item.type === "thought_chain") { result.push(item); continue; }
+      const narration = item.type === "narration" || item.type === "offline_text";
+      const header = narration ? splitSceneHeader(item.content) : null;
+      const declared = narration ? parseSceneDate(item.scene_time) ?? header?.time ?? null : null;
+      const openingHeader = !hasStory && header != null && modelOpening == null;
+      if (openingHeader || (!hasStory && modelOpening == null && declared != null)) modelOpening = declared;
+      const body = header ? header.body : messageText(item);
+      const phase = String(item.scene_phase || "").toLowerCase();
+      const future = phase === "planned" || /(?:准备|打算|计划|还要|再等|稍后再|待会再|明天)/.test(body) &&
+        !/(?:过了|过去|经过|耗时|花了|等了|聊了|交谈了|说完|吃完|结束|完成|到达|抵达|回到)/.test(body);
+      const reason = typeof item.scene_time_reason === "string" ? item.scene_time_reason.trim() : "";
+      const simpleMovement = narration && /(?:拿起|放下|开门|关门|抬头|低头|点头|摇头|转头|坐下|站起|递过|接过)/.test(body) &&
+        !/(?:分钟|小时|刻钟|交谈|聊天|谈话|交流|讨论|收拾|用餐|吃饭|早餐|午餐|晚餐|洗漱|通勤|行车|路上|等了|等待|过了|经过|结束|完成|之后)/.test(body + " " + reason);
+      const instant = phase === "instant" || simpleMovement;
+      const elapsed = dynamic && narration && !openingHeader && !future
+        ? storyTarget([{ ...item, role: "assistant", content: body, isReplyHeader: false,
+            ephoneSceneTimeResolved: false, vts: current }], current, options.chatId) : null;
+      const relative = finiteOrNull(item.scene_elapsed_minutes);
+      const supported = reason || /(?:过了|过去|经过|耗时|花了|等了|聊了|交谈了|说完|吃完|结束|完成|到达|抵达|回到)/.test(body);
+      let target = current;
+      if (dynamic && hasStory && !openingHeader && !future) {
+        if (elapsed != null && elapsed > current) target = elapsed;
+        else if (!instant && narration && relative != null && relative >= 0 && (relative === 0 || supported))
+          target = current + relative * 60000;
+        else if (!instant && narration && relative == null && declared != null) {
+          // Legacy absolute clocks are a relative sequence anchored to THIS
+          // opening, not instructions to replay the previous round's date.
+          target = modelOpening != null ? start + declared - modelOpening : declared;
+        }
+      }
+      if (Number.isFinite(target) && Number.isFinite(new Date(target).getTime()) && target >= current) current = target;
+      location = header?.location || (typeof item.scene_location === "string" && item.scene_location.trim()) || location;
+      if (header) item.content = header.body;
+      if (typeof item.content === "string") item.content = normalizeWeekdayMentions(item.content, current);
+      delete item.isReplyHeader; delete item.isSceneTimeHeader;
+      item.vts = current;
+      item.ephoneSceneLocation = location;
+      item.ephoneSceneTimeResolved = dynamic;
+      // Pure clock headers disappear; their time is carried by the next real
+      // message and shown only by its small timestamp. No hidden dummy replies.
+      if (header && !item.content) continue;
+      item.ephoneSceneTimeChanged = result.length > 0 && result.at(-1)?.vts !== current;
+      result.push(item);
+      hasStory = true;
+    }
+    if (!result.some((item) => item && item.type !== "thought_chain"))
+      throw new Error("模型只返回了报时信息，没有剧情正文或台词；未自动重试，也未推进时间。");
+    return result;
+  }
+
   async function commitReplySceneTime(milliseconds, preparation) {
     if (!preparation || !Number.isFinite(milliseconds)) return;
     if (preparation.spaceDatabaseName !== spaceDatabaseName)
@@ -852,6 +919,8 @@
     const replyTimeMs = Number.isFinite(Number(options.replyTimeMs))
       ? Number(options.replyTimeMs)
       : nowMs(chatId);
+    if (options.quietTimeline)
+      return applyQuietReplySceneTimes(items, { ...options, chatId, replyTimeMs });
     for (const item of items) {
       if (item && typeof item.content === "string") {
         item.content = normalizeWeekdayMentions(item.content, replyTimeMs);
@@ -1105,6 +1174,7 @@
     messageTime,
     formatDateTime,
     formatReplyHeader,
+    narrationDisplayText,
     normalizeWeekdayText: normalizeWeekdayMentions,
     normalizeChatMessageWeekday,
     ensureReplyHeader,

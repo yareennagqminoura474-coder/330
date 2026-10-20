@@ -16519,6 +16519,8 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
       return wrapper;
     }
     if (_0x45add0[_0x200523(0x1140)] === _0x200523(0xaa5)) {
+      const narrationText = window.ephoneTimeMachine?.narrationDisplayText?.(_0x45add0) ?? _0x45add0.content;
+      if (!narrationText) return null;
       const _0x24c2c9 = document["createElement"]("div");
       ((_0x24c2c9[_0x200523(0xf4)] = _0x200523(0x16ee)),
         (_0x24c2c9[_0x200523(0x151)]["timestamp"] =
@@ -16528,11 +16530,23 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
         (_0xa9c719[_0x200523(0xf4)] = _0x200523(0x17f9)),
         (_0xa9c719["innerHTML"] =
           "<span\x20style=\x22font-style:italic;\x20opacity:\x200.9;\x22>" +
-          _0x45add0[_0x200523(0xfd7)] +
+          narrationText +
           _0x200523(0xa8f)),
         (_0xa9c719[_0x200523(0x151)]["timestamp"] =
           _0x45add0[_0x200523(0x18df)]),
         _0x24c2c9[_0x200523(0x3fe)](_0xa9c719),
+        (() => {
+          const time = window.ephoneTimeMachine?.messageTime(_0x45add0, _0x481875.id);
+          if (!Number.isFinite(time)) return;
+          const badge = document.createElement("time");
+          badge.className = "narration-timestamp";
+          badge.dataset.virtualTime = String(time);
+          badge.dateTime = new Date(time).toISOString();
+          badge.textContent = window.ephoneTimeMachine.formatDateTime(time).split(" ").at(-1);
+          badge.title = window.ephoneTimeMachine.formatDateTime(time, { withWeekday: true }) +
+            (_0x45add0.ephoneSceneLocation ? " · " + _0x45add0.ephoneSceneLocation : "");
+          _0xa9c719.appendChild(badge);
+        })(),
         _0x100ddd(_0x24c2c9, () => _0x3b7f66(_0x45add0[_0x200523(0x18df)])),
         _0x24c2c9[_0x200523(0x111e)]("click", () => {
           const _0x49090a = _0x200523;
@@ -16586,6 +16600,13 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
     const _0x17ffe1 = document["createElement"](_0x200523(0x8bb));
     ((_0x17ffe1["className"] = _0x200523(0x18df)),
       (_0x17ffe1["textContent"] = _0x3a2a18(_0x45add0[_0x200523(0x18df)])));
+    if (window.ephoneTimeMachine) {
+      const time = window.ephoneTimeMachine.messageTime(_0x45add0, _0x481875.id);
+      if (Number.isFinite(time)) {
+        _0x17ffe1.textContent = window.ephoneTimeMachine.formatDateTime(time).split(" ").at(-1);
+        _0x17ffe1.title = window.ephoneTimeMachine.formatDateTime(time, { withWeekday: true });
+      }
+    }
     let _0x4d6a7e,
       _0x188554 = "";
     if (_0x1c09c7)
@@ -18013,9 +18034,9 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
           (await _ephoneFinancePrompt(_0x326f3d, _ephoneSpectatorReplyTimeMs)) +
           (await _ephoneSocialPrompt(_0x326f3d, _ephoneSpectatorReplyTimeMs, [_0x3e48fd, _0x50a753, _0x34a92d].join("\n"))) +
           "\n# 围观模式的旁白与台词\n" +
-          "第一个可见 JSON 对象必须是 narration 时间地点旁白。角色真正说出口或打出的内容用 text；动作、心理、神态、环境、场景和时间一律用 narration。每位发言角色的动作按情境穿插旁白。旁白对象格式为 {\"type\":\"narration\",\"name\":\"角色名或旁白\",\"content\":\"内容\"}。不要把动作放进 text，也不要以旁白代替角色说话。\n" +
+          "直接接续剧情，不要生成单独报时的旁白。角色真正说出口或打出的内容用 text；动作、心理、神态、环境、场景和时间一律用 narration。每位发言角色的动作按情境穿插旁白。旁白对象格式为 {\"type\":\"narration\",\"name\":\"角色名或旁白\",\"content\":\"内容\"}。不要把动作放进 text，也不要以旁白代替角色说话。\n" +
           "无论最后一条是谁发送的，均从其内容继续往后推进。用户以角色身份输入的台词属于该角色，不属于额外的‘用户’，不要重写或忽略。根据剧情安排必要的多轮互动，条数不固定，不要每人只说一句就停止；同一条 text 只放一段自然发言，动作另用 narration。\n" +
-          `发送前再次核对：本轮开场时间为 ${window.ephoneTimeMachine?.formatDateTime(_ephoneSpectatorReplyTimeMs, { withWeekday: true }) || ""}。按剧情推进时，之后以每个场景最近一次 scene_time 为准，时间、日期、星期、台词和动作必须一致；真实时间或保持流动模式不得使用剧情跳时。\n`,
+          `发送前再次核对：本轮开场时间为 ${window.ephoneTimeMachine?.formatDateTime(_ephoneSpectatorReplyTimeMs, { withWeekday: true }) || ""}。按剧情推进时，只累计本轮各场景实际发生的 scene_elapsed_minutes，不能复用上一轮的绝对时刻，台词感知与所在场景一致；不要报时旁白。真实时间或保持流动模式不得使用剧情跳时。\n`,
         _0x235416 = _0x3fcfdf[_0xd07074(0xbc5)]((_0x46891e) => ({
           role: "user",
           content: window.ephoneGroupContext.describeMessage(
@@ -18076,6 +18097,7 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
       lastRawAiResponse = _0x112a1d;
       const _0x56fb86 = window.ephoneTimeMachine?.ensureReplyHeader
         ? window.ephoneTimeMachine.ensureReplyHeader(_ephoneSpectatorComplete.items, {
+            quietTimeline: true,
             sceneTimeline: true,
             advancedMinutes: _ephoneSpectatorTimePreparation?.minutes || 0,
             chatId: _0x4203ee,
@@ -18100,7 +18122,7 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
         }
         const _ephoneSceneTimeMs = Number.isFinite(_0x5cafc4.vts) ? _0x5cafc4.vts : _ephoneSpectatorReplyTimeMs;
         await window.ephoneTimeMachine?.commitReplySceneTime?.(_ephoneSceneTimeMs, _ephoneSpectatorTimePreparation);
-        if (_0x5cafc4.isSceneTimeHeader) await window.EPhoneCharacterWallet?.sync(_ephoneSceneTimeMs);
+        if (_0x5cafc4.ephoneSceneTimeChanged) await window.EPhoneCharacterWallet?.sync(_ephoneSceneTimeMs);
         if (window.ephoneCharacterSocialCore && (["life_update", "relationship_event"].includes(_0x5cafc4.type) || window.ephoneLifeSimulationCore?.ACTIONS.includes(_0x5cafc4.type))) {
           await _ephoneSocialAction({ ..._0x5cafc4, name: _ephoneSpeaker }, _0x326f3d, _ephoneSceneTimeMs, _0x47fd25++);
           continue;
@@ -18124,6 +18146,7 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
           timestamp: _0xedf656,
           vts: _ephoneSceneTimeMs,
           ephoneSceneTimeResolved: Boolean(_0x5cafc4.ephoneSceneTimeResolved),
+          ephoneSceneLocation: _0x5cafc4.ephoneSceneLocation,
         };
         switch (_0x5cafc4[_0xd07074(0x1140)]) {
           case "transfer":
@@ -20720,7 +20743,7 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
       _0x539674 +=
         "\n# 【发送前最终时间校验】\n" +
         `本轮开场时间是 ${window.ephoneTimeMachine?.formatDateTime(_ephoneReplyTimeMs, { withWeekday: true }) || _0x369e74}。` +
-        "开场必须使用此时刻；按剧情推进模式允许本轮后续随场景推进，以最近一次 narration 的 scene_time 为角色此刻感知的时间，回答当前时间也必须对应所在场景。忽略历史旧时间和设备时间；真实时间或保持流动模式不使用剧情跳时。\n";
+        "开场必须使用此时刻；按剧情推进时，只累计本轮 narration 中实际发生的 scene_elapsed_minutes，不复用上一轮绝对时刻。回答当前时间也必须对应累计后的场景；不要报时旁白。忽略历史旧时间和设备时间；真实时间或保持流动模式不使用剧情跳时。\n";
       if (
         _0x4e7a2c.length > 0 &&
         _0x4e7a2c[_0x4e7a2c.length - 1]?.role === "assistant"
@@ -20821,6 +20844,7 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
         ]((_0x15fb5f) => !_0x15fb5f[_0x25f1e5(0x1563)])));
       const _0x899a3d = window.ephoneTimeMachine?.ensureReplyHeader
         ? window.ephoneTimeMachine.ensureReplyHeader(_ephoneCompleteReply.items, {
+            quietTimeline: true,
             sceneTimeline: true,
             advancedMinutes: _0xephoneTimePreparation?.minutes || 0,
             chatId: _0x973a29,
@@ -20833,7 +20857,7 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
       _0xephoneTimeCommitted = !![];
       await window.EPhoneCharacterWallet?.sync(_ephoneReplyTimeMs);
       let _0x55b319 = [];
-      if (_0x5b16cb[_0x25f1e5(0x17c5)]["isOfflineMode"] && !_0x899a3d.some((item) => item.isSceneTimeHeader)) {
+      if (_0x5b16cb[_0x25f1e5(0x17c5)]["isOfflineMode"] && !_0x899a3d.some((item) => item.ephoneSceneTimeChanged)) {
         let _0x5c3e2b = { content: [], dialogue: [], description: [] };
         for (const _0x10e4a0 of _0x899a3d) {
           if (_0x10e4a0["type"] === _0x25f1e5(0x1274)) {
@@ -21039,7 +21063,7 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
         }
         const _ephoneSceneTimeMs = Number.isFinite(_0x58c66c.vts) ? _0x58c66c.vts : _ephoneReplyTimeMs;
         await window.ephoneTimeMachine?.commitReplySceneTime?.(_ephoneSceneTimeMs, _0xephoneTimePreparation);
-        if (_0x58c66c.isSceneTimeHeader) await window.EPhoneCharacterWallet?.sync(_ephoneSceneTimeMs);
+        if (_0x58c66c.ephoneSceneTimeChanged) await window.EPhoneCharacterWallet?.sync(_ephoneSceneTimeMs);
         if (await _ephoneReceiveRoleCard({ ..._0x58c66c, name: _0x58c66c.name || _0x5b16cb.originalName || _0x5b16cb.name }, _0x5b16cb, _ephoneSceneTimeMs, _0x1b9d0b)) {
           _0x1b9d0b = Math.max(_0x1b9d0b + 1, Number(_0x5b16cb.history.at(-1)?.timestamp || 0) + 1); continue;
         }
@@ -23305,6 +23329,7 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
         if (_0x4c93fd) {
           _0x4c93fd.vts = _ephoneSceneTimeMs;
           _0x4c93fd.ephoneSceneTimeResolved = Boolean(_0x58c66c.ephoneSceneTimeResolved);
+          _0x4c93fd.ephoneSceneLocation = _0x58c66c.ephoneSceneLocation;
           _0x4c93fd = await _ephoneFundMoneyCard(_0x5b16cb, _0x4c93fd);
           _0x5b16cb[_0x25f1e5(0x8e6)][_0x25f1e5(0x3e6)](_0x4c93fd);
           const _0x172238 = document[_0x25f1e5(0x3d0)] === _0x25f1e5(0x10be);
