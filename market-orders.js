@@ -3,8 +3,13 @@
   const text = (value, max = 300) => typeof value === "string" ? value.trim().slice(0, max) : "";
   const money = (value) => Number(value || 0).toFixed(2);
   const itemsText = (order) => (order.items || []).map((line) => `${line.item.name}×${line.quantity}`).join("、");
+  const pricedItemsText = (order) => {
+    const details = root.ephoneLifeMarketCore?.orderBreakdown(order);
+    return details ? details.lines.map((line) => `${line.name}×${line.quantity}（单价¥${money(line.unitPrice)}，小计¥${money(line.amount)}）`).join("、") : itemsText(order);
+  };
   const statusText = (order) => order.status === "cancelled" ? "已取消·已退款" : order.status === "delivered" ? "已到货" : "已支付·待到货";
   function makeMessage(order, event, base = {}) {
+    const details = root.ephoneLifeMarketCore?.orderBreakdown(order);
     const actor = text(base.actorName || order.ownerName || "用户", 80);
     const audience = (order.knownBy || []).map((person) => person.name).join("、") || "原订单通知聊天中的角色";
     const note = event === "cancelled" ? `${actor}取消订单，¥${money(order.total)}已原路退回本空间钱包。` :
@@ -16,7 +21,8 @@
       privateOrder: Boolean(order.ownerKey), ownerKey: order.ownerKey, actorName: actor,
       orderSnapshot: { id: order.id, status: order.status, recipientName: order.recipientName, ownerName: order.ownerName,
         ownerKey: order.ownerKey, items: itemsText(order), total: order.total, cancelledBy: order.cancelledBy,
-        knownBy: order.knownBy || [], reason: order.cancelReason || "" },
+        knownBy: order.knownBy || [], reason: order.cancelReason || "",
+        lineItems: details?.lines || [], deliveryFees: details?.deliveryFees || [], delivery: order.delivery },
       content: `【逛逛订单 ${order.id}；${statusText(order)}；${order.ownerKey ? "私有记忆，不是全群公告" : "订单通知"}】${note} 商品：${itemsText(order)}。金额¥${money(order.total)}。知情范围：${audience}。未列入的角色不知道；听说或到货看到不等于知道订单金额及手机内详情。` };
   }
 
@@ -78,7 +84,9 @@
         "本聊天角色身份：" + JSON.stringify(people) + "\n实际订单账本（私有与已公开部分严格分开；仅列出最近40笔相关订单，未列出不等于不存在，缺失信息不得编造）：" + JSON.stringify(current.map((order) => ({
           id: order.id, ownerKey: order.ownerKey || null, ownerName: order.ownerName || "原用户", recipient: order.recipientName,
           status: order.status, orderedAt: order.vts, knownBy: order.knownBy || [], phoneAccess: order.phoneAccess || [],
-          ownerOnlyDetails: { items: itemsText(order), amount: order.total, cancelledBy: order.cancelledBy || null, cancelReason: order.cancelReason || null },
+          ownerOnlyDetails: { items: pricedItemsText(order),
+            deliveryFees: (root.ephoneLifeMarketCore?.orderBreakdown(order)?.deliveryFees || []).map(({ merchant, amount }) => ({ merchant, amount })),
+            amount: order.total, cancelledBy: order.cancelledBy || null, cancelReason: order.cancelReason || null },
         }))) + "\n";
     }
     async captureDisclosures(chat) {
@@ -158,8 +166,7 @@
           const balance = Math.round(Number(wallet.balance || 0) * 100), refund = Math.round(Number(order.total) * 100);
           if (!Number.isSafeInteger(balance) || !Number.isSafeInteger(refund) || refund <= 0 || !Number.isSafeInteger(balance + refund)) throw new Error("订单退款金额无效。");
           await this.wallet.put({ ...wallet, balance: (balance + refund) / 100 });
-          await this.bills.add({ timestamp, vts, type: "income", amount: refund / 100, orderId: order.id, walletSpaceId: order.walletSpaceId,
-            description: `逛逛退款：${actor.name}取消订单 ${order.id}` });
+          for (const bill of root.ephoneLifeMarketCore.orderBills(order, "income", { timestamp, vts, refundedBy: actor.name })) await this.bills.add(bill);
           Object.assign(order, { status: "cancelled", cancelledBy: actor.name, cancelledByKey: actor.key, cancelReason: text(action.reason), cancelledVts: vts, refundedAmount: refund / 100 });
           event = "cancelled";
         }

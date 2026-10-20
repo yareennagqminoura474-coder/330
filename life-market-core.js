@@ -215,17 +215,60 @@
     return { items, skipped, rejected: rejected.slice(0, 30), recovered: source.recovered === true,
       headline: clean(source.headline, 80) || "为这段生活挑选新鲜好物", note: clean(source.note, 160) };
   }
-  function quote(cart) {
+  function cartBreakdown(cart, orderId = "") {
     let subtotal = 0;
-    const fees = new Map();
-    for (const line of cart) {
+    const fees = new Map(), lines = [];
+    for (const [index, line] of cart.entries()) {
       if (!Number.isInteger(line.quantity) || line.quantity < 1 || line.quantity > 99) throw new Error("商品数量无效。");
-      subtotal += cents(line.item.price) * line.quantity;
+      const unit = cents(line.item.price), amount = unit * line.quantity;
+      subtotal += amount;
+      lines.push({ orderLineId: `${orderId}:item:${index}`, entryKind: "item", itemId: line.item.id || null,
+        name: line.item.name, merchant: line.item.merchant || "", itemKind: line.item.kind, quantity: line.quantity, unitPrice: unit / 100, amount: amount / 100 });
       if (line.item.kind === "food") fees.set(line.item.merchant, Math.max(fees.get(line.item.merchant) || 0, cents(line.item.deliveryFee || 0, true)));
     }
     const delivery = [...fees.values()].reduce((sum, value) => sum + value, 0);
     if (!Number.isSafeInteger(subtotal + delivery)) throw new Error("订单金额过大。");
-    return { subtotal: subtotal / 100, delivery: delivery / 100, total: (subtotal + delivery) / 100 };
+    const deliveryFees = [...fees].filter(([, value]) => value > 0).map(([merchant, value], index) => ({
+      orderLineId: `${orderId}:delivery:${index}`, entryKind: "delivery", name: "配送费", merchant: merchant || "外卖商家", quantity: 1, unitPrice: value / 100, amount: value / 100,
+    }));
+    return { lines, deliveryFees, subtotal: subtotal / 100, delivery: delivery / 100, total: (subtotal + delivery) / 100 };
+  }
+  function quote(cart) {
+    const { subtotal, delivery, total } = cartBreakdown(cart);
+    return { subtotal, delivery, total };
+  }
+  function orderBreakdown(order) {
+    if (!Array.isArray(order?.items) || !order.items.length) return null;
+    try { return cartBreakdown(order.items, order.id); } catch { return null; }
+  }
+  function orderBills(order, type, base = {}) {
+    if (!["income", "expense"].includes(type)) throw new Error("订单账单类型无效。");
+    const details = orderBreakdown(order);
+    // Old imported orders may have lost their prices. Preserve their original
+    // amount in one explicit legacy row; do not invent item allocations.
+    if (!details || cents(details.total) !== cents(order.total)) return [{ ...base, type, amount: order.total, orderId: order.id,
+      walletSpaceId: order.walletSpaceId, source: "market", description: `${type === "income" ? "逛逛退款" : "逛逛消费"}：原订单缺少可核对的商品价格明细` }];
+    return [...details.lines, ...details.deliveryFees].map((line, index) => ({ ...base, ...line, type, orderId: order.id, walletSpaceId: order.walletSpaceId,
+      source: "market", orderLineIndex: index, ...(type === "income" ? { refundOfLineId: line.orderLineId } : {}),
+      description: line.entryKind === "delivery"
+        ? `逛逛${type === "income" ? "退款" : "配送费"}：${line.merchant}${type === "income" ? "配送费" : ""}`
+        : `逛逛${type === "income" ? "退款" : "消费"}：${line.name} · 单价¥${line.unitPrice.toFixed(2)} × ${line.quantity} · 小计¥${line.amount.toFixed(2)}`,
+    }));
+  }
+  async function expandOrderBills(rows, db) {
+    const ids = [...new Set(rows.filter((row) => row.orderId && !row.orderLineId).map((row) => row.orderId))];
+    if (!ids.length || !db?.tables?.some((table) => table.name === "marketOrders")) return rows;
+    const orders = new Map((await db.table("marketOrders").bulkGet(ids)).filter(Boolean).map((order) => [order.id, order]));
+    return rows.flatMap((row) => {
+      const order = orders.get(row.orderId);
+      if (row.orderLineId || !order || !["income", "expense"].includes(row.type)) return [row];
+      try {
+        if (cents(row.amount) !== cents(order.total)) return [row];
+        const expanded = orderBills(order, row.type, row);
+        if (!expanded.every((item) => item.orderLineId)) return [row];
+        return expanded.map((item) => ({ ...item, id: `legacy-order:${row.id}:${item.orderLineId}`, legacyParentId: row.id }));
+      } catch { return [row]; }
+    });
   }
   function buildContext({ chats = [], npcs = [], nickname, groupContext }) {
     // Deliberately never inspect history, longTermMemory, linked memories,
@@ -389,8 +432,7 @@
           recipientName: target?.recipientName || owner?.name || "自己", chatId: target?.chatId || null, items: state.cart, ...totals,
           ...(owner?.key ? { ownerKey: owner.key, ownerName: owner.name, knownBy: [{ key: owner.key, name: owner.name, level: "details", source: "owner" }], phoneAccess: [owner.key], privateOrder: true } : {}) };
         await this.wallet.put({ ...wallet, balance: (balance - total) / 100 });
-        await this.bills.add({ timestamp: now, vts, type: "expense", amount: totals.total, walletSpaceId: spaceId,
-          orderId, description: `逛逛-${order.recipientName}：${state.cart.map((line) => `${line.item.name}×${line.quantity}`).join("、")}` });
+        for (const bill of orderBills(order, "expense", { timestamp: now, vts })) await this.bills.add(bill);
         await this.orders.add(order);
         await this.state.put({ ...state, cart: [] });
         if (chat) {
@@ -405,7 +447,8 @@
       });
     }
   }
-  const api = { Store, blank, keyFor, productKey, departments, selections, calendarContext, catalogQuality, parseBatch, quote, buildContext, prompt };
+  const api = { Store, blank, keyFor, productKey, departments, selections, calendarContext, catalogQuality, parseBatch, quote,
+    cartBreakdown, orderBreakdown, orderBills, expandOrderBills, buildContext, prompt };
   if (typeof module !== "undefined" && module.exports) module.exports = api;
   root.ephoneLifeMarketCore = api;
 })(typeof window !== "undefined" ? window : globalThis);

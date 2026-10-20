@@ -3,6 +3,13 @@
   const core = window.ephoneLifeMarketCore;
   const esc = (value) => String(value ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
   const money = (value) => Number(value || 0).toFixed(2);
+  function orderDetailsHtml(order, details = core.orderBreakdown(order)) {
+    if (!details?.lines?.length) return (Array.isArray(order?.items) ? order.items : []).map((line) =>
+      `<p>${esc(line.item?.name || "商品")} × ${esc(line.quantity)} · 单价未记录</p>`).join("");
+    return '<section class="market-order-items" aria-label="商品价格明细">' + details.lines.map((line) =>
+      `<article class="market-order-line" data-order-line-id="${esc(line.orderLineId)}"><div><strong>${esc(line.name)}</strong><small>${esc(line.merchant)} · 单价 ¥${money(line.unitPrice)} × ${esc(line.quantity)}</small></div><span>小计<br>¥${money(line.amount)}</span></article>`).join("") +
+      (details.deliveryFees || []).map((fee) => `<p class="market-delivery-line">配送费 · ${esc(fee.merchant)}<span>¥${money(fee.amount)}</span></p>`).join("") + '</section>';
+  }
   let screen, state = core.blank(), orders = [], balance = 0, chats = [], store, spaceId, spaceName, bindingName = "";
   let tab = "goods", category = "全部", selection = "全部", search = "", busy = false, controller, message = "", confirmation = false, recipient = "", openToken = 0;
   function create() {
@@ -68,7 +75,7 @@
       const totals = core.quote(state.cart);
       content.innerHTML = '<h2 class="market-section-title">购物车</h2>' + (state.cart.length ? state.cart.map((line) => `<article class="market-cart-line"><span class="market-cart-emoji">${esc(line.item.emoji)}</span><div><h3>${esc(line.item.name)}</h3><small>${esc(line.item.merchant)} · ¥${money(line.item.price)}</small><div class="market-quantity"><button type="button" data-item="${esc(line.item.id)}" data-delta="-1" aria-label="减少：${esc(line.item.name)}">−</button><span>${line.quantity}</span><button type="button" data-item="${esc(line.item.id)}" data-delta="1" aria-label="增加：${esc(line.item.name)}">＋</button></div></div></article>`).join("") + `<div class="market-checkout"><label for="market-recipient">收货角色</label><select id="market-recipient">${recipientOptions()}</select><p>商品 ¥${money(totals.subtotal)} · 配送 ¥${money(totals.delivery)}</p><strong>合计 ¥${money(totals.total)}</strong><p class="market-disclaimer">仅小手机内的虚拟购买，不产生现实订单。绑定后，订单只属于绑定角色；聊天卡片不是全群公告，其他角色需被告知、看到到货或实际查看手机才知情。</p>${confirmation ? '<p>确认从当前空间钱包付款？</p><div class="market-confirm"><button type="button" data-action="cancel">取消</button><button type="button" data-action="pay" class="market-primary">确认付款</button></div>' : '<button type="button" data-action="checkout" class="market-primary">去下单</button>'}</div>` : '<div class="market-empty">购物车还是空的。刷新不会清空已加入的商品。</div>');
     } else {
-      content.innerHTML = '<h2 class="market-section-title">我的订单</h2>' + (orders.length ? orders.map((order) => `<article class="market-order"><div><strong>${esc(order.recipientName)}</strong><span>${esc(window.ephoneMarketOrders.statusText(order))}</span></div><small>${esc(window.EPhoneMarketAdapter?.formatTime(order.vts) || new Date(order.timestamp).toLocaleString("zh-CN"))}</small>${order.items.map((line) => `<p>${esc(line.item.emoji)} ${esc(line.item.name)} × ${line.quantity}</p>`).join("")}${order.cancelledBy ? `<p>${esc(order.cancelledBy)}取消 · 已退款¥${money(order.refundedAmount)}</p>` : ""}<strong>¥${money(order.total)}</strong><small> 含配送 ¥${money(order.delivery)}</small></article>`).join("") : '<div class="market-empty">还没有订单。手动刷新不会删除已付订单。</div>');
+      content.innerHTML = '<h2 class="market-section-title">我的订单</h2>' + (orders.length ? orders.map((order) => `<article class="market-order"><div><strong>${esc(order.recipientName)}</strong><span>${esc(window.ephoneMarketOrders.statusText(order))}</span></div><small>${esc(window.EPhoneMarketAdapter?.formatTime(order.vts) || new Date(order.timestamp).toLocaleString("zh-CN"))}</small>${orderDetailsHtml(order)}${order.cancelledBy ? `<p>${esc(order.cancelledBy)}取消 · 已退款¥${money(order.refundedAmount)}</p>` : ""}<strong>¥${money(order.total)}</strong><small> 含配送 ¥${money(order.delivery)}</small></article>`).join("") : '<div class="market-empty">还没有订单。手动刷新不会删除已付订单。</div>');
     }
     renderBusy();
   }
@@ -130,9 +137,11 @@
   function fillOrderCard(card, message, order) {
     const snapshot = order ? { ownerName: order.ownerName, recipientName: order.recipientName, items: window.ephoneMarketOrders.itemsText(order),
       total: order.total, status: order.status, knownBy: order.knownBy || [], cancelledBy: order.cancelledBy } : message.orderSnapshot;
+    const details = order ? core.orderBreakdown(order) : snapshot?.lineItems?.length ? { lines: snapshot.lineItems, deliveryFees: snapshot.deliveryFees || [] } : null;
     const status = window.ephoneMarketOrders.statusText(snapshot || {});
     card.innerHTML = `<h4>${message.orderEvent === "cancelled" ? "↩ 订单取消与退款" : message.orderEvent === "inspected" ? "📱 查看手机订单" : message.orderEvent === "shared" ? "💬 订单已告知" : message.orderEvent === "delivered" ? "📦 订单到货" : "🛍 购物 / 外卖订单"}</h4>` +
-      `<p>${esc(snapshot?.items || message.content || "订单详情")}</p><p>${esc(status)} · ¥${money(snapshot?.total)}</p>` +
+      (details ? orderDetailsHtml(order || snapshot, details) : `<p>${esc(snapshot?.items || message.content || "订单详情")}</p>`) +
+      `<p>${esc(status)} · 合计 ¥${money(snapshot?.total)}</p>` +
       `<small>${esc(snapshot?.ownerName ? "订单主人：" + snapshot.ownerName + "；收货：" + snapshot.recipientName : "收货：" + (snapshot?.recipientName || "自己"))}</small>` +
       (snapshot?.cancelledBy ? `<small>${esc(snapshot.cancelledBy)}已取消，款项已退回本空间钱包</small>` : "") +
       `<small>${snapshot?.ownerName ? "私有记忆，仅主人和已知情角色知道；卡片可见不代表全群知情。" : "虚拟订单，不产生现实购物"}</small>` +

@@ -52689,10 +52689,11 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
         (_0x226348[_0x4ddf8c(0xa06)] = 0x0));
     }
     try {
-      let _0x80452a = _0x24f906[_0x4ddf8c(0x1ad4)]
-          [_0x4ddf8c(0x4b8)](_0x4ddf8c(0x18df))
-          ["reverse"](),
+      const _ephoneBillSpace = window.EPHONE_SPACE_ID || "default", _ephoneBillDb = _0x24f906.userTransactions.db;
+      let _0x80452a = _ephoneBillDb.table("userTransactions").orderBy("timestamp").reverse(),
         _0xe60d73 = await _0x80452a["toArray"]();
+      if (window.ephoneLifeMarketCore?.expandOrderBills) _0xe60d73 = await window.ephoneLifeMarketCore.expandOrderBills(_0xe60d73, _ephoneBillDb);
+      if (_ephoneBillSpace !== (window.EPHONE_SPACE_ID || "default")) return;
       _0x5080bf[_0x4ddf8c(0x146b)] !== "all" &&
         (_0xe60d73 = _0xe60d73[_0x4ddf8c(0x1916)](
           (_0x2c33b0) =>

@@ -183,8 +183,10 @@
     async ledger(key, limit = 80) {
       const own = await this.characterTransactions.where("key").equals(key).toArray();
       const binding = await this.spaceProfiles.get("player");
-      const user = binding?.key === key ? (await this.userTransactions.toArray()).filter((row) => !row.characterEntryId).map((row) => ({ ...row, id: "user:" + row.id,
-        key, direction: row.type, vts: row.vts || row.timestamp, status: "posted", source: "space_wallet" })) : [];
+      const rawUser = binding?.key === key ? await this.userTransactions.toArray() : [];
+      const detailedUser = root.ephoneLifeMarketCore?.expandOrderBills ? await root.ephoneLifeMarketCore.expandOrderBills(rawUser, this.db) : rawUser;
+      const user = detailedUser.filter((row) => !row.characterEntryId).map((row) => ({ ...row, id: "user:" + row.id,
+        key, direction: row.type, vts: row.vts || row.timestamp, status: "posted", source: "space_wallet" }));
       return [...own, ...user].sort((a, b) => b.vts - a.vts || b.timestamp - a.timestamp).slice(0, limit);
     }
     async correctEstimate(id, value) {

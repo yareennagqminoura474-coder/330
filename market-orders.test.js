@@ -50,7 +50,8 @@ async function buy(f, id = "order1") {
     const cancelled = await Promise.all([1, 2].map(() => service.act({ type: "cancel_market_order", name: "乙", order_id: "order1", reason: "不吃外卖" }, { chatId: "watch", vts: 3 })));
     assert.equal(cancelled.filter((r) => !r.alreadyApplied).length, 1);
     assert.equal((await db.userWallet.get("main")).balance, 100); assert.deepEqual((await db.userWallet.get("main")).kinshipCards, [{ id: "keep" }]);
-    assert.equal(await db.userTransactions.where("type").equals("income").count(), 1);
+    assert.equal(await db.userTransactions.where("type").equals("income").count(), 2);
+    assert.deepEqual((await db.userTransactions.where("type").equals("income").toArray()).map((row) => row.amount), [10, 2]);
     order = await db.marketOrders.get("order1"); assert.equal(order.cancelledBy, "乙"); assert.equal(order.refundedAmount, 12);
     assert.equal(order.knownBy.some((p) => p.name === "丙"), false);
     const history = (await db.chats.get("watch")).history;
