@@ -16445,6 +16445,8 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
       : alert(_0x147a7e(0x98c));
   }
   async function _0x426585(_0x45add0, _0x481875) {
+    _0x45add0 = window.ephoneTimeMachine?.normalizeDisplayMessage?.(_0x45add0) || _0x45add0;
+    if (window.ephoneTimeMachine?.isEmptyDisplayMessage?.(_0x45add0)) return null;
     if (_0x45add0.marketOrder && window.EPhoneLifeMarket?.renderOrderMessage) {
       if (_0x45add0.isHidden && !_0x481875.settings?.showHiddenMessages) return null;
       const card = await window.EPhoneLifeMarket.renderOrderMessage(_0x45add0);

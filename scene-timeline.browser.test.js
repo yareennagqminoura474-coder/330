@@ -48,7 +48,13 @@ const { chromium } = require("playwright-core");
     const start = new Date(2026, 2, 5, 7, 20).getTime();
     async function jump(time) { await page.evaluate((time) => window.ephoneTimeMachine.jumpTo(time, "frozen"), time); const close = page.locator('#daily-schedule-status [data-action="close"]'); if (await close.isVisible()) await close.click(); }
     function longReply() {
-      const items = [{ type: "narration", content: "他坐在桌旁。", scene_phase: "instant", scene_elapsed_minutes: 0 }];
+      const items = [
+        { type: "narration", content: "2026年3月5日，07点20分，星期四，地点：家\n\u200b\ufeff" },
+        { type: "text", name: "林", content: "" },
+        { type: "text", name: "林", content: " \n\t\u200b\ufeff" },
+        { type: "text", name: "林", content: "<span>&nbsp;<br></span>" },
+        { type: "narration", content: "他坐在桌旁。", scene_phase: "instant", scene_elapsed_minutes: 0 },
+      ];
       for (let i = 0; i < 115; i++) {
         if (i === 12) items.push({ type: "narration", content: "交谈了一会，准备吃早饭。", scene_elapsed_minutes: 4, scene_time_reason: "交谈", scene_phase: "elapsed" });
         if (i === 57) items.push({ type: "narration", content: "吃完早饭，收拾好餐桌，走到门口。", scene_elapsed_minutes: 33, scene_time_reason: "用餐并收拾", scene_phase: "elapsed" });
@@ -67,6 +73,7 @@ const { chromium } = require("playwright-core");
       assert.ok(!calls.at(-1).messages[0].content.includes("所有台词、动作和旁白必须一致，不得自行再加几分钟"));
       const stored = await page.evaluate((id) => window.db.chats.get(id), id), visible = stored.history.filter((m) => m.role === "assistant" || m.type === "narration");
       assert.equal(visible.filter((m) => /^短句\d+。$/.test(m.content)).length, 115, `${id}: all reply items persist`);
+      assert.equal(visible.length, 120, "only one opening, four real narrations and 115 text replies; no blank residual messages");
       assert.equal(visible.find((m) => m.type === "narration").vts, start);
       assert.equal(visible[0].isReplyHeader, true, "opening must be the first visible reply");
       assert.equal(visible.filter((m) => m.isReplyHeader).length, 1);
@@ -87,6 +94,21 @@ const { chromium } = require("playwright-core");
       const writes = await page.evaluate(() => window.__sceneWrites);
       assert.ok(writes.filter((m) => /^短句/.test(m.content)).every((m) => m.vts === m.now), "live clock follows each displayed scene, not the future end of the response");
     }
+    const oldRows = await page.evaluate(async () => {
+      const chat = await window.db.chats.get("scene-watch"), stamp = Date.now() + 10000;
+      const rows = [
+        { role: "assistant", type: "text", senderName: "林", content: "", timestamp: stamp, vts: chat.history[0].vts },
+        { role: "assistant", type: "text", senderName: "林", content: "\u200b\ufeff", timestamp: stamp + 1, vts: chat.history[0].vts },
+        { role: "assistant", type: "narration", content: "<span>&nbsp;<br></span>", timestamp: stamp + 2, vts: chat.history[0].vts },
+        { role: "assistant", type: "text", senderName: "林", content: "", message: "旧记录兼容字段的实际正文。", timestamp: stamp + 3, vts: chat.history[0].vts },
+      ];
+      chat.history.push(...rows); await window.db.chats.put(chat); await window.refreshPersonaSpaceData();
+      return rows;
+    });
+    await open("scene-watch");
+    for (const row of oldRows.slice(0, 3)) assert.equal(await page.locator(`#chat-messages [data-timestamp="${row.timestamp}"]`).count(), 0, "old empty rows are not rendered");
+    assert.ok(await page.locator("#chat-messages").textContent().then((text) => text.includes("旧记录兼容字段的实际正文。")));
+    assert.ok(await page.evaluate((stamp) => window.db.chats.get("scene-watch").then((chat) => chat.history.some((m) => m.timestamp === stamp)), oldRows[0].timestamp), "render filtering cannot delete history");
     await open("scene-watch"); response = [{ type: "narration", content: "下一轮开场。" }, { type: "narration", content: "又交谈了一会。", scene_elapsed_minutes: 6, scene_time_reason: "继续交谈", scene_phase: "elapsed" }, { type: "text", name: "林", content: "下一轮继续。" }];
     await page.locator("#spectator-propel-btn").click(); await page.waitForFunction(() => !window.isPersonaSpaceBusy());
     assert.match(calls.at(-1).messages[0].content, /2026-03-05 08:17 周四/);

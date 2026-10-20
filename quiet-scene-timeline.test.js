@@ -32,6 +32,30 @@ require("fake-indexeddb/auto"); const Dexie = require("dexie");
   ], start);
   assert.equal(duplicated.filter((m) => /地点：/.test(m.content)).length, 1);
   assert.ok(duplicated.some((m) => m.content === "继续剧情。"));
+  const blankResiduals = buildWithOpening([
+    { type: "narration", content: "2026年3月5日，07点20分，星期四，地点：家\n\u200b\ufeff" },
+    { type: "text", name: "林", content: "" },
+    { type: "text", name: "林", content: " \n\t\u200b\ufeff" },
+    { type: "text", name: "林", content: "<span>&nbsp;<br></span>" },
+    { type: "text", name: "林", content: "正文完整保留。" },
+  ], start);
+  assert.equal(blankResiduals.length, 2, "opening header residuals and empty text cannot become a second blank reply");
+  assert.equal(blankResiduals[0].isReplyHeader, true);
+  assert.equal(blankResiduals[1].content, "正文完整保留。");
+  const aliases = buildWithOpening([
+    { type: "narration", content: "2026年3月5日，07点20分，星期四，地点：家\n\u200b", message: "2026年3月5日，07点20分，星期四，地点：家\n\u200b", description: "时间元数据" },
+    { type: "text", content: "", message: "兼容字段里的实际正文。" },
+  ], start);
+  assert.equal(aliases.length, 2);
+  assert.equal(aliases[1].content, "兼容字段里的实际正文。");
+  assert.equal(clock.isEmptyDisplayMessage({ type: "text" }), true);
+  for (const item of [
+    { type: "transfer", amount: 12 }, { type: "wallet_expense", amount: 10 },
+    { type: "ai_image", imageUrl: "https://example.invalid/image.png" },
+    { type: "text", content: [{ type: "image_url", image_url: { url: "data:image/png;base64,test" } }] },
+    { type: "text", content: "👨‍👩‍👧‍👦" }, { type: "text", content: "。" },
+    { type: "offline_text", dialogue: "确实有台词。" }, { type: "quote_reply", reply_content: "引用回复。" },
+  ]) assert.equal(clock.isEmptyDisplayMessage(item), false, "keep attachments, operations, emoji and meaningful text");
   const first = build(story, firstPrep.afterMs);
   assert.equal(first.length, story.length); assert.equal(first[0].vts, start);
   assert.deepEqual(Array.from(first, (m) => (m.vts - start) / 60000), [0, 0, 4, 29, 49, 49]);

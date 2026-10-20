@@ -745,6 +745,32 @@
     return String(message?.content || "");
   }
 
+  function isEmptyDisplayMessage(message) {
+    if (!message || typeof message !== "object") return true;
+    if (!["text", "narration", "offline_text", "voice_message", "quote_reply"].includes(message.type || "text")) return false;
+    // Financial/tool events and rich attachments are not empty text bubbles.
+    if (message.marketOrder || message.imageUrl || message.audioUrl || message.stickerUrl || message.quote) return false;
+    const fields = [message.content, message.message, message.c, message.text,
+      message.dialogue, message.description, message.reply_content];
+    return !fields.some((value) => {
+      if (Array.isArray(value)) return value.length > 0;
+      if (typeof value !== "string") return value != null && typeof value === "object";
+      if (/<(?:img|svg|video|audio|canvas)\b/i.test(value)) return true;
+      return value.replace(/<!--[\s\S]*?-->/g, "")
+        .replace(/<\/?(?:br|p|div|span|b|i|strong|em)\b[^>]*>/gi, "")
+        .replace(/&nbsp;|&#0*160;|&#x0*a0;/gi, "")
+        .replace(/[\s\u200B-\u200F\u202A-\u202E\u2060-\u206F\uFEFF]/g, "").length > 0;
+    });
+  }
+
+  function normalizeDisplayMessage(message) {
+    if (!message || !["text", "narration", "voice_message"].includes(message.type || "text") ||
+        !isEmptyDisplayMessage({ type: "text", content: message.content })) return message;
+    const alias = [message.message, message.c, message.text, message.dialogue, message.description]
+      .find((value) => typeof value === "string" && !isEmptyDisplayMessage({ type: "text", content: value }));
+    return alias === undefined ? message : { ...message, content: alias };
+  }
+
   function sceneReadingSeconds(item) {
     const text = messageText(item);
     if (item.type === "text" || item.type === "voice_message" || item.type === "quote_reply")
@@ -824,7 +850,7 @@
     let openingLocation = location;
     for (const source of items) {
       if (!source || typeof source !== "object") { result.push(source); continue; }
-      const item = { ...source };
+      const item = { ...normalizeDisplayMessage(source) };
       if (item.type === "thought_chain") { result.push(item); continue; }
       const narration = item.type === "narration" || item.type === "offline_text";
       const header = narration ? splitSceneHeader(item.content) : null;
@@ -858,21 +884,26 @@
       if (Number.isFinite(target) && Number.isFinite(new Date(target).getTime()) && target >= current) current = target;
       location = header?.location || (typeof item.scene_location === "string" && item.scene_location.trim()) || location;
       if (!hasStory) openingLocation = location;
-      if (header) item.content = header.body;
+      if (header) {
+        item.content = header.body;
+        for (const key of ["message", "c", "text"])
+          if (typeof item[key] === "string") item[key] = header.body;
+      }
       if (typeof item.content === "string") item.content = normalizeWeekdayMentions(item.content, current);
       delete item.isReplyHeader; delete item.isSceneTimeHeader;
       item.vts = current;
       item.ephoneSceneLocation = location;
       item.ephoneSceneTimeResolved = dynamic;
-      // Pure clock headers disappear; their time is carried by the next real
-      // message and shown only by its small timestamp. No hidden dummy replies.
-      if (header && !item.content) continue;
+      // Strip replaced headers and genuinely blank residual rows. Invisible
+      // separators after a model's opening header must not become a reply.
+      if (header && isEmptyDisplayMessage({ type: "text", content: header.body })) continue;
+      if (isEmptyDisplayMessage(item)) continue;
       item.ephoneSceneTimeChanged = result.length > 0 && result.at(-1)?.vts !== current;
       result.push(item);
       hasStory = true;
     }
     if (!result.some((item) => item && item.type !== "thought_chain"))
-      throw new Error("模型只返回了报时信息，没有剧情正文或台词；未自动重试，也未推进时间。");
+      throw new Error("模型只返回了报时信息或空白内容，没有剧情正文或台词；未自动重试，也未推进时间。");
     const firstVisible = result.findIndex((item) => item?.type !== "thought_chain");
     result.splice(firstVisible, 0, {
       type: "narration", name: "时间", content: formatReplyHeader(start, openingLocation),
@@ -1185,6 +1216,8 @@
     formatDateTime,
     formatReplyHeader,
     narrationDisplayText,
+    isEmptyDisplayMessage,
+    normalizeDisplayMessage,
     normalizeWeekdayText: normalizeWeekdayMentions,
     normalizeChatMessageWeekday,
     ensureReplyHeader,
