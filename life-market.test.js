@@ -2,12 +2,7 @@ const assert = require("node:assert/strict");
 const fs = require("node:fs"), vm = require("node:vm");
 require("fake-indexeddb/auto");
 const Dexie = require("dexie"), core = require("./life-market-core"), groupContext = require("./group-context");
-function batch(prefix) {
-  const make = (kind, count) => Array.from({ length: count }, (_, i) => ({ name: `${prefix}${kind}${i}`, category: `类别${i % 4}`,
-    merchant: `店${i % 3}`, description: "日常所需", reason: "符合人物性格与喜好", price: 10.15 + i,
-    deliveryFee: 2.35, deliveryMinutes: 30, emoji: kind === "餐" ? "🍱" : "🛍" }));
-  return { headline: "新的生活", goods: make("物", 12), food: make("餐", 8) };
-}
+const { marketBatch: batch } = require("./market-test-fixtures");
 (async () => {
   const name = `market-tests-${Date.now()}`;
   const db = new Dexie(name);
@@ -72,9 +67,9 @@ function batch(prefix) {
   assert.equal((await store.load()).items.length, 0); assert.equal(await upgraded.marketState.count(), 0);
   const generate = async () => { calls++; return batch("第一批"); };
   const first = await store.refresh({ generate, context, vts: 1770000000000, batchId: "one" });
-  assert.equal(calls, 1); assert.equal(first.items.length, 20);
+  assert.equal(calls, 1); assert.equal(first.items.length, 40);
   await store.changeCart(first.items[0].id, 1);
-  await store.changeCart(first.items[12].id, 2);
+  await store.changeCart(first.items[24].id, 2);
   const savedCart = (await store.load()).cart;
   const second = await store.refresh({ generate: async () => batch("第二批"), context, vts: 1770000000010, batchId: "two" });
   assert.ok(second.items.every((item) => item.name.startsWith("第二批")));
@@ -118,7 +113,7 @@ function batch(prefix) {
   assert.equal((await new core.Store(facade).load()).items.length, 0); assert.equal(await facade.marketOrders.count(), 0);
   assert.equal(await facade.userWallet.count(), 0); assert.equal(facade.marketState.db, facade.chats.db);
   await window.EPhoneSpaces.switchSpace("default");
-  assert.equal((await new core.Store(facade).load()).items.length, 20); assert.equal(await facade.marketOrders.count(), 1);
+  assert.equal((await new core.Store(facade).load()).items.length, 40); assert.equal(await facade.marketOrders.count(), 1);
   await Dexie.delete(name + "__space_other"); await upgraded.delete();
   console.log("PASS: personality plus family/allowance grounding, long-profile preservation, economic ownership/negations/group overrides, wallet/history exclusion, persistence, manual-only refresh, non-repeating catalogs, abort/failure preservation, atomic checkout, space isolation");
 })().catch((error) => { console.error(error); process.exitCode = 1; });

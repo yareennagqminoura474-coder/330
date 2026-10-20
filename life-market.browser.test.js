@@ -1,10 +1,6 @@
 const assert = require("node:assert/strict"), fs = require("node:fs"), path = require("node:path"), http = require("node:http");
 const { chromium } = require("playwright-core");
-function batch(prefix) {
-  const make = (kind, count) => Array.from({ length: count }, (_, i) => ({ name: `${prefix}${kind}${i}`, category: `类别${i % 4}`,
-    merchant: `店${i % 3}`, description: "日常好物", reason: "呼应书法爱好", price: 10.15 + i, deliveryFee: 2.35, deliveryMinutes: 30, emoji: kind === "餐" ? "🍱" : "🛍" }));
-  return { headline: `${prefix} · 新生活`, goods: make("物", 12), food: make("餐", 8) };
-}
+const { marketBatch: batch } = require("./market-test-fixtures");
 (async () => {
   const root = __dirname;
   const server = http.createServer((req, res) => {
@@ -17,7 +13,7 @@ function batch(prefix) {
   await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
   const origin = `http://127.0.0.1:${server.address().port}`;
   const browser = await chromium.launch({ executablePath: "C:/Program Files/Google/Chrome/Application/chrome.exe", headless: true });
-  let calls = 0, failure = false; const prompts = [], errors = [];
+  let calls = 0, failure = false, duplicate = false; const prompts = [], errors = [];
   try {
     const page = await browser.newPage({ viewport: { width: 420, height: 900 }, isMobile: true, hasTouch: true, serviceWorkers: "block" });
     page.on("pageerror", (error) => errors.push(error.message));
@@ -27,8 +23,11 @@ function batch(prefix) {
       if (url.includes("unpkg.com/dexie")) return route.fulfill({ contentType: "application/javascript", body: fs.readFileSync(path.join(path.dirname(require.resolve("dexie")), "dexie.min.js"), "utf8") });
       if (url.startsWith("https://market-test.invalid/")) {
         calls++; const body = route.request().postDataJSON(); prompts.push(body.messages[0].content);
+        assert.equal(body.model, "auxiliary-test-model", "shopping always uses the saved secondary API");
         if (failure) return route.fulfill({ status: 503, body: "Test unavailable" });
-        return route.fulfill({ contentType: "application/json", body: JSON.stringify({ choices: [{ message: { content: JSON.stringify(batch(`批${calls}`)) } }] }) });
+        const catalog = batch(`批${duplicate ? 4 : calls}`);
+        if (duplicate) for (const item of [...catalog.goods, ...catalog.food]) { item.name = "精选" + item.name + "家庭装500g"; item.merchant = "换名店"; }
+        return route.fulfill({ contentType: "application/json", body: JSON.stringify({ choices: [{ message: { content: JSON.stringify(catalog) } }] }) });
       }
       return route.abort(); // No real API, credentials, payments, or user data.
     });
@@ -52,17 +51,25 @@ function batch(prefix) {
     assert.equal(calls, 0); assert.match(await page.locator(".market-content").innerText(), /尚未刷新/);
     await page.locator("#market-refresh").click();
     await page.waitForFunction(() => document.querySelector(".market-message")?.textContent.includes("已全部更新"));
-    assert.equal(calls, 1); assert.equal(await page.locator(".market-card").count(), 12);
+    assert.equal(calls, 1); assert.equal(await page.locator(".market-card").count(), 24);
+    assert.equal(await page.locator("[data-category]").count(), 13);
+    await page.locator('[data-selection="personal"]').click(); assert.equal(await page.locator(".market-card").count(), 6);
+    await page.locator('[data-selection="everyday"]').click(); assert.equal(await page.locator(".market-card").count(), 12);
+    await page.locator('[data-selection="discovery"]').click(); assert.equal(await page.locator(".market-card").count(), 6);
+    await page.locator('[data-selection="全部"]').click();
+    await page.locator('[data-category="生鲜食材"]').click(); assert.equal(await page.locator(".market-card").count(), 2);
+    await page.locator('[data-category="全部"]').click();
     assert.match(prompts[0], /喜欢书法/); assert.doesNotMatch(prompts[0], /想买新文具|200\.00|山海书院/);
     assert.match(prompts[0], /家境优渥，但消费节俭/);
     assert.match(prompts[0], /家庭经济条件普通，每月零花钱800元/);
     assert.match(prompts[0], /实际选品与定价/);
-    await page.locator('[data-tab="food"]').click(); assert.equal(await page.locator(".market-card").count(), 8);
+    await page.locator('[data-tab="food"]').click(); assert.equal(await page.locator(".market-card").count(), 16);
+    assert.equal(await page.locator("[data-category]").count(), 9);
     await page.locator('[data-tab="goods"]').click();
     await page.locator('.market-card [data-delta="1"]').first().click();
     await page.waitForFunction(() => !window.EPhoneLifeMarket.isBusy());
     await page.locator(".market-back").click(); await page.locator("#life-market-home").click();
-    assert.equal(calls, 1); assert.equal(await page.locator(".market-card").count(), 12);
+    assert.equal(calls, 1); assert.equal(await page.locator(".market-card").count(), 24);
     await page.locator("#market-refresh").click();
     await page.waitForFunction(async () => (await window.db.marketState.get("main"))?.revision === 2);
     await page.waitForFunction(() => !window.EPhoneLifeMarket.isBusy());
@@ -114,6 +121,13 @@ function batch(prefix) {
     assert.ok(layout.scroll > 0); assert.ok(layout.bottom <= 901); assert.ok(layout.width <= 420);
     await page.evaluate(() => { document.querySelector(".market-content").scrollTop = 0; });
     await page.screenshot({ path: path.join(require("node:os").tmpdir(), "ephone-market-v1.7.60.png") });
+    const beforeDuplicate = await page.evaluate(async () => window.db.marketState.get("main"));
+    duplicate = true; await page.locator("#market-refresh").click();
+    await page.waitForFunction(() => document.querySelector(".market-message")?.textContent.includes("商品重复"));
+    assert.deepEqual(await page.evaluate(async () => window.db.marketState.get("main")), beforeDuplicate, "renamed/repackaged duplicate catalog never replaces the saved list");
+    assert.equal(calls, 6, "at most one repair for invalid catalog, both on auxiliary model");
+    await page.locator(".market-back").click(); await page.locator("#life-market-home").click();
+    assert.equal(calls, 6, "even after rejected refresh, opening must not generate or retry");
     assert.deepEqual(errors, []);
     console.log("PASS: actual mobile app, personality/family/consumption prompt grounding, profile edits only applied on manual refresh, both lists, no history/wallet assumptions, payment/order preservation, space isolation, scrolling, zero page errors");
   } finally { await browser.close(); await new Promise((resolve) => server.close(resolve)); }

@@ -25,8 +25,8 @@ const { chromium } = require("playwright-core");
         let raw;
         if (body.messages[0].content.includes("虚拟商城的策划")) {
           shops++;
-          const list = (kind, count) => Array.from({ length: count }, (_, i) => ({ name: `新${kind}${shops}-${i}`, category: "类别" + i, merchant: "店铺", description: "日常所需", price: 10, deliveryFee: 2, deliveryMinutes: 30, reason: "符合人设" }));
-          raw = { headline: "本批", goods: list("物", 12), food: list("餐", 8) };
+          raw = require("./market-test-fixtures").marketBatch(`订单批${shops}`);
+          for (const item of [...raw.goods, ...raw.food]) { item.price = 10; item.deliveryFee = 2; }
         } else raw = replies.shift() || [header, { type: "text", name: "甲", content: "继续聊天。" }];
         return route.fulfill({ contentType: "application/json", body: JSON.stringify({ choices: [{ message: { content: JSON.stringify(raw) }, finish_reason: "stop" }] }) });
       }

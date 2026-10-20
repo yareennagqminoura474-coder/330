@@ -48,21 +48,49 @@
     );
   }
 
-  // 与糯叽机的核心约定一致：先靠 type 区分，再兜底兼容（动作）/*动作*/。
+  function isNumericDetail(text) {
+    const value = text.normalize("NFKC").trim();
+    // Amounts, quantities, sizes, dates and arithmetic are dialogue details,
+    // not stage directions. Do not exempt actions merely because they contain
+    // a number: “等了10分钟，拿起手机” must still be narration.
+    return /[\d零〇一二两三四五六七八九十百千万亿]/.test(value) &&
+      /^(?:(?:价格|单价|总价|合计|总计|金额|约|共|含税|规格|数量|尺寸|码数)\s*[:：]?\s*)?(?:[\d零〇一二两三四五六七八九十百千万亿\s.,，、:：;；+\-–—~～×xX*÷/=<>≤≥%‰¥￥$€£°℃²³]|元|块|角|分|钱|人民币|美元|港币|每|到|至|起|含|税|个|件|份|盒|箱|袋|包|瓶|罐|杯|碗|盘|斤|公斤|千克|克|毫升|升|厘米|毫米|米|码|寸|英寸|年|月|日|号|天|小时|分钟|秒|折|成|万|亿|kg|mg|ml|cm|mm|gb|tb|mah|mb|hz|[gLlMmWwVv])+$/.test(value);
+  }
+
+  function isActionMarker(mark, text, index) {
+    if (mark.startsWith("**")) return false; // Markdown bold, never an action delimiter.
+    if (isNumericDetail(mark.slice(1, -1))) return false;
+    // “三文鱼*1、排骨*1” uses multiplication, not paired action stars.
+    if (mark[0] === "*" && /[\p{L}\p{N})）]\s*$/u.test(text.slice(0, index)) && /^\*\s*\d/.test(mark)) return false;
+    return true;
+  }
+
+  // 先靠 type 区分，再兜底兼容（动作）/*动作*/；数字和排版不转为动作。
   function splitMarkedActions(item, text) {
+    // Mask non-action star spans before looking for paired action delimiters.
+    // Otherwise a multiplication star can pair with the next action's opener.
+    let scan = text.replace(/(?<!\*)(\*{1,2})(?!\*)[^*\r\n]{1,1000}\1(?!\*)/g, (mark) => {
+      const inner = mark.slice(1, -1);
+      return mark.startsWith("**") || (isNumericDetail(inner) && !/[，,、:：;；]\s*$/.test(inner)) ? "\0".repeat(mark.length) : mark;
+    });
+    scan = scan.replace(/([\p{L}\p{N})）])([ \t]*)\*(?=\s*\d)/gu, (mark) => mark.slice(0, -1) + "\0");
     const markerPattern =
-      /(?:（[^（）\r\n]{1,1000}）|\([^()\r\n]{1,1000}\)|\*[^*\r\n]{1,1000}\*)/g;
+      /(?:（[^（）\r\n]{1,1000}）|\([^()\r\n]{1,1000}\)|(?<!\*)(\*{1,2})(?!\*)[^*\r\n]{1,1000}\1(?!\*))/g;
     const parts = [];
     let cursor = 0;
     let match;
     let foundMarker = false;
 
-    while ((match = markerPattern.exec(text))) {
+    while ((match = markerPattern.exec(scan))) {
+      const marker = text.slice(match.index, markerPattern.lastIndex);
+      if (!isActionMarker(marker, text, match.index)) {
+        continue;
+      }
       foundMarker = true;
       const before = text.slice(cursor, match.index).trim();
       if (before) parts.push(withText(item, "text", before));
 
-      const action = match[0]
+      const action = marker
         .replace(/^(?:（|\(|\*)|(?:）|\)|\*)$/g, "")
         .trim();
       if (action) parts.push(withText(item, "narration", action));
@@ -204,7 +232,7 @@
       actionBubbles.forEach((bubble) => {
         const content = bubble.querySelector(":scope > .content");
         const rawText = content ? content.textContent.trim() : "";
-        if (!fullActionPattern.test(rawText)) return;
+        if (!fullActionPattern.test(rawText) || !isActionMarker(rawText, rawText, 0)) return;
 
         const narrationText = rawText
           .replace(/^(?:（|\(|\*)|(?:）|\)|\*)$/g, "")
