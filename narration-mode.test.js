@@ -19,6 +19,10 @@ for (const content of ["（伸手拿起手机）", "(站起身)", "*拿起杯子
   assert.equal(normalize([{ type: "text", name: "林", content }])[0].type, "narration", content);
 }
 assert.equal(normalize([{ type: "text", content: "（拿起**180元**的茶叶）" }])[0].content, "拿起**180元**的茶叶");
+const timedSplit = normalize([{ type: "text", content: "好了（收拾好书桌）（换好外套）走吧。", scene_elapsed_minutes: 5,
+  scene_time_reason: "整理和换衣", scene_phase: "elapsed" }]);
+assert.equal(timedSplit.filter((item) => item.scene_elapsed_minutes === 5).length, 1, "one model scene split into four fragments only owns one time advance");
+assert.equal(timedSplit.find((item) => item.scene_elapsed_minutes === 5).type, "narration");
 for (const content of ["茶叶（180元），*拿起手机*好了", "三文鱼*1、排骨*1，*拿起手机*好了"]) {
   const items = normalize([{ t: "text", n: "林", c: content }]);
   assert.equal(items.length, 3);

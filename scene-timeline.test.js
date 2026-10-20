@@ -37,11 +37,11 @@ function harness() {
   assert.equal(clock.nowMs(), start + 57 * 60000);
   assert.equal((await db.spaceClock.get("main")).anchorVirtualMs, last);
   const next = clock.prepareReplyTime([], { chatId: "a", sceneTimeline: true }); await next.ready;
-  assert.equal(next.afterMs, last, "next round starts where this one ended, without double advancement");
+  assert.equal(next.afterMs, last + 60000, "next round restores a small automatic pause, not the whole previous scene's duration");
   const resolvedElapsed = timeline.find((m) => /二十分钟后/.test(m.content));
   const afterElapsed = clock.prepareReplyTime([{ ...resolvedElapsed, role: "assistant" }], { chatId: "a", sceneTimeline: true }); await afterElapsed.ready;
-  assert.equal(afterElapsed.afterMs, last, "an elapsed narration already timed by this batch cannot be counted a second time");
-  const reload = harness().clock; await reload.loadSpace(db); assert.equal(reload.nowMs("b"), last);
+  assert.equal(afterElapsed.afterMs, last + 2 * 60000, "a small next-round pause does not replay the already timed twenty-minute journey");
+  const reload = harness().clock; await reload.loadSpace(db); assert.equal(reload.nowMs("b"), last + 2 * 60000);
   const midnight = new Date(2026, 2, 5, 23, 58).getTime(), crossed = [];
   window.EPhoneCharacterDaily = { onTimeChange: (before, after) => crossed.push([before, after]) };
   const nightPrep = await jump(midnight); crossed.length = 0;

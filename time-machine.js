@@ -4,7 +4,7 @@
   const STORAGE_KEY = "ephone_time_machine_v1";
   const MODES = Object.freeze({ REAL: "real", CUSTOM: "custom" });
   const FLOWS = Object.freeze({ FLOW: "flow", FROZEN: "frozen" });
-  const SPACE_TIME_HINT = "本空间所有聊天共用时间。手动跳转指定下一轮的开场时刻；按剧情推进时，一轮内也会随聊天、活动和转场逐段向前推进。其他聊天静默同步。约定等待不等于已经过去，说‘时间到了’再按约定推进。";
+  const SPACE_TIME_HINT = "本空间所有聊天共用时间。手动跳转指定下一轮的开场时刻；未手动跳转时，下一轮从最新时间小幅自动推进。一轮内随交谈、实际完成的活动和转场逐段走时，模型未填时间字段也会估算。其他聊天静默同步。约定等待不等于已经过去，说‘时间到了’再按约定推进。";
   let activeChatId = null;
   let activeBinding = null;
   let configs = loadConfigs();
@@ -420,7 +420,7 @@
     if (config.mode === MODES.CUSTOM) {
       const flowRule =
         config.flow === FLOWS.FROZEN
-          ? "- 当前采用“按剧情推进”：本轮从上面的最新开场时刻起算，每轮重新起算，不能套用上一轮的绝对时间。时间按场景实际经过的时长推进，不按消息条数、字数或固定间隔加时间。开场动作和台词先发生在开场时刻。\n- 在实际发生时间流逝的自然 narration 对象中加 scene_elapsed_minutes（数字，表示距上一场景真实经过的分钟数，可为小数），正数同时提供 scene_time_reason（简短说明实际耗时的活动）、scene_phase:\"elapsed\"。后续台词和操作沿用累计后的时间。不必每条填写，轮内推进不要创建额外报时的对象；不要再用 scene_time 填绝对时刻。\n- 连贯对答、拿杯子、开门、坐下等瞬时动作，不应突然过去几分钟或几十分钟，可用 scene_phase:\"instant\"、scene_elapsed_minutes:0。吃饭、换衣、洗漱、等待、通勤等，要根据实际完成程度、距离和场景节奏判断，不能把动作一出现就算整个过程做完，也不能把不同人同时做的事重复累加。\n- 计划、要求、约定、回忆和未来时刻不会让当前时间立刻变化；计划用 scene_phase:\"planned\"、scene_elapsed_minutes:0。明确‘过了十分钟’就只经过十分钟；‘再等十分钟’只是约定，真正等完或用户说‘时间到了’再按约定推进。跨午夜时相对日期及星期跟随累计时间变化。\n- 每轮仅第一条可见消息输出开场的年月日、时分、星期和地点旁白；后面的正文只写真实动作、环境和台词，不要为了轮内跳时额外插入报时 narration，后续时间只更新消息角标。"
+          ? "- 当前采用“按剧情推进”：本轮从上面的最新开场时刻起算，每轮重新起算，不能套用上一轮的绝对时间。时间按场景实际经过的时长推进，不按消息条数、字数或固定间隔机械跳时；长轮次中交谈、完成活动、转场要持续自然推进，不能整轮都停在开场时间。下一轮未手动跳转时，系统会从最新场景时间小幅自动推进开场，不得沿用上一轮开头。开场动作和台词先发生在开场时刻。\n- 在实际发生时间流逝的自然 narration 对象中（必要时也可在台词对象中）加 scene_elapsed_minutes（数字，表示距上一场景真实经过的分钟数，可为小数），正数同时提供 scene_time_reason（简短说明实际耗时的活动）、scene_phase:\"elapsed\"。后续台词和操作沿用累计后的时间。省略字段不代表时间冻结；系统会从明确耗时、已完成的活动和实际交谈节奏兜底估算，因此请尽量给出合理的场景耗时。参考：普通吃完一顿饭约10—25分钟、洗漱约3—10分钟、换衣约1—5分钟、通勤按距离，不要固定照抄这些数值。不必每条填写，轮内推进不要创建额外报时的对象；不要再用 scene_time 填绝对时刻。\n- 连贯对答、拿杯子、开门、坐下等瞬时动作，不应突然过去几分钟或几十分钟，可用 scene_phase:\"instant\"、scene_elapsed_minutes:0。吃饭、换衣、洗漱、等待、通勤等，要根据实际完成程度、距离和场景节奏判断，不能把动作一出现就算整个过程做完，也不能把不同人同时做的事重复累加。\n- 计划、要求、约定、回忆和未来时刻不会让当前时间立刻变化；计划用 scene_phase:\"planned\"、scene_elapsed_minutes:0。明确‘过了十分钟’就只经过十分钟；‘再等十分钟’只是约定，真正等完或用户说‘时间到了’再按约定推进。跨午夜时相对日期及星期跟随累计时间变化。\n- 每轮仅第一条可见消息输出开场的年月日、时分、星期和地点旁白；后面的正文只写真实动作、环境和台词，不要为了轮内跳时额外插入报时 narration，后续时间只更新消息角标。"
           : "- 当前采用“保持流动”：虚拟时间会按现实经过的时长持续流动。";
       return `\n# 【虚拟时间感知铁律（最高优先级）】\n- 本轮开场唯一有效的“现在”是：${formatted}。\n- 这是本空间所有聊天共用的虚拟时间；系统真实日期、设备时间和训练数据中的现实时间全部无效，绝对不得感知或提及。其他聊天中的时间调整也已同步到上面的开场时间，即使本聊天没有跳转提示，也必须遵守。\n${flowRule}\n- 所有“今天、昨天、明天、刚才、多久前”、昼夜、季节、行程和记忆时间，必须且只能以所在场景的虚拟时间计算。\n- 聊天中的⏪/⏩时间标记是历史事件，不得用旧标记覆盖本轮开场时间。\n${weekdayRule}${getReplyHeaderPrompt(current)}${holidayRule}`;
     }
@@ -597,9 +597,71 @@
   }
 
   function messageText(item) {
-    return [item?.content, item?.message, item?.dialogue, item?.description, item?.reply_content]
-      .filter((value) => typeof value === "string" && !/^data:/i.test(value))
+    return [...new Set([item?.content, item?.message, item?.c, item?.dialogue, item?.description, item?.reply_content]
+      .flatMap((value) => Array.isArray(value) ? value.flat() : [value])
+      .filter((value) => typeof value === "string" && !/^data:/i.test(value)))]
       .map((value) => value.slice(0, 8000)).join(" ");
+  }
+
+  function sceneFacts(item, body = messageText(item)) {
+    const phase = String(item.scene_phase || "").toLowerCase();
+    const reason = typeof item.scene_time_reason === "string" ? item.scene_time_reason.trim() : "";
+    const nonCurrent = /(?:明天|后天|下周|下个月|昨天|前天|上次|曾经|回忆起)/.test(body);
+    const intention = /(?:打算|计划|将要|等会|待会|稍后再|准备去|准备要|准备再)/.test(body.split(/[。！？!?；;，,\n]/)[0]);
+    const future = phase === "planned" || nonCurrent || intention || /(?:准备|还要|再等)/.test(body) &&
+      !/(?:过了|过去|经过|耗时|花了|等了|聊了|交谈了|说完|吃完|结束|完成|到达|抵达|回到)/.test(body);
+    const simpleMovement = /(?:拿起|放下|开门|关门|抬头|低头|点头|摇头|转头|坐下|站起|递过|接过)/.test(body) &&
+      !/(?:分钟|小时|刻钟|交谈|聊天|谈话|交流|讨论|收拾|用餐|吃饭|早餐|午餐|晚餐|洗漱|通勤|行车|路上|等了|等待|过了|经过|结束|完成|之后)/.test(body + " " + reason);
+    const instant = phase === "instant" || simpleMovement;
+    const relative = finiteOrNull(item.scene_elapsed_minutes);
+    const supported = reason || /(?:过了|过去|经过|耗时|花了|等了|聊了|交谈了|说完|吃完|结束|完成|到达|抵达|回到)/.test(body);
+    return { phase, reason, future, instant, relative, supported };
+  }
+
+  function completedSceneMinutes(text, context = "") {
+    // Only completed activities, never an intention, background description or
+    // a quoted future deadline. Parallel activities use the longest estimate,
+    // rather than adding a separate meal/journey for every participant.
+    text = text.replace(/[“「『][\s\S]*?[”」』]/g, "").split(/[。！？!?；;，,\n]/)
+      .filter((clause) => !/(?:准备|打算|计划|还要|再等|明天|后天|昨天|前天|上次|曾经|回忆|将要|等会|待会|如果|还没|还未|没有|尚未|没能|未能|并未|不是|吗|么|有没有|是不是|是否|没(?=吃完|用完|洗完|洗漱完|换好|收拾好|抵达|到达)|吃完.{0,8}(?:后再|才能|才可以))/.test(clause)).join("，");
+    if (!text || sceneFacts({}, text).future) return 0;
+    const estimates = [];
+    if (/(?:吃完|用完|结束了?)(?:了)?[^。！？!?]{0,12}(?:早餐|早饭|午饭|午餐|晚餐|晚饭|饭)|(?:饭|餐|早餐|午餐|晚餐)[^。！？!?]{0,8}(?:吃完|吃好|结束)|放下(?:了)?筷子|收起(?:了)?碗筷/.test(text)) estimates.push(15);
+    if (/(?:洗完|洗好|洗过)[^。！？!?]{0,8}(?:澡|淋浴)|(?:淋浴|洗澡)[^。！？!?]{0,6}(?:结束|完毕)/.test(text)) estimates.push(12);
+    if (/(?:洗漱|刷牙洗脸)[^。！？!?]{0,5}(?:完|好|结束)|(?:完成|结束)[^。！？!?]{0,4}洗漱/.test(text)) estimates.push(6);
+    if (/(?:换好|换完|穿好)[^。！？!?]{0,8}(?:衣|服|校服|外套|鞋)|(?:衣服|校服)[^。！？!?]{0,5}换好/.test(text)) estimates.push(3);
+    if (/(?:收拾|整理|打扫|清理)[^。！？!?]{0,8}(?:好了|完毕|完了|结束)|(?:收拾好|整理好|打扫完)[^。！？!?]{0,12}(?:房间|厨房|餐桌|书桌)/.test(text)) estimates.push(4);
+    if (/(?:做好|做完|煮好|煮熟|炒好|烤好|蒸好)[^。！？!?]{0,8}(?:饭|菜|粥|汤|早餐|午餐|晚餐)|(?:饭|菜|粥|汤)[^。！？!?]{0,6}(?:做好|煮好|出锅)/.test(text)) estimates.push(20);
+    if (/(?:抵达|到达|车停在|开到了|回到了)[^。！？!?]{1,25}/.test(text) && /开车|驾车|打车|出租|公交|地铁|行车|通勤|车程|路上|行驶/.test(text + " " + context))
+      estimates.push(/长途|跨城|高速|机场|远郊/.test(text + " " + context) ? 45 : /附近|楼下|小区|隔壁/.test(text + " " + context) ? 5 : 20);
+    if (/(?:交谈|聊天|讨论|谈话|交流)[^。！？!?]{0,8}(?:结束|告一段落|良久|许久)|(?:聊完|谈完)[^。！？!?]{0,15}/.test(text)) estimates.push(3);
+    if (/(?:许久之后|良久后|半晌后|过了好一会)/.test(text)) estimates.push(5);
+    else if (/(?:过了一会儿?|一会儿后|片刻后|稍过一会)/.test(text)) estimates.push(1);
+    if (!estimates.length) return 0;
+    const pace = /不紧不慢|慢慢|从容|仔细|悠闲/.test(text) ? 1.2 : /匆匆|迅速|快速|赶紧/.test(text) ? 0.75 : 1;
+    return Math.max(1, Math.round(Math.max(...estimates) * pace));
+  }
+
+  function dialogueSeconds(item) {
+    if (!["text", "voice_message", "quote_reply", "offline_text"].includes(item.type || "text")) return 0;
+    const raw = item.type === "offline_text" ? item.dialogue : item.reply_content || item.content || item.message || item.c;
+    const text = (Array.isArray(raw) ? raw.filter((value) => typeof value === "string").join(" ") : typeof raw === "string" ? raw : "").trim();
+    if (!text) return 0;
+    // Approximate speaking, not reading every character of a background essay.
+    // Cap a single monologue so long prose cannot create an hours-long jump.
+    return Math.min(45, Math.max(2, text.replace(/<[^>]*>|\s/g, "").length / 4 + (text.match(/[。！？!?；;]/g)?.length || 0)));
+  }
+
+  function betweenReplyMinutes(history) {
+    const recent = latestReplyContext(history), latest = recent.at(-1);
+    if (latest && (latest.role === "user" || latest.sentAsCharacter) && !latest.ephoneSceneTimeResolved) {
+      const completed = completedSceneMinutes(messageText(latest), recent.slice(0, -1).map(messageText).join(" "));
+      if (completed) return completed;
+    }
+    // Restore a small, variable inter-round pause. Never replay the previous
+    // meal/journey's elapsed duration, which is already in the shared clock.
+    const seconds = recent.reduce((sum, item) => sum + dialogueSeconds(item), 0);
+    return Math.max(1, Math.min(3, Math.ceil(seconds / 60)));
   }
 
   function storyTarget(history, current, chatId) {
@@ -685,7 +747,7 @@
     } else if (config.flow === FLOWS.FROZEN) {
       const target = storyTarget(history, beforeMs, chatId);
       preparation.afterMs = target == null
-        ? beforeMs + (options.sceneTimeline ? 0 : replyAdvanceMinutes(latestReplyContext(history))) * 60000
+        ? beforeMs + (options.sceneTimeline ? betweenReplyMinutes(history) : replyAdvanceMinutes(latestReplyContext(history))) * 60000
         : target;
       preparation.storyDeadline = target != null;
     } else return preparation;
@@ -845,7 +907,17 @@
     const config = getConfig(options.chatId), start = options.replyTimeMs;
     const dynamic = config.mode === MODES.CUSTOM && config.flow === FLOWS.FROZEN;
     const result = [];
-    let current = start, modelOpening = null, hasStory = false;
+    let current = start, modelOpening = null, hasStory = false, pendingSeconds = 0;
+    // Prefer the model's scene plan when supplied. A missing plan must not
+    // freeze the entire reply: plain narration and dialogue have a local path.
+    const declaredTimes = items.filter((item) => item && ["narration", "offline_text"].includes(item.type))
+      .map((item) => parseSceneDate(item.scene_time) ?? splitSceneHeader(item.content)?.time).filter((time) => time != null);
+    const hasScenePlan = declaredTimes.some((time, index) => index > 0 && time > declaredTimes[0]) ||
+      declaredTimes.some((time) => time > start) || items.some((item) => {
+        if (!item || typeof item !== "object") return false;
+        const facts = sceneFacts(item);
+        return !facts.future && !facts.instant && facts.relative > 0 && facts.supported;
+      });
     let location = inferLocation([]);
     let openingLocation = location;
     for (const source of items) {
@@ -858,29 +930,27 @@
       const openingHeader = !hasStory && header != null && modelOpening == null;
       if (openingHeader || (!hasStory && modelOpening == null && declared != null)) modelOpening = declared;
       const body = header ? header.body : messageText(item);
-      const phase = String(item.scene_phase || "").toLowerCase();
-      const future = phase === "planned" || /(?:准备|打算|计划|还要|再等|稍后再|待会再|明天)/.test(body) &&
-        !/(?:过了|过去|经过|耗时|花了|等了|聊了|交谈了|说完|吃完|结束|完成|到达|抵达|回到)/.test(body);
-      const reason = typeof item.scene_time_reason === "string" ? item.scene_time_reason.trim() : "";
-      const simpleMovement = narration && /(?:拿起|放下|开门|关门|抬头|低头|点头|摇头|转头|坐下|站起|递过|接过)/.test(body) &&
-        !/(?:分钟|小时|刻钟|交谈|聊天|谈话|交流|讨论|收拾|用餐|吃饭|早餐|午餐|晚餐|洗漱|通勤|行车|路上|等了|等待|过了|经过|结束|完成|之后)/.test(body + " " + reason);
-      const instant = phase === "instant" || simpleMovement;
+      const { phase, future, instant, relative, supported } = sceneFacts(item, body);
       const elapsed = dynamic && narration && !openingHeader && !future
         ? storyTarget([{ ...item, role: "assistant", content: body, isReplyHeader: false,
             ephoneSceneTimeResolved: false, vts: current }], current, options.chatId) : null;
-      const relative = finiteOrNull(item.scene_elapsed_minutes);
-      const supported = reason || /(?:过了|过去|经过|耗时|花了|等了|聊了|交谈了|说完|吃完|结束|完成|到达|抵达|回到)/.test(body);
       let target = current;
-      if (dynamic && hasStory && !openingHeader && !future) {
+      if (dynamic && !openingHeader && !future) {
         if (elapsed != null && elapsed > current) target = elapsed;
-        else if (!instant && narration && relative != null && relative >= 0 && (relative === 0 || supported))
+        else if (!instant && relative != null && relative >= 0 && (relative === 0 || supported))
           target = current + relative * 60000;
         else if (!instant && narration && relative == null && declared != null) {
           // Legacy absolute clocks are a relative sequence anchored to THIS
           // opening, not instructions to replay the previous round's date.
           target = modelOpening != null ? start + declared - modelOpening : declared;
+        } else if (!hasScenePlan && !instant && relative == null) {
+          const previousScene = result.slice(-6).map(messageText).join(" ");
+          const completed = narration ? completedSceneMinutes(body, previousScene) : 0;
+          if (completed > 0) target += Math.max(completed, Math.floor(pendingSeconds / 60)) * 60000;
+          else if (hasStory && pendingSeconds >= 60) target += Math.floor(pendingSeconds / 60) * 60000;
         }
       }
+      if (target > current || relative != null || (narration && elapsed != null)) pendingSeconds = 0;
       if (Number.isFinite(target) && Number.isFinite(new Date(target).getTime()) && target >= current) current = target;
       location = header?.location || (typeof item.scene_location === "string" && item.scene_location.trim()) || location;
       if (!hasStory) openingLocation = location;
@@ -901,6 +971,7 @@
       item.ephoneSceneTimeChanged = result.length > 0 && result.at(-1)?.vts !== current;
       result.push(item);
       hasStory = true;
+      if (dynamic && !hasScenePlan && phase !== "instant" && relative == null) pendingSeconds += dialogueSeconds(item);
     }
     if (!result.some((item) => item && item.type !== "thought_chain"))
       throw new Error("模型只返回了报时信息或空白内容，没有剧情正文或台词；未自动重试，也未推进时间。");

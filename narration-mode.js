@@ -162,10 +162,24 @@
 
       const markedParts = splitMarkedActions(item, text);
       if (markedParts.length !== 1 || markedParts[0] !== item)
-        return markedParts;
+        return assignSceneTiming(markedParts, item);
 
       const quotedParts = splitQuotedDialogue(item, text);
-      return quotedParts || [item];
+      return quotedParts ? assignSceneTiming(quotedParts, item) : [item];
+    });
+  }
+
+  function assignSceneTiming(parts, source) {
+    // Splitting one mixed dialogue/action must not repeat one scene's elapsed
+    // minutes on every fragment. Preserve its timing once, at the first action.
+    const keys = ["scene_elapsed_minutes", "scene_time_reason", "scene_phase", "scene_time", "scene_location"];
+    if (!keys.some((key) => Object.prototype.hasOwnProperty.call(source, key))) return parts;
+    const owner = Math.max(0, parts.findIndex((part) => part.type === "narration"));
+    return parts.map((part, index) => {
+      if (index === owner) return part;
+      const next = { ...part };
+      for (const key of keys) delete next[key];
+      return next;
     });
   }
 

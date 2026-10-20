@@ -111,12 +111,45 @@ const { chromium } = require("playwright-core");
     assert.ok(await page.evaluate((stamp) => window.db.chats.get("scene-watch").then((chat) => chat.history.some((m) => m.timestamp === stamp)), oldRows[0].timestamp), "render filtering cannot delete history");
     await open("scene-watch"); response = [{ type: "narration", content: "下一轮开场。" }, { type: "narration", content: "又交谈了一会。", scene_elapsed_minutes: 6, scene_time_reason: "继续交谈", scene_phase: "elapsed" }, { type: "text", name: "林", content: "下一轮继续。" }];
     await page.locator("#spectator-propel-btn").click(); await page.waitForFunction(() => !window.isPersonaSpaceBusy());
-    assert.match(calls.at(-1).messages[0].content, /2026-03-05 08:17 周四/);
+    assert.match(calls.at(-1).messages[0].content, /2026-03-05 08:18 周四/);
     assert.match(JSON.stringify(calls.at(-1).messages.slice(1)), /07:57/);
     assert.match(JSON.stringify(calls.at(-1).messages.slice(1)), /08:17/);
-    assert.equal(await page.evaluate(() => window.ephoneTimeMachine.nowMs()), start + 63 * 60000, "next reply advances again from the last end");
+    assert.equal(await page.evaluate(() => window.ephoneTimeMachine.nowMs()), start + 64 * 60000, "next reply gets its automatic opening increment plus the scene's six minutes");
     const twoRounds = await page.evaluate(() => window.db.chats.get("scene-watch"));
     assert.equal(twoRounds.history.filter((m) => m.isReplyHeader).length, 2, "every round gets its own single opening header");
+    // A provider that completely ignores the custom scene fields must still
+    // move time in this exact production quiet-timeline path, in every mode.
+    for (const id of ["scene-watch", "scene-normal", "scene-private", "scene-offline"]) {
+      await open(id); await jump(start);
+      const previousLength = await page.evaluate((id) => window.db.chats.get(id).then((chat) => chat.history.length), id);
+      response = [
+        { type: "narration", content: "他坐在餐桌旁。" }, { type: "text", name: "林", content: "先吃早饭吧。" },
+        { type: "narration", content: "两人吃完早餐，收拾好餐桌。" }, { type: "text", name: "林", content: "吃好了。" },
+        { type: "narration", content: "他洗漱完毕，擦干了脸。" }, { type: "text", name: "林", content: "马上来。" },
+        { type: "narration", content: "他换好衣服，拿上书包。" }, { type: "text", name: "林", content: "走吧。" },
+        { type: "narration", content: "过了十分钟，车停在学校门口。" }, { type: "text", name: "林", content: "到了，开始上课。" },
+      ];
+      const button = page.locator(id === "scene-watch" ? "#spectator-propel-btn" : "#wait-reply-btn"), before = calls.length;
+      await button.click(); await page.waitForFunction(() => !window.isPersonaSpaceBusy());
+      assert.equal(calls.length, before + 1, "fallback adds zero auxiliary/repair requests");
+      const saved = await page.evaluate((id) => window.db.chats.get(id), id), rows = saved.history.slice(previousLength);
+      assert.equal(rows.filter((item) => item.isReplyHeader).length, 1);
+      assert.equal(rows.find((item) => item.isReplyHeader).vts, start, "manual opening remains exactly 07:20");
+      assert.equal(rows.find((item) => item.content === "两人吃完早餐，收拾好餐桌。").vts, start + 15 * 60000);
+      assert.equal(rows.find((item) => item.content === "他洗漱完毕，擦干了脸。").vts, start + 21 * 60000);
+      assert.equal(rows.find((item) => item.content === "他换好衣服，拿上书包。").vts, start + 24 * 60000);
+      assert.equal(rows.at(-1).vts, start + 34 * 60000);
+      assert.equal(await page.evaluate(() => window.ephoneTimeMachine.nowMs()), start + 34 * 60000);
+      assert.equal(await page.locator("#chat-messages .narration-timestamp").last().innerText(), "07:54", "fallback changes actual narration corner timestamps");
+      response = [{ type: "text", name: "林", content: "接着刚才的话题继续。" }, { type: "text", name: "林", content: "现在开始上课了。" }];
+      const beforeNext = calls.length; await button.click(); await page.waitForFunction(() => !window.isPersonaSpaceBusy());
+      assert.equal(calls.length, beforeNext + 1);
+      assert.match(calls.at(-1).messages[0].content, /2026-03-05 07:55 周四/, "next main request receives automatically advanced latest clock");
+      const next = await page.evaluate((id) => window.db.chats.get(id), id);
+      assert.equal(next.history.findLast((item) => item.isReplyHeader).vts, start + 35 * 60000);
+      assert.equal(await page.evaluate(() => window.ephoneTimeMachine.nowMs()), start + 35 * 60000);
+    }
+    await open("scene-watch");
     // Exercise the real picker repeatedly; it must reflect the latest clock,
     // not retain the previous draft or the model's former absolute date.
     for (const value of ["2026-03-05T10:30", "2026-03-05T11:45"]) {
@@ -158,6 +191,14 @@ const { chromium } = require("playwright-core");
     await page.waitForFunction(() => document.getElementById("custom-modal-overlay")?.textContent.includes("503"));
     await page.locator("#custom-modal-overlay.visible #custom-modal-confirm").click(); await page.waitForFunction(() => !window.isPersonaSpaceBusy());
     assert.equal(await page.evaluate(async () => (await window.db.spaceClock.get("main")).holdNextReply), true);
+    failure = false; response = [{ type: "text", name: "林", content: "这一轮成功了。" }];
+    await page.locator("#wait-reply-btn").click(); await page.waitForFunction(() => !window.isPersonaSpaceBusy());
+    assert.equal(await page.evaluate(() => window.ephoneTimeMachine.nowMs()), start);
+    failure = true; await page.locator("#wait-reply-btn").click();
+    await page.waitForFunction(() => document.getElementById("custom-modal-overlay")?.textContent.includes("503"));
+    await page.locator("#custom-modal-overlay.visible #custom-modal-confirm").click(); await page.waitForFunction(() => !window.isPersonaSpaceBusy());
+    assert.equal(await page.evaluate(() => window.ephoneTimeMachine.nowMs()), start, "failed automatic next round restores last successfully displayed clock");
+    assert.equal(await page.evaluate(async () => (await window.db.spaceClock.get("main")).holdNextReply), false);
     assert.deepEqual(errors, []);
     console.log("PASS: actual mobile watch/normal/private/offline 115-message replies save per-scene time with one primary call, synchronized live clock, exact manual start, Stop, midnight/body/weekday, reload and failure retry hold");
   } finally { await browser.close(); await new Promise((r) => server.close(r)); }
