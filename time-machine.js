@@ -4,7 +4,7 @@
   const STORAGE_KEY = "ephone_time_machine_v1";
   const MODES = Object.freeze({ REAL: "real", CUSTOM: "custom" });
   const FLOWS = Object.freeze({ FLOW: "flow", FROZEN: "frozen" });
-  const SPACE_TIME_HINT = "本空间所有聊天共用时间。手动跳转仅在当前聊天留下标记，其他聊天静默同步。约定等待十/二十分钟后，说‘时间到了’会按约定推进。";
+  const SPACE_TIME_HINT = "本空间所有聊天共用时间。手动跳转指定下一轮的开场时刻；按剧情推进时，一轮内也会随聊天、活动和转场逐段向前推进。其他聊天静默同步。约定等待不等于已经过去，说‘时间到了’再按约定推进。";
   let activeChatId = null;
   let activeBinding = null;
   let configs = loadConfigs();
@@ -420,9 +420,9 @@
     if (config.mode === MODES.CUSTOM) {
       const flowRule =
         config.flow === FLOWS.FROZEN
-          ? "- 当前采用“按剧情推进”：不跟随现实钟表流逝；程序已确定本轮时间（刚手动跳转时保持指定时刻；其他轮次根据情境或已经到期的等待推进）。下方时间是本轮唯一的现在，所有台词、动作和旁白必须一致，不得自行再加几分钟。约定等十/二十分钟只是未来计划，不能当成立刻过完；用户说‘时间到了’才以约定到期时刻继续。"
+          ? "- 当前采用“按剧情推进”：下方时间是本轮开场时刻，不是整轮锁死的时间。第一条时间旁白及开场动作、台词必须从这一时刻开始。之后按场景实际耗时持续推进：短对话可共用时刻，做事、吃饭、等待、路程或转场按情境经过几分钟、几十分钟或更久，不按固定消息条数、固定间隔推进。\n- 每次时间或场景发生变化，在对应 narration 对象附加 scene_time（完整本地日期时间，YYYY-MM-DDTHH:mm），地点变化时同时附 scene_location（如学校门口）；content 写时间地点旁白或转场动作；之后所有角色台词、动作和操作沿用最近的 scene_time，直到下一次变化。只在变化时标注即可，禁止倒流，不能从设备时间取值。例如几段交谈后推进4分钟，完成早餐后再推进25分钟；这只是情境示例，不是固定间隔，日期必须从本轮开场日期延续。\n- 明确‘过了十分钟’必须推进十分钟；‘再等十分钟’只是计划，不可在该句就算过完，真正等完或用户说‘时间到了’再推进。不要把未来约定、回忆、引用中的日期当成新场景时间。跨午夜要更新年月日及星期；开场的节假日、行程提示不能生搬到另一日期。"
           : "- 当前采用“保持流动”：虚拟时间会按现实经过的时长持续流动。";
-      return `\n# 【虚拟时间感知铁律（最高优先级）】\n- 当前唯一有效的“现在”是：${formatted}。\n- 这是本空间所有聊天共用的虚拟时间；系统真实日期、设备时间和训练数据中的现实时间全部无效，绝对不得感知或提及。其他聊天中的时间调整也已同步到上面的当前时间，即使本聊天没有跳转提示，也必须遵守。\n${flowRule}\n- 所有“今天、昨天、明天、刚才、多久前”、昼夜、季节、行程和记忆时间，必须且只能以这个虚拟时间计算。\n- 聊天中的⏪/⏩时间标记是历史事件，不得用旧标记覆盖本轮当前时间。\n${weekdayRule}${getReplyHeaderPrompt(current)}${holidayRule}`;
+      return `\n# 【虚拟时间感知铁律（最高优先级）】\n- 本轮开场唯一有效的“现在”是：${formatted}。\n- 这是本空间所有聊天共用的虚拟时间；系统真实日期、设备时间和训练数据中的现实时间全部无效，绝对不得感知或提及。其他聊天中的时间调整也已同步到上面的开场时间，即使本聊天没有跳转提示，也必须遵守。\n${flowRule}\n- 所有“今天、昨天、明天、刚才、多久前”、昼夜、季节、行程和记忆时间，必须且只能以所在场景的虚拟时间计算。\n- 聊天中的⏪/⏩时间标记是历史事件，不得用旧标记覆盖本轮开场时间。\n${weekdayRule}${getReplyHeaderPrompt(current)}${holidayRule}`;
     }
     return `\n# 【真实时间感知铁律】\n- 当前时间：${formatted}。所有相对日期、昼夜、行程和记忆时间都以这个真实时间为准。\n${weekdayRule}${getReplyHeaderPrompt(current)}${holidayRule}`;
   }
@@ -603,8 +603,11 @@
   function storyTarget(history, current, chatId) {
     const visible = (Array.isArray(history) ? history : []).filter((item) => item && !item.isHidden && item.type !== "thought_chain");
     const markerIndex = visible.findLastIndex((item) => item.type === "time_marker");
-    const recent = visible.slice(markerIndex + 1).filter((item) => !item.isReplyHeader).slice(-100);
+    const recent = visible.slice(markerIndex + 1).filter((item) => !item.isReplyHeader && !item.isSceneTimeHeader).slice(-100);
     const latest = recent.at(-1); if (!latest) return null;
+    // Newly generated scene narrations store their time AFTER the described
+    // passage. Do not add that same elapsed duration again next round.
+    if (latest.ephoneSceneTimeResolved && latest.role !== "user" && !latest.sentAsCharacter) return null;
     const text = messageText(latest);
     const negated = /(?:还没|还未|没有|没|未|不到|还不到)\s*(?:到)?\s*(?:时间|时候)|时间(?:还没|未|没|没有)到|时间到了[吗么？?]/.test(text);
     const reached = !negated && /时间到了|到时间了|时间到(?:了)?[！!。\s）)]|时间到$|时候到了|到时候了|到点了|等完了|等待结束|计时结束|闹钟响了|倒计时结束/.test(text);
@@ -667,6 +670,7 @@
       changed: false,
       spaceDatabaseName,
       beforeConfig: spaceClock ? { ...spaceClock, frozen: {} } : normalizeConfig(getConfig(chatId)),
+      revision: getConfig(chatId).revision,
     };
     if (options.advance === false || !chatId) return preparation;
     const config = getConfig(chatId);
@@ -678,7 +682,9 @@
       config.holdNextReply = false;
     } else if (config.flow === FLOWS.FROZEN) {
       const target = storyTarget(history, beforeMs, chatId);
-      preparation.afterMs = target == null ? beforeMs + replyAdvanceMinutes(latestReplyContext(history)) * 60000 : target;
+      preparation.afterMs = target == null
+        ? beforeMs + (options.sceneTimeline ? 0 : replyAdvanceMinutes(latestReplyContext(history))) * 60000
+        : target;
       preparation.storyDeadline = target != null;
     } else return preparation;
     preparation.minutes = preparation.manualHold ? 0 : (preparation.afterMs - beforeMs) / 60000;
@@ -713,9 +719,122 @@
     updateUi();
   }
 
+  function parseSceneDate(value) {
+    if (typeof value !== "string") return null;
+    const match = value.trim().match(/^(\d{4})[-/年](\d{1,2})[-/月](\d{1,2})(?:日)?[T\s，,]+(\d{1,2})[:：点时](\d{1,2})(?:分|:00)?$/);
+    if (!match) return null;
+    const [, year, month, day, hour, minute] = match.map(Number);
+    const date = new Date(year, month - 1, day, hour, minute);
+    return date.getFullYear() === year && date.getMonth() === month - 1 && date.getDate() === day &&
+      date.getHours() === hour && date.getMinutes() === minute ? date.getTime() : null;
+  }
+
+  function splitSceneHeader(content) {
+    const match = String(content || "").match(/^(\d{4}年\d{1,2}月\d{1,2}日)[，,\s]+(\d{1,2}[点时:]\d{1,2}分?)[，,\s]+(?:星期|周)[日天一二三四五六][，,\s]+地点[：:]([^\r\n。！？!?；;]+)([\s\S]*)$/);
+    if (!match) return null;
+    return { time: parseSceneDate(match[1] + " " + match[2]), location: match[3].trim(), body: match[4].replace(/^[\r\n。！？!?；;\s]+/, "") };
+  }
+
+  function sceneReadingSeconds(item) {
+    const text = messageText(item);
+    if (item.type === "text" || item.type === "voice_message" || item.type === "quote_reply")
+      return text.replace(/\s/g, "").length / 3;
+    if (item.type !== "narration" && item.type !== "offline_text") return 0;
+    if (/(?:准备|打算|计划|将要|稍后再|待会再|明天)/.test(text)) return 0;
+    let seconds = text.length / 12;
+    if (/(起身|坐下|开门|关门|拿起|放下|走到|倒水)/.test(text)) seconds += 12;
+    if (/(收拾好|换好衣|洗漱完|泡好茶)/.test(text)) seconds += 90;
+    return seconds;
+  }
+
+  function applyReplySceneTimes(items, options) {
+    const config = getConfig(options.chatId);
+    const start = options.replyTimeMs;
+    if (config.mode !== MODES.CUSTOM || config.flow !== FLOWS.FROZEN)
+      return items.map((item) => item && typeof item === "object" ? { ...item, vts: start } : item);
+    const result = [];
+    const hasScenePlan = items.some((item) => item?.type === "narration" && !item.isReplyHeader &&
+      (parseSceneDate(item.scene_time) ?? splitSceneHeader(item.content)?.time ?? -Infinity) > start);
+    let current = start, location = splitSceneHeader(items.find((item) => item?.isReplyHeader)?.content)?.location || inferLocation(items);
+    let pendingSeconds = 0, hasStory = false;
+    for (const source of items) {
+      if (!source || typeof source !== "object") { result.push(source); continue; }
+      const item = { ...source };
+      if (item.type === "thought_chain") { result.push(item); continue; }
+      if (item.isReplyHeader) {
+        result.push({ ...item, vts: start });
+        continue;
+      }
+      const narration = item.type === "narration" || item.type === "offline_text";
+      const header = narration ? splitSceneHeader(item.content) : null;
+      const declared = narration ? parseSceneDate(item.scene_time) ?? header?.time ?? null : null;
+      // Only an actually elapsed narration is evidence of a relative jump.
+      // Dialogue, future promises and recalled dates cannot change the clock.
+      const elapsed = narration ? storyTarget([{ ...item, isReplyHeader: false, vts: current }], current, options.chatId) : null;
+      const arrived = narration && !/(?:准备|打算|计划|将要|稍后再|待会再|明天)/.test(messageText(item))
+        ? messageText(item).match(/(?:来到|走进|回到|到达|抵达|停在|走到|进入)([^，。；\n]{2,24})/)?.[1]?.trim() : "";
+      const nextLocation = header?.location || (narration && typeof item.scene_location === "string" ? item.scene_location.trim() : "") || arrived || location;
+      let target = current;
+      if (hasStory) {
+        if (elapsed != null && elapsed > current) target = elapsed;
+        else if (declared != null && declared >= current) target = declared;
+        else if (!hasScenePlan && declared == null && narration && /(?:过了一会儿?|片刻后|半晌后|许久之后)/.test(messageText(item)))
+          target += (/(?:半晌|许久)/.test(messageText(item)) ? 8 : 3) * 60000;
+        else if (!hasScenePlan && declared == null && pendingSeconds >= 120)
+          target += Math.floor(pendingSeconds / 60) * 60000;
+      }
+      if (target > current || nextLocation !== location) {
+        const advancedMinutes = (target - current) / 60000;
+        current = target; location = nextLocation; pendingSeconds = 0;
+        result.push({ type: "narration", name: "时间", content: formatReplyHeader(current, location),
+          vts: current, isSceneTimeHeader: true, autoAdvancedMinutes: advancedMinutes });
+      } else if (declared != null) pendingSeconds = 0;
+      // Canonicalize each scene's date/weekday while retaining all its prose.
+      if (header) item.content = header.body;
+      if (typeof item.content === "string") item.content = normalizeWeekdayMentions(item.content, current);
+      item.vts = current;
+      item.ephoneSceneTimeResolved = true;
+      delete item.isReplyHeader;
+      delete item.isSceneTimeHeader;
+      if (!header || item.content) result.push(item);
+      if (!header || item.content) {
+        hasStory = true;
+        if (declared == null && elapsed == null) pendingSeconds += sceneReadingSeconds(item);
+      }
+    }
+    return result;
+  }
+
+  async function commitReplySceneTime(milliseconds, preparation) {
+    if (!preparation || !Number.isFinite(milliseconds)) return;
+    if (preparation.spaceDatabaseName !== spaceDatabaseName)
+      throw new Error("空间已切换，停止旧空间的剧情推进。");
+    const config = getConfig(preparation.chatId);
+    if (config.mode !== MODES.CUSTOM || config.flow !== FLOWS.FROZEN) return;
+    if (config.revision !== preparation.revision)
+      throw new Error("空间时间已更新，停止旧回复的时间推进。");
+    const before = nowMs(preparation.chatId);
+    if (milliseconds <= before) return;
+    const snapshot = normalizeConfig(config);
+    config.anchorVirtualMs = milliseconds; config.anchorRealMs = Date.now(); config.revision++;
+    setSpaceClock(config);
+    try { await persistSpaceClock(); }
+    catch (error) { setSpaceClock(snapshot); throw error; }
+    preparation.revision = getConfig(preparation.chatId).revision;
+    preparation.changed = true;
+    updateUi();
+    await window.EPhoneCharacterDaily?.onTimeChange(before, milliseconds);
+  }
+
   function ensureReplyHeader(items, options = {}) {
     const chatId = String(options.chatId || activeChatId || "");
     if (!Array.isArray(items) || !chatId) return items;
+    if (options.sceneTimeline) items = items.map((source) => {
+      if (!source || typeof source !== "object") return source;
+      const item = { ...source };
+      delete item.vts; delete item.isReplyHeader; delete item.isSceneTimeHeader;
+      return item;
+    });
     const chatTypes = new Set([
       "text",
       "narration",
@@ -742,10 +861,12 @@
       ? Number(options.advancedMinutes)
       : 0;
     const headerPattern = /^\d{4}年\d{1,2}月\d{1,2}日，\d{1,2}点\d{1,2}分，星期[日一二三四五六]，地点[：:]/;
+    const openingIndex = items.findIndex((item) => item?.type !== "thought_chain");
     const existingIndex = items.findIndex(
-      (item) => item?.type === "narration" && headerPattern.test(String(item.content || "")),
+      (item, index) => (!options.sceneTimeline || index === openingIndex) &&
+        item?.type === "narration" && headerPattern.test(String(item.content || "")),
     );
-    let location = inferLocation(items);
+    let location = inferLocation(options.sceneTimeline ? items.slice(0, openingIndex + 1) : items);
     if (existingIndex >= 0) {
       const item = items[existingIndex], content = String(item.content), prefix = content.match(headerPattern)[0];
       const boundary = content.slice(prefix.length).search(/[\r\n。！？!?；;]/);
@@ -766,7 +887,7 @@
     };
     const thoughtCount = items.findIndex((item) => item?.type !== "thought_chain");
     items.splice(thoughtCount < 0 ? items.length : thoughtCount, 0, header);
-    return items;
+    return options.sceneTimeline ? applyReplySceneTimes(items, { ...options, chatId, replyTimeMs }) : items;
   }
 
   function configForChatSettings(config) {
@@ -841,7 +962,7 @@
           </div>
           <div class="time-machine-flow" role="radiogroup" aria-label="虚拟时间流速">
             <label><input type="radio" name="time-machine-flow" value="flow" checked><span><b>保持流动</b><small>现实过 10 分钟，虚拟时间也走 10 分钟</small></span></label>
-            <label><input type="radio" name="time-machine-flow" value="frozen"><span><b>按剧情推进</b><small>手动跳转后首轮保持原时刻；其余按剧情推进</small></span></label>
+            <label><input type="radio" name="time-machine-flow" value="frozen"><span><b>按剧情推进</b><small>从指定时刻开场，一轮内按场景耗时逐段推进</small></span></label>
           </div>
           <p class="time-machine-hint">${SPACE_TIME_HINT}</p>
         </div>
@@ -989,6 +1110,7 @@
     ensureReplyHeader,
     prepareReplyTime,
     rollbackPreparedReplyTime,
+    commitReplySceneTime,
     getPromptRule,
     configForChatSettings,
     jumpTo,
