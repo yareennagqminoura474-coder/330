@@ -23483,6 +23483,9 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
             ((_0x47be92["style"][_0x25f1e5(0x24c)] = 0x0),
             setTimeout(() => {
               const _0xde4f95 = _0x25f1e5;
+              // The user may have switched chats/spaces during this animation.
+              if (_0x5ea3c1[_0xde4f95(0x1aba)] !== _0x973a29 ||
+                  !_0x5ea3c1.chats[_0x973a29] || !_0x47be92.isConnected) return;
               ((_0x47be92[_0xde4f95(0x71a)] =
                 _0x5ea3c1["chats"][_0x973a29][_0xde4f95(0xeda)]),
                 _0x47be92[_0xde4f95(0xd57)]["remove"](_0xde4f95(0x267)),

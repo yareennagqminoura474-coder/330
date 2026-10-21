@@ -8,6 +8,30 @@
     return cents;
   };
   const dayKey = (v) => { const d = new Date(v); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; };
+  function dailyBills(rows, asOf, names = new Map()) {
+    const days = new Map();
+    for (const row of [...rows].sort((a, b) => (a.vts ?? a.timestamp ?? 0) - (b.vts ?? b.timestamp ?? 0) || (a.timestamp || 0) - (b.timestamp || 0))) {
+      const at = row.vts ?? row.timestamp, dated = Number.isFinite(at);
+      if (dated && at > asOf) continue; // Do not give characters knowledge of future bills after time travel.
+      const date = dated ? dayKey(at) : "日期未记录";
+      if (!days.has(date)) days.set(date, { date, income: 0, expense: 0, adjustment: 0, entries: [] });
+      const day = days.get(date), value = Number(row.amount), cents = row.amount != null && row.amount !== "" && Number.isFinite(value) && value >= 0 && Number.isSafeInteger(Math.round(value * 100)) ? Math.round(value * 100) : null;
+      const direction = row.direction || row.type, status = row.status || "posted";
+      if (status === "posted" && cents != null && ["income", "expense"].includes(direction)) {
+        if (row.adjustment) day.adjustment += direction === "income" ? cents : -cents;
+        else day[direction] += cents;
+      }
+      const d = dated ? new Date(at) : null;
+      day.entries.push({ time: d ? `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}` : "未知",
+        direction, amount: cents == null ? null : cents / 100, category: row.category || "other", description: row.description || "用途未记录", status,
+        ...(row.source ? { source: row.source } : {}), ...(row.adjustment ? { adjustment: true } : {}),
+        ...(row.estimated ? { estimated: true, ...(row.estimateCorrected ? { estimateCorrected: true } : {}), ...(row.estimate?.reason ? { estimateReason: row.estimate.reason } : {}) } : {}),
+        ...(row.plannedAmount != null && status !== "posted" ? { plannedAmount: row.plannedAmount } : {}),
+        ...(row.counterpartyName || names.get(row.counterpartyKey) ? { counterparty: row.counterpartyName || names.get(row.counterpartyKey) } : {}),
+        ...(row.orderLineId ? { item: row.name, quantity: row.quantity, unitPrice: row.unitPrice, merchant: row.merchant } : {}) });
+    }
+    return [...days.values()].map((day) => ({ ...day, income: day.income / 100, expense: day.expense / 100, adjustment: day.adjustment / 100, net: (day.income - day.expense) / 100 }));
+  }
   function rule(raw, i) {
     if (!["income", "expense"].includes(raw.direction) || !["daily", "weekly", "monthly"].includes(raw.cadence)) throw new Error("收支方向或周期无效。");
     const min = amount(raw.min ?? raw.amount, false), max = amount(raw.max ?? raw.amount ?? raw.min, false);
@@ -283,7 +307,7 @@
       const rawUser = binding?.key === key ? await this.userTransactions.toArray() : [];
       const detailedUser = root.ephoneLifeMarketCore?.expandOrderBills ? await root.ephoneLifeMarketCore.expandOrderBills(rawUser, this.db) : rawUser;
       const user = detailedUser.filter((row) => !row.characterEntryId).map((row) => ({ ...row, id: "user:" + row.id,
-        key, direction: row.type, vts: row.vts || row.timestamp, status: "posted", source: "space_wallet" }));
+        key, direction: row.type, vts: row.vts ?? row.timestamp, status: row.status || "posted", source: row.source || "space_wallet" }));
       return [...own, ...user].sort((a, b) => b.vts - a.vts || b.timestamp - a.timestamp).slice(0, limit);
     }
     async correctEstimate(id, value) {
@@ -312,23 +336,28 @@
     async prompt(chat, vts) { return (await this.replyContext(chat, vts)).prompt; }
     async replyContext(chat, vts) {
       const chats = await this.chats.toArray(), npcs = await this.npcs.toArray(), people = this.identity.participants(chat, chats, npcs), preview = await this.settle(vts, { preview: true });
-      const records = [];
+      const records = [], names = new Map(this.identity.choices(chats, npcs).map((p) => [p.key, p.name]));
       for (const p of people) {
-        const a = await this.account(p.key), ledger = await this.ledger(p.key, 12);
+        const a = await this.account(p.key), ledger = await this.ledger(p.key, Infinity);
         const balance = preview.projected[p.key] ?? a.balance;
+        // Legacy order expansion gives every product the same original bill id.
+        // Keep its distinct item lines, while deduping preview entries by id.
+        const bills = new Map(ledger.map((e, index) => [e.orderLineId ? `${e.id}:line:${e.orderLineId}` : e.id ?? "ledger:" + index, e]));
+        for (const entry of preview.entries.filter((e) => e.key === p.key)) if (!bills.has(entry.id)) bills.set(entry.id, entry);
         records.push({ key: p.key, name: p.name, aliases: p.aliases || [], configured: Boolean(a.configured || a.bound), balanceKnown: Boolean(a.configured || a.bound || balance > 0), boundToPlayer: a.bound, balance, otherAssets: a.otherAssets || 0,
-          job: a.job || "未设置", family: a.family || "以人设为准", rules: a.rules || [], recent: [...preview.entries.filter((e) => e.key === p.key), ...ledger].sort((a, b) => b.vts - a.vts).slice(0, 18) });
+          job: a.job || "未设置", family: a.family || "以人设为准", rules: a.rules || [], dailyBills: dailyBills([...bills.values()], vts, names) });
       }
       const prompt = "\n# 角色独立资产与实际收支（私有账本，高优先级）\n" +
-        "balance是本轮开场时该角色可用余额，单位人民币元；balanceKnown=true时，包括0元在内都以此为准。它覆盖人设中的初始金额、历史台词、旧总结与旧流水余额，禁止凭剧情推测另一个余额。收入、预算、零花钱、单笔收支、其他资产均不是可用余额；几十万元不得读成几千元。账本未发生实际支出就不能声称余额已缩水。本轮后续真实收付款只按已发生且成功的金额增减，不能重复扣除recent中已经记过的账。balanceKnown=false才表示余额未知，不能把0解释为穷困；未配置收支计划也不抹掉实际收到的钱。\n" +
+        "balance是本轮开场时该角色可用余额，单位人民币元；balanceKnown=true时，包括0元在内都以此为准。它覆盖人设中的初始金额、历史台词、旧总结与旧流水余额，禁止凭剧情推测另一个余额。收入、预算、零花钱、单笔收支、其他资产均不是可用余额；几十万元不得读成几千元。账本未发生实际支出就不能声称余额已缩水。本轮后续真实收付款只按已发生且成功的金额增减，不能重复扣除dailyBills中已经记过的账。balanceKnown=false才表示余额未知，不能把0解释为穷困；未配置收支计划也不抹掉实际收到的钱。\n" +
+        "dailyBills是本人物截至本轮时间的完整逐日账单，不限最近12或18笔；按date日期、entries逐笔查阅，income/expense/net为当日已入账收入/支出/净额，币种人民币元。每笔time为当天时刻，direction为income收入或expense支出，amount为金额，description为实际用途/收入来源，category为分类，counterparty为有记录的收付款对象。回答今天、昨天或某日花了什么、收到什么、工资/零花钱是否到账，必须按对应日期和逐笔用途回答，不能只读balance或只看rules计划。status=posted才是成功入账，其他状态未成功；adjustment是初始资产/手动调账，单列且不算工资或消费；estimated是估价而非明说价格，不能说成确定金额。账单已反映在余额中，只回忆账单不再扣款或再次发收入指令。未记录的用途和来源不能编造，没有记录不等于断言从未发生。\n" +
         "estimated=true是未明说价格时的后台估算，可由用户校正；不得把参考单价当成亲历事实或让其他角色凭空知道精确金额。没提金额的真实购物按上下文与物品合理估算，系统会落账，不要再发无依据的wallet_expense重复扣款。计划、未付、假设仍不记账。\n" +
         '普通物品系统会按前文单价和数量或参考价格自动估算；特殊物品/复杂消费可在实际付款段落后输出 {"type":"wallet_expense","name":"实际付款本人","amount":合理推断的总价,"estimated":true,"category":"shopping","content":"所购物品及估价依据","quote":"已发生付款段落的逐字原文"}。估价依物品、数量、已知品牌档次及本人家庭条件，明确价格优先，不猜别人的钱；未发生付款或付款人不明确不得发指令。估算只用本轮回复，不额外调用模型。\n' +
         "以下是作者后台记账资料，不是群公告。每个角色只直接知道自己的资产、工资和支出；其他角色只有实际被告知或查看其钱包才可能知道，不得全员凭空知道余额。绑定为我的角色与本空间钱包共用一个余额，其他角色独立。房产/投资等其他资产不是可用余额，不可凭空变现。未设置的余额只是待设置，不代表人物贫穷或富裕，不得编造实际入账。\n" +
         "工资、零花钱及日常开销由收支计划按所选真实/虚拟时间自动结算，账本含本轮时间的确定性预估；已列入的收支不能因为角色说‘上班了’‘发工资了’再次入账。定期角色转账已同时记入付款和收款两边，同一笔不能再用wallet_income或wallet_expense重复入账；收款方可依据自己的入账记录感知到账，其他无关角色不会自动知道。每次聊天明确发生且有确定金额的额外消费都应关联角色钱包；不要只说文字而漏记账。系统会从明确付款、花费、买了等当下文字识别支出；每段只描述一笔确定的付款，有多个金额或复杂分摊时先分段明确叙述每人的实际付款及最终金额，再分别用wallet_expense指令。计划、报价、假设、回忆旧支出、取消退款不可当新支出。普通实际额外收入/消费使用wallet_income/wallet_expense指令记账（不要重复购物订单、转账红包和周期计划）。消费指令放在相应付款旁白/台词之后，并用quote逐字引用该段，便于和自动识别去重；既有流水里的付款重提不可再记，余额未设置时提示设置资产而非编造余额。按发生顺序，只有系统确认成功才能声称完成；余额不足不能声称已成功支付。\n" +
         '{"type":"wallet_income","name":"实际收款角色本名","amount":100,"category":"bonus","content":"实际收到的额外报酬原因"} 或 {"type":"wallet_expense","name":"实际付款角色本名","amount":25,"category":"food","content":"剧情中实际发生的额外消费","quote":"逐字引用本轮已发出的实际付款原文"}。\n' + JSON.stringify(records) + "\n";
       const reminder = records.length ? "\n【本轮后台余额校验；不是角色台词或群公告】\n" +
-        records.map((r) => JSON.stringify({ name: r.name, aliases: r.aliases, availableCNY: r.balanceKnown ? r.balance.toFixed(2) : "未知" })).join("\n") +
-        "\n以上是当前空间、当前人物账户的开场可用余额，优先于前文、记忆和人设的旧金额。每人只知道自己的账户；不必主动报余额，但涉及自己的剩余资金时必须据此判断，不能把几十万说成只剩几千，也不能把预算当总余额。本轮真实收付款才可在此基础上增减；未发生的消费不扣钱，不得复扣旧账。\n" : "";
+        records.map((r) => JSON.stringify({ name: r.name, aliases: r.aliases, availableCNY: r.balanceKnown ? r.balance.toFixed(2) : "未知", billDates: r.dailyBills.map((d) => d.date) })).join("\n") +
+        "\n以上是当前空间、当前人物账户的开场可用余额，优先于前文、记忆和人设的旧金额。每人只知道自己的账户；不必主动报余额，但涉及自己的剩余资金时必须据此判断，不能把几十万说成只剩几千，也不能把预算当总余额。本轮真实收付款才可在此基础上增减；未发生的消费不扣钱，不得复扣旧账。问到每天的账单时，查阅系统资料dailyBills对应日期的所有entries，按收入/支出、金额、分类和用途/来源回答，不能只凭余额或收支计划猜测。\n" : "";
       return { prompt, reminder, records };
     }
     async reserveCard(chat, message) {
@@ -380,7 +409,7 @@
     else result.push({ role: "user", content: reminder });
     return result;
   }
-  const api = { Service, normalize, profilePrompt, dayKey, varied, counterparty, withBalanceReminder };
+  const api = { Service, normalize, profilePrompt, dayKey, varied, counterparty, dailyBills, withBalanceReminder };
   if (typeof module !== "undefined" && module.exports) module.exports = api;
   root.ephoneCharacterWalletCore = api;
 })(typeof window !== "undefined" ? window : globalThis);

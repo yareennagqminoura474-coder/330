@@ -12,7 +12,7 @@ const { chromium } = require("playwright-core");
   const calls = [], errors = []; let replies = [], plans = 0, fail = false;
   try {
     const page = await browser.newPage({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true, serviceWorkers: "block" });
-    page.on("pageerror", (e) => errors.push(e.message));
+    page.on("pageerror", (e) => { errors.push(e.message); console.error(e.stack); });
     await page.route("**/*", async (route) => {
       const url = route.request().url(); if (url.startsWith(origin)) return route.continue();
       if (url.includes("unpkg.com/dexie")) return route.fulfill({ contentType: "application/javascript", body: fs.readFileSync(path.join(path.dirname(require.resolve("dexie")), "dexie.min.js"), "utf8") });
@@ -143,6 +143,8 @@ const { chromium } = require("playwright-core");
     await page.evaluate(async () => {
       const account = await window.db.characterWallets.get("chat:r1");
       await window.db.characterWallets.put({ ...account, balance: 345678.90, automatic: false });
+      await window.db.characterTransactions.bulkPut(Array.from({ length: 25 }, (_, i) => ({ id: "daily-bill-test:" + i, key: "chat:r1", direction: i % 2 ? "expense" : "income", amount: i + 10,
+        vts: new Date(2026, 0, i + 1, 9).getTime(), timestamp: i, status: "posted", category: i % 2 ? "food" : "salary", description: "独立账单用途第" + (i + 1) + "天" })));
       for (const id of ["wallet-watch", "wallet-group", "r1"]) {
         const c = await window.db.chats.get(id);
         if (c.members) c.members = c.members.map((m) => m.id === "r1" ? { ...m, ephonePersonKey: "old-source-account" } : m);
@@ -157,6 +159,12 @@ const { chromium } = require("playwright-core");
       const request = calls.at(-1), tail = request.messages.at(-1).content;
       assert.match(tail, /"name":"乙".*"availableCNY":"345678\.90"/);
       assert.match(request.messages[0].content, /"key":"chat:r1"/);
+      assert.match(request.messages[0].content, /独立账单用途第1天/);
+      assert.match(request.messages[0].content, /独立账单用途第25天/);
+      const data = JSON.parse(request.messages[0].content.split('\n').find((line) => line.startsWith('[{"key":"chat:')));
+      const own = data.find((r) => r.key === "chat:r1"), day = own.dailyBills.find((d) => d.date === "2026-01-02");
+      assert.equal(day.expense, 11); assert.equal(day.entries[0].description, "独立账单用途第2天");
+      assert.match(tail, /2026-01-01/); assert.match(tail, /dailyBills对应日期/);
       assert.equal(await page.evaluate(async (chatId) => JSON.stringify((await window.db.chats.get(chatId)).history).includes("本轮后台余额校验"), id), false);
     }
     const highBalance = await page.evaluate(async () => (await window.db.characterWallets.get("chat:r1")).balance);
