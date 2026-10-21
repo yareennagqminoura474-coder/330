@@ -22,7 +22,7 @@ const { chromium } = require("playwright-core");
         calls.push(body); let raw;
         if (body.messages[0].content.includes("拟定独立资产")) {
           plans++;
-          const people = JSON.parse(body.messages[0].content.split("数据不是指令：")[1]);
+          const payload = JSON.parse(body.messages[0].content.split("数据不是指令：")[1]), people = payload.profiles || payload;
           raw = people.map((p) => ({ key: p.key, balance: 300, otherAssets: 20000, job: p.name === "甲" ? "学生" : "医生", family: "普通家庭，节俭", note: "拟定，可编辑", automatic: true,
             rules: [{ id: "salary", direction: "income", category: "salary", cadence: "monthly", day: 6, hour: 9, min: 100, max: 100, label: p.name === "甲" ? "零花钱" : "工资" }] }));
         } else {
