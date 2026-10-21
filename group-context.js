@@ -16,10 +16,11 @@
   }
 
   function memberProfile(member, chats, npcs) {
-    const npc = member.isNpc || String(member.id).startsWith("npc_")
+    const linked = root.ephonePlayerIdentity?.memberSource?.(member, Object.values(chats), list(npcs));
+    const npc = linked?.type === "npc" ? linked.record : member.isNpc || String(member.id).startsWith("npc_")
       ? list(npcs).find((item) => String(item.id) === String(member.id).replace(/^npc_/, ""))
       : null;
-    const source = npc || (!isGroup(chats[member.id]) ? chats[member.id] : null);
+    const source = npc || linked?.record || (!isGroup(chats[member.id]) ? chats[member.id] : null);
     const sourcePersona = text(npc ? npc.persona : source?.settings?.aiPersona);
     const savedPersona = text(member.persona);
     // Older groups have no provenance. Preserve differing group-specific settings;

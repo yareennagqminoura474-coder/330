@@ -2,16 +2,35 @@
   "use strict";
   const nameOf = (item) => item?.originalName || item?.name || item?.groupNickname || "未命名角色";
   const personKey = (item, type = "chat") => item?.ephonePersonKey || type + ":" + item.id;
-  function memberKey(member, chats, npcs = []) {
-    if (member.isNpc || String(member.id).startsWith("npc_")) {
-      const id = String(member.id).replace(/^npc_/, ""), archive = chats.find((c) => c.ephoneNpcArchive && String(c.ephoneNpcId) === id);
-      const npc = npcs.find((item) => String(item.id) === id);
-      return npc ? personKey(npc, "npc") : archive ? personKey(archive) : member.ephonePersonKey || "npc:" + id;
+  const isGroup = (item) => item.isGroup || item.isSpectatorGroup;
+  const isNpc = (member) => member.isNpc || String(member.id).startsWith("npc_");
+  const basePersona = (member) => String(member.ephoneSourcePersona ?? (member.ephonePersonaOverride === true ? "" : member.persona) ?? "").trim();
+  function memberSource(member, chats, npcs = []) {
+    const npc = isNpc(member), id = npc ? String(member.id).replace(/^npc_/, "") : String(member.id);
+    const records = npc ? npcs : chats.filter((c) => !isGroup(c) && !c.ephoneNpcArchive);
+    const direct = records.find((r) => String(r.id) === id);
+    if (direct) return { record: direct, type: npc ? "npc" : "chat" };
+    if (npc) {
+      const archive = chats.find((c) => c.ephoneNpcArchive && String(c.ephoneNpcId) === id);
+      if (archive) return { record: archive, type: "chat" };
     }
-    const source = chats.find((chat) => !chat.isGroup && String(chat.id) === String(member.id));
-    // A copied/converted group slot may still carry an old identity snapshot.
-    // Resolve its live local archive first, exactly as the assets screen does.
-    return source ? personKey(source) : member.ephonePersonKey || "member:" + String(member.id);
+    const stable = member.ephonePersonKey && records.filter((r) => personKey(r, npc ? "npc" : "chat") === member.ephonePersonKey);
+    if (stable?.length === 1) return { record: stable[0], type: npc ? "npc" : "chat" };
+    const matches = records.filter((r) => {
+      if (nameOf(r) !== nameOf(member) || nameOf(member) === "未命名角色") return false;
+      const origin = r.ephoneCopyOrigin;
+      // Copy provenance survives persona edits. Without it, require an exact
+      // base profile, not a group nickname or a name-only guess.
+      if (origin?.table === (npc ? "npcs" : "chats") && String(origin.id) === id) return true;
+      const persona = basePersona(member), source = String(npc ? r.persona || "" : r.settings?.aiPersona || "").trim();
+      return Boolean(persona) && persona === source;
+    });
+    return matches.length === 1 ? { record: matches[0], type: npc ? "npc" : "chat" } : null;
+  }
+  function memberKey(member, chats, npcs = []) {
+    const source = memberSource(member, chats, npcs);
+    if (source) return personKey(source.record, source.type);
+    return member.ephonePersonKey || (isNpc(member) ? "npc:" + String(member.id).replace(/^npc_/, "") : "member:" + String(member.id));
   }
   function choices(chats = [], npcs = []) {
     const result = new Map();
@@ -20,7 +39,7 @@
     for (const chat of chats) for (const member of chat.members || []) {
       if (member.id == null) continue;
       const key = memberKey(member, chats, npcs);
-      if (!result.has(key)) result.set(key, { key, kind: member.isNpc || String(member.id).startsWith("npc_") ? "npc" : "role", sourceId: member.id, name: nameOf(member), label: nameOf(member) + " · " + chat.name, persona: member.persona || "" });
+      if (!result.has(key)) result.set(key, { key, kind: isNpc(member) ? "npc" : "role", sourceId: member.id, name: nameOf(member), label: nameOf(member) + (isNpc(member) ? " · NPC" : " · 角色"), persona: member.persona || "" });
     }
     return [...result.values()];
   }
@@ -48,7 +67,42 @@
     await concrete.table("spaceProfiles").put({ id: "player", key: person?.key || null, name: person?.name || null });
     return person;
   }
-  const api = { choices, participants, resolve, load, save, personKey, memberKey };
+  async function reconcile(db) {
+    if (!db?.spaceProfiles || !db?.chats || !db?.npcs) return;
+    const concrete = db.spaceProfiles.db, chatsTable = concrete.table("chats"), npcsTable = concrete.table("npcs"), profiles = concrete.table("spaceProfiles");
+    return concrete.transaction("rw", chatsTable, npcsTable, profiles, async () => {
+      const chats = await chatsTable.toArray(), npcs = await npcsTable.toArray(), aliases = new Map();
+      let didChange = false;
+      for (const group of chats.filter(isGroup)) {
+        let changed = false;
+        for (const member of group.members || []) {
+          if (member.id == null) continue;
+          const source = memberSource(member, chats, npcs);
+          if (!source) continue;
+          const key = personKey(source.record, source.type), old = member.ephonePersonKey || (isNpc(member) ? "npc:" + String(member.id).replace(/^npc_/, "") : "member:" + member.id);
+          const id = source.type === "npc" ? "npc_" + source.record.id : source.record.ephoneNpcArchive ? "npc_" + source.record.ephoneNpcId : source.record.id;
+          if (old !== key) aliases.set(old, key);
+          const legacy = isNpc(member) ? "npc:" + String(member.id).replace(/^npc_/, "") : "member:" + member.id;
+          if (legacy !== key) aliases.set(legacy, key);
+          if (String(member.id) !== String(id) || member.ephonePersonKey && member.ephonePersonKey !== key) {
+            member.id = id; member.ephonePersonKey = key;
+            if (source.type === "npc") member.isNpc = true;
+            changed = true;
+          }
+        }
+        if (changed) { await chatsTable.put(group); didChange = true; }
+      }
+      const binding = await profiles.get("player");
+      if (binding?.key && aliases.has(binding.key)) {
+        const key = aliases.get(binding.key), person = choices(chats, npcs).find((p) => p.key === key);
+        if (person) { await profiles.put({ ...binding, key, name: person.name }); didChange = true; }
+      }
+      // Only references are repaired. No archive/history, wallet, transaction,
+      // or private memory is deleted, combined, or duplicated.
+      return didChange;
+    });
+  }
+  const api = { choices, participants, resolve, load, save, personKey, memberKey, memberSource, reconcile };
   if (typeof module !== "undefined" && module.exports) module.exports = api;
   root.ephonePlayerIdentity = api;
   if (!root.document) return;
@@ -60,6 +114,7 @@
     if (!select || !root.db?.spaceProfiles) return;
     try {
       const db = root.db.spaceProfiles.db;
+      await reconcile(db);
       const [chats, npcs, binding] = await Promise.all([db.table("chats").toArray(), db.table("npcs").toArray(), db.table("spaceProfiles").get("player")]);
       if (current !== token) return;
       select.replaceChildren(new Option("未绑定（使用原来的用户身份）", ""));

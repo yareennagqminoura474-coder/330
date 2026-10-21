@@ -56883,6 +56883,7 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
           await _0x1f4e90();
           return;
         }
+        await window.ephonePlayerIdentity?.reconcile?.(_0x24f906);
         const _0xactiveChatId = _0x5ea3c1.activeChatId;
         if (
           _0xspaceRefresh.spaceChanged ||
@@ -65600,6 +65601,7 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
         }
       },
     });
+    if (await window.ephonePlayerIdentity?.reconcile?.(_0x24f906)) await _0x3367c4();
     window.ephoneAppReady = true;
   }
   (function _0x4ec901() {
