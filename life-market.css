@@ -14,6 +14,11 @@
 .market-hero p { font-size: 13px; line-height: 1.7; margin: 10px 0; }
 #life-market-screen small { font-size: 11px; color: #8b8078; line-height: 1.6; }
 #market-search { width: 100%; padding: 12px 16px; border: 1px solid #eee6dd; border-radius: 22px; font: inherit; font-size: 13px; background: white; }
+.market-search-form { display: flex; gap: 8px; align-items: center; margin: 12px 0 6px; }
+.market-search-form #market-search { flex: 1; min-width: 0; resize: vertical; min-height: 44px; max-height: 120px; line-height: 1.5; }
+.market-search-form button { flex-shrink: 0; border: 0; border-radius: 18px; padding: 12px 17px; color: #fff; background: #a65134; font: inherit; font-size: 13px; }
+.market-search-form button:disabled { opacity: .45; }
+.market-search-tip { display: block; font-size: 11px; color: #93867b; margin-bottom: 12px; line-height: 1.6; }
 .market-categories { display: flex; gap: 8px; overflow-x: auto; padding: 13px 0; flex-shrink: 0; }
 .market-categories button { white-space: nowrap; background: #fff; padding: 8px 13px; border-radius: 18px; font-size: 12px !important; color: #73675f; }
 .market-categories button.selected { background: #302c28; color: white; }

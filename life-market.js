@@ -20,7 +20,17 @@
     screen.innerHTML = '<header class="header"><button type="button" class="market-back" aria-label="返回">‹</button><span>逛逛</span><button type="button" id="market-refresh">刷新</button></header><div class="market-account"></div><div class="market-message" role="status" aria-live="polite"></div><div class="market-content"></div><nav class="market-nav" aria-label="逛逛导航"></nav>';
     document.getElementById("phone-screen").append(screen);
     screen.querySelector(".market-back").onclick = () => window.showScreen("home-screen");
-    screen.querySelector("#market-refresh").onclick = refresh;
+    screen.querySelector("#market-refresh").onclick = () => refresh();
+    screen.addEventListener("submit", (event) => {
+      if (event.target.id !== "market-search-form") return;
+      event.preventDefault();
+      if (!busy) refresh(search);
+    });
+    screen.addEventListener("keydown", (event) => {
+      if (event.target.id === "market-search" && event.key === "Enter" && !event.shiftKey && !event.isComposing) {
+        event.preventDefault(); if (!busy) refresh(search);
+      }
+    });
     screen.addEventListener("click", async (event) => {
       const button = event.target.closest("button"); if (!button) return;
       if (button.dataset.tab) { tab = button.dataset.tab; category = "全部"; selection = "全部"; confirmation = false; render(); }
@@ -64,6 +74,7 @@
     const button = screen.querySelector("#market-refresh");
     button.textContent = controller ? "停止刷新" : "刷新";
     button.disabled = busy && !controller;
+    screen.querySelectorAll("#market-search, #market-search-submit").forEach((el) => { el.disabled = busy; });
     screen.querySelectorAll("[data-delta], [data-action=pay], [data-action=checkout], #market-recipient, [data-cart-check], #market-select-all").forEach((el) => { el.disabled = busy || (el.dataset.action === "checkout" && !state.cart.some((line) => line.selected !== false)); });
     screen.querySelectorAll("#market-card-destination, [data-order-destination], [data-action=buy-again], [data-action=post-order]").forEach((el) => {
       el.disabled = busy || (el.dataset.action === "post-order" && !orderDestinations.get(el.dataset.order));
@@ -88,8 +99,10 @@
   }
   function renderProducts() {
     const grid = screen.querySelector(".market-products"); if (!grid) return;
-    const items = state.items.filter((item) => item.kind === tab && (category === "全部" || category === (item.department || item.category)) &&
-      (selection === "全部" || selection === item.selection) && `${item.name} ${item.description} ${item.reason} ${item.category} ${item.department || ""}`.toLowerCase().includes(search.toLowerCase()));
+    let matching = state.items;
+    try { if (core.searchQueries(search).length) matching = core.searchItems(state.items, search); } catch { matching = []; }
+    const items = matching.filter((item) => item.kind === tab && (category === "全部" || category === (item.department || item.category)) &&
+      (selection === "全部" || selection === item.selection));
     grid.innerHTML = items.map((item) => `<article class="market-card"><div class="market-art">${esc(item.emoji)}</div><div class="market-card-body"><small>${esc(item.category)} · ${esc(item.merchant)}</small><h3>${esc(item.name)}</h3><p>${esc(item.description)}</p><p class="market-reason">${esc(item.reason)}</p>${item.kind === "food" ? `<small>约${item.deliveryMinutes}分钟${item.deliveryEstimated ? "（系统估计）" : ""} · 配送¥${money(item.deliveryFee)}</small>` : ""}<div class="market-price"><strong>¥${money(item.price)}</strong><button type="button" data-item="${esc(item.id)}" data-delta="1" aria-label="加入购物车：${esc(item.name)}" ${busy ? "disabled" : ""}>＋</button></div></div></article>`).join("") || '<div class="market-empty">没有匹配的内容，试试其他分类。</div>';
   }
   function render() {
@@ -98,7 +111,7 @@
     screen.querySelector(".market-nav").innerHTML = [["goods", "🛍", "购物"], ["food", "🍱", "外卖"], ["cart", "🛒", `购物车${state.cart.length ? " · " + state.cart.reduce((n, line) => n + line.quantity, 0) : ""}`], ["orders", "🧾", "订单"]].map(([id, icon, label]) => `<button type="button" data-tab="${id}" class="${tab === id ? "selected" : ""}" aria-current="${tab === id ? "page" : "false"}"><span>${icon}</span>${label}</button>`).join("");
     const content = screen.querySelector(".market-content");
     if (tab === "goods" || tab === "food") {
-      content.innerHTML = `<div class="market-hero"><small>只在你点刷新时更新</small><h2>${esc(state.headline || "今天，想买点什么？")}</h2><p>${esc(state.note || "日常所需为主，搭配偏好推荐与当季发现；档次符合家庭条件，不照搬聊天记录。")}</p><small>${state.refreshedAt ? "上次刷新：" + esc(new Date(state.refreshedAt).toLocaleString("zh-CN")) : "尚未刷新"}</small></div>` + (state.items.length ? `<input id="market-search" aria-label="搜索商品或餐饮" placeholder="搜索商品、餐饮或推荐理由" value="${esc(search)}"><div class="market-categories">${["全部", ...new Set(state.items.filter((item) => item.kind === tab).map((item) => item.department || item.category))].map((name) => `<button type="button" data-category="${esc(name)}" class="${category === name ? "selected" : ""}">${esc(name)}</button>`).join("")}</div><div class="market-categories" aria-label="推荐来源">${[["全部","全部推荐"], ...Object.entries(core.selections)].map(([key,label]) => `<button type="button" data-selection="${esc(key)}" class="${selection === key ? "selected" : ""}">${esc(label)}</button>`).join("")}</div><div class="market-products ${tab}"></div>` : '<div class="market-empty">点右上角“刷新”，生成第一批商品和外卖。<br>未点击刷新，不会调用API，也不会自动换列表。</div>');
+      content.innerHTML = `<div class="market-hero"><small>手动刷新或搜索补货时才更新</small><h2>${esc(state.headline || "今天，想买点什么？")}</h2><p>${esc(state.note || "日常所需为主，搭配偏好推荐与当季发现；档次符合家庭条件，不照搬聊天记录。")}</p><small>${state.refreshedAt ? "上次刷新：" + esc(new Date(state.refreshedAt).toLocaleString("zh-CN")) : "尚未刷新"}</small></div>` + `<form id="market-search-form" class="market-search-form"><textarea id="market-search" rows="2" aria-label="搜索商品或餐饮" placeholder="多个商品用逗号、顿号或换行分隔">${esc(search)}</textarea><button id="market-search-submit" type="submit">搜索</button></form><small class="market-search-tip">回车搜索，Shift+回车换行。缺少的商品一起补货，已有结果不重复生成。</small>` + (state.items.length ? `<div class="market-categories">${["全部", ...new Set(state.items.filter((item) => item.kind === tab).map((item) => item.department || item.category))].map((name) => `<button type="button" data-category="${esc(name)}" class="${category === name ? "selected" : ""}">${esc(name)}</button>`).join("")}</div><div class="market-categories" aria-label="推荐来源">${[["全部","全部推荐"], ...Object.entries(core.selections)].map(([key,label]) => `<button type="button" data-selection="${esc(key)}" class="${selection === key ? "selected" : ""}">${esc(label)}</button>`).join("")}</div><div class="market-products ${tab}"></div>` : '<div class="market-empty">点“刷新”生成第一批商品和外卖，也可输入多项需求后点“搜索”一起补货。<br>未点击刷新或提交搜索，不会调用API，也不会自动换列表。</div>');
       renderProducts();
     } else if (tab === "cart") {
       const selectedCart = state.cart.filter((line) => line.selected !== false), totals = core.quote(selectedCart);
@@ -126,19 +139,36 @@
     } catch (error) { message = error.message; }
     render();
   }
-  async function refresh() {
+  async function refresh(query) {
     if (controller) { controller.abort(); return; }
     if (busy || !store) return;
+    const targeted = typeof query === "string";
+    if (targeted && !query.trim()) { search = ""; category = "全部"; selection = "全部"; message = "请输入要搜索的商品；多个可用逗号、顿号或换行分隔。"; render(); return; }
     busy = true; controller = new AbortController(); confirmation = false;
-    message = "正在通过副API生成购物和外卖…旧列表会保留到刷新成功。"; renderBusy();
+    message = targeted ? "正在查找商品，缺少的搜索项会通过副API一起补货…" : "正在通过副API生成购物和外卖…旧列表会保留到刷新成功。"; renderBusy();
     try {
+      if (targeted) {
+        const current = await store.load(), queries = core.searchQueries(query), missing = queries.filter((q) => !core.searchItems(current.items, q).length);
+        if (!queries.length) throw new Error("请输入要搜索的商品，多个可用逗号、顿号或换行分隔。");
+        if (!missing.length) {
+          state = current; const matches = core.searchItems(state.items, queries);
+          search = query; category = "全部"; selection = "全部";
+          if (!matches.some((i) => i.kind === tab)) tab = matches[0]?.kind || "goods";
+          message = `已找到全部${queries.length}项需求，共${matches.length}件匹配商品，无需调用API。可切换购物/外卖查看。`;
+          return;
+        }
+      }
       const adapter = window.EPhoneMarketAdapter, snapshot = await adapter.snapshot(store, spaceId);
       balance = snapshot.walletBalance;
-      state = await store.refresh({ ...snapshot, generate: adapter.generate, formatTime: adapter.formatTime, signal: controller.signal, batchId: crypto.randomUUID(),
-        onProgress: ({ goods, food }) => { message = `本次已生成${goods}件商品、${food}款餐饮，正在补齐缺项…不会重生成已有新品。`; renderBusy(); } });
+      const options = { ...snapshot, generate: adapter.generate, formatTime: adapter.formatTime, signal: controller.signal, batchId: crypto.randomUUID(),
+        onProgress: ({ goods, food }) => { message = `本次已保留${goods}件商品、${food}款餐饮，正在补齐缺少的搜索项和新品…`; renderBusy(); } };
+      const result = targeted ? await store.search({ ...options, query, kind: tab }) : null;
+      state = targeted ? result.state : await store.refresh(options);
       const info = state.refreshInfo;
-      category = "全部"; selection = "全部"; search = "";
-      message = `购物和外卖已全部更新：${info.counts.goods}件商品、${info.counts.food}款餐饮，购物车和订单已保留。` +
+      category = "全部"; selection = "全部"; search = targeted ? query : "";
+      if (targeted && !result.matches.some((i) => i.kind === tab)) tab = result.matches[0]?.kind || "goods";
+      message = (targeted ? `已找到${result.queries.length - result.missing.length}/${result.queries.length}项需求，共${result.matches.length}件匹配商品。清空搜索可查看其他新品。` + (result.missing.length ? ` 仍未补到：${result.missing.join("、")}。` : "") : "") +
+        `${targeted ? "购物和外卖已更新" : "购物和外卖已全部更新"}：${info.counts.goods}件商品、${info.counts.food}款餐饮，购物车和订单已保留。` +
         (info.skipped.duplicates ? ` 已过滤${info.skipped.duplicates}件重复项。` : "") +
         (info.partial ? " 本批未完全达到目标数量或品类，已保留有效新品。" : "") +
         (info.supplementFailed ? " 补充请求未成功，没有再次自动重试。" : "");
