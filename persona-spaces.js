@@ -401,6 +401,106 @@
     }
   }
 
+  // Settings-only copies are deliberately constructed, not spread from saved
+  // chats: snapshots can contain histories, summaries, money and pending actions.
+  function copySettings(settings = {}) {
+    const result = { maxMemory: 10 };
+    const scalarKeys = ["aiPersona", "myPersona", "myNickname", "aiAvatar", "myAvatar", "groupAvatar",
+      "aiAvatarFrame", "myAvatarFrame", "background", "theme", "fontSize", "customCss", "maxMemory",
+      "contextLimit", "outputLength", "linkedMemoryCount", "autoMemoryInterval", "enableAutoMemory",
+      "enableNarratorMode", "enableTimePerception", "enableTodoList", "enableTts", "ttsLanguage",
+      "minimaxVoiceId", "enableSynthMusic", "injectLatestThought", "isOfflineMode", "offlineMinLength",
+      "offlineMaxLength", "offlinePresetId", "naiPresetId", "userPersonaId", "showHiddenMessages",
+      "macroWorldView", "timeZone", "stickerCategoryId", "linkedWorldBookId", "actionCooldownMinutes"];
+    for (const key of scalarKeys) if (["string", "number", "boolean"].includes(typeof settings[key])) result[key] = settings[key];
+    for (const key of ["linkedWorldBookIds", "bookIds", "stickerCategoryIds", "alternateGreetings"]) {
+      if (Array.isArray(settings[key])) result[key] = settings[key].filter((value) => ["string", "number"].includes(typeof value));
+    }
+    for (const key of ["aiAvatarLibrary", "myAvatarLibrary", "groupAvatarLibrary"]) {
+      if (Array.isArray(settings[key])) result[key] = settings[key].filter((item) => typeof item?.url === "string")
+        .map((item) => ({ name: typeof item.name === "string" ? item.name : "", url: item.url }));
+    }
+    result.linkedMemoryChatIds = [];
+    // New people start without automatic background activity or legacy clocks.
+    result.enableBackgroundActivity = false;
+    return result;
+  }
+
+  function copyRole(source, id) {
+    const result = { id, name: source.name || source.originalName || "未命名角色",
+      originalName: source.originalName || source.name || "未命名角色", isGroup: false,
+      relationship: { status: "friend" }, status: { text: "在线", isBusy: false, lastUpdate: Date.now() },
+      settings: copySettings(source.settings), history: [], longTermMemory: [], musicData: { totalTime: 0 } };
+    if (typeof source.avatar === "string") result.avatar = source.avatar;
+    return result;
+  }
+
+  async function copyChatData(chatId, targetSpaceId) {
+    const source = window.db?.chats?.db; // Capture the concrete space before awaiting.
+    if (!source || !window.Dexie) throw new Error("数据库还在加载，请稍后再试。");
+    if (targetSpaceId === activeId || !readSpaces().some((space) => space.id === targetSpaceId)) throw new Error("请选择另一个有效空间。");
+    const snapshot = await source.transaction("r", source.chats, source.npcs, async () => {
+      const chat = await source.chats.get(chatId), members = chat?.members || [];
+      const isNpc = (member) => member.isNpc || String(member.id).startsWith("npc_");
+      const roleIds = [...new Set(members.filter((m) => !isNpc(m) && m.id != null).map((m) => m.id))];
+      const npcIds = [...new Set(members.filter(isNpc).map((m) => Number(String(m.id).replace(/^npc_/, ""))).filter(Number.isFinite))];
+      const [chats, npcs] = await Promise.all([source.chats.bulkGet(roleIds), source.npcs.bulkGet(npcIds)]);
+      return { chat, chats: chats.filter(Boolean), npcs: npcs.filter(Boolean) };
+    });
+    if (!snapshot.chat || snapshot.chat.ephoneNpcArchive) throw new Error("找不到可复制的角色或群聊。");
+    const freshId = () => window.crypto.randomUUID();
+    const target = new window.Dexie(databaseNameFor(targetSpaceId));
+    target.version(source.verno).stores(schemaFor(source));
+    try {
+      await target.open();
+      return await target.transaction("rw", target.chats, target.npcs, async () => {
+        const chat = snapshot.chat, id = freshId();
+        if (!chat.isGroup && !chat.isSpectatorGroup) {
+          await target.chats.add(copyRole(chat, id));
+          return { id, memberCount: 0 };
+        }
+        const chatMap = Object.fromEntries(snapshot.chats.map((item) => [item.id, item]));
+        const mapped = new Map(), members = [], npcCopies = [];
+        for (const member of chat.members || []) {
+          const npc = member.isNpc || String(member.id).startsWith("npc_");
+          const original = npc ? snapshot.npcs.find((item) => String(item.id) === String(member.id).replace(/^npc_/, "")) : chatMap[member.id];
+          const profile = window.ephoneGroupContext?.memberProfile(member, chatMap, snapshot.npcs);
+          const persona = profile?.persona ?? member.persona ?? (npc ? original?.persona : original?.settings?.aiPersona) ?? "";
+          const key = (npc ? "npc:" : "chat:") + String(original?.id ?? member.id);
+          let newId = mapped.get(key);
+          if (newId == null) {
+            const name = original?.originalName || original?.name || member.originalName || member.groupNickname || "未命名角色";
+            if (npc) {
+              const record = { name, persona: original?.persona || persona, avatar: original?.avatar || member.avatar || "",
+                associatedWith: [], enableBackgroundActivity: false, actionCooldownMinutes: original?.actionCooldownMinutes || 30 };
+              record.id = await target.npcs.add(record); npcCopies.push({ record, original });
+              newId = "npc_" + record.id;
+            } else {
+              newId = freshId();
+              await target.chats.add(copyRole(original && !original.isGroup && !original.isSpectatorGroup ? original : {
+                name, originalName: name, avatar: member.avatar, settings: { aiPersona: persona, aiAvatar: member.avatar || "" },
+              }, newId));
+            }
+            mapped.set(key, newId);
+          }
+          members.push({ id: newId, isNpc: Boolean(npc), originalName: member.originalName || original?.originalName || original?.name || "未命名角色",
+            groupNickname: member.groupNickname || member.originalName || original?.name || "未命名角色",
+            avatar: typeof member.avatar === "string" ? member.avatar : "", persona,
+            ephoneSourcePersona: npc ? original?.persona || persona : original?.settings?.aiPersona || persona,
+            ephonePersonaOverride: profile?.override ?? member.ephonePersonaOverride === true });
+        }
+        // Keep only links to fellow copied members, never old-space IDs.
+        for (const { record, original } of npcCopies) {
+          record.associatedWith = (original?.associatedWith || []).map((oldId) => mapped.get("chat:" + oldId)).filter(Boolean);
+          await target.npcs.put(record);
+        }
+        await target.chats.add({ id, name: chat.name || "群聊", isGroup: true, isSpectatorGroup: Boolean(chat.isSpectatorGroup),
+          settings: copySettings(chat.settings), members, history: [], longTermMemory: [], musicData: { totalTime: 0 } });
+        return { id, memberCount: mapped.size };
+      });
+    } finally { target.close(); }
+  }
+
   function makeModal() {
     const overlay = document.createElement("div");
     overlay.id = "ephone-persona-spaces-modal";
@@ -439,8 +539,10 @@
     let moveMode = null;
     let moveTargetId = null;
     let resolveMove;
+    let transferBusy = false;
 
     const close = () => {
+      if (transferBusy) return;
       overlay.classList.remove("visible");
       if (resolveMove) {
         resolveMove(false);
@@ -458,6 +560,7 @@
         button.type = "button";
         button.className = "ephone-space-option";
         button.setAttribute("role", "listitem");
+        button.disabled = transferBusy;
         button.innerHTML = `<span class="ephone-space-name"></span><span class="ephone-space-state"></span>`;
         button.querySelector(".ephone-space-name").textContent = space.name;
         const isCurrent = space.id === activeId;
@@ -499,15 +602,17 @@
         });
         list.append(button);
       }
-      title.textContent = moving ? "移动聊天到空间" : "人设空间";
+      const copying = moveMode?.action === "copy";
+      title.textContent = moving ? copying ? "复制设定到空间" : "移动聊天到空间" : "人设空间";
       description.textContent = moving
-        ? `选择目标空间；“${moveMode.name}”的聊天内容和相关记忆会一起移动。`
+        ? copying ? `复制“${moveMode.name}”的设定；群成员的角色和NPC档案会一起复制。不会复制聊天、记忆、钱包、订单和行程。` : `选择目标空间；“${moveMode.name}”的聊天内容和相关记忆会一起移动。`
         : "角色、群聊、NPC 和相关记忆按空间保存；主题、API 与其他应用设置共用。";
       createSection.hidden = moving;
       moveButton.hidden = !moving;
-      moveButton.disabled = !moveTargetId;
+      moveButton.disabled = transferBusy || !moveTargetId;
+      moveButton.textContent = copying ? "复制到此空间" : "移动到此空间";
       footerNote.textContent = moving
-        ? "原空间中的角色将在移动成功后移除"
+        ? copying ? "原空间资料保持不变；目标空间建立独立新档案" : "原空间中的角色将在移动成功后移除"
         : "角色资料按空间区分，主题与应用设置保持共用";
     };
 
@@ -547,35 +652,38 @@
       }
     });
     moveButton.addEventListener("click", async () => {
-      if (!moveMode || !moveTargetId || !resolveMove) return;
+      if (transferBusy || !moveMode || !moveTargetId || !resolveMove) return;
       const destination = readSpaces().find((space) => space.id === moveTargetId);
       if (!destination) return;
       const movingName = moveMode.name;
       const movingId = moveMode.id;
+      const copying = moveMode.action === "copy";
+      transferBusy = true;
       moveButton.disabled = true;
-      moveButton.textContent = "正在移动…";
+      moveButton.textContent = copying ? "正在复制…" : "正在移动…";
       try {
-        await moveChatData(moveMode.id, moveTargetId);
+        if (copying) await copyChatData(moveMode.id, moveTargetId);
+        else await moveChatData(moveMode.id, moveTargetId);
         const resolve = resolveMove;
         resolveMove = null;
         overlay.classList.remove("visible");
         moveMode = null;
         moveTargetId = null;
         resolve(true);
-        if (typeof window.refreshPersonaSpaceData === "function") {
+        if (!copying && typeof window.refreshPersonaSpaceData === "function") {
           try {
             await window.refreshPersonaSpaceData({ movedChatId: movingId });
           } catch (refreshError) {
             console.error("移动后刷新角色列表失败", refreshError);
           }
         }
-        window.alert(`已将“${movingName}”移动到“${destination.name}”。`);
+        window.alert(`已将“${movingName}”${copying ? "的设定复制" : "移动"}到“${destination.name}”。${copying ? "原空间未改变，聊天记录和记忆未复制。" : ""}`);
       } catch (error) {
-        console.error("移动角色失败", error);
-        window.alert(error?.message || "移动角色失败，请稍后重试。");
+        console.error(copying ? "复制设定失败" : "移动角色失败", error);
+        window.alert(error?.message || (copying ? "复制失败，请稍后重试。" : "移动角色失败，请稍后重试。"));
         moveButton.textContent = "移动到此空间";
         render();
-      }
+      } finally { transferBusy = false; render(); }
     });
     document.body.append(overlay);
     return {
@@ -614,15 +722,19 @@
 
     window.EPhoneSpaces.moveChat = async (chatId, name) =>
       modal.beginMove({ id: chatId, name: name || "角色" });
+    window.EPhoneSpaces.copyChat = async (chatId, name) =>
+      modal.beginMove({ id: chatId, name: name || "角色或群聊", action: "copy" });
   });
 
   window.EPhoneSpaces = {
     bindDatabases,
+    copyChatData,
     async switchSpace(spaceId) {
       return switchSpace(spaceId);
     },
     moveChat: async () => {
       throw new Error("空间界面还在加载，请稍后再试。");
     },
+    copyChat: async () => { throw new Error("空间界面还在加载，请稍后再试。"); },
   };
 })();

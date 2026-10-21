@@ -14793,6 +14793,12 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
                   _0x541344.name || _0x541344.originalName || "角色",
                 );
               break;
+            case "copy":
+              await window.EPhoneSpaces?.copyChat(
+                _0x541344.id,
+                _0x541344.name || _0x541344.originalName || "角色或群聊",
+              );
+              break;
             default:
               break;
           }
@@ -30917,6 +30923,7 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
         _0x400332 = document[_0x4a970f(0x1023)](_0x4a970f(0x11f2)),
         _0x4d4806 = document[_0x4a970f(0x1023)]("chat-list-action-pin"),
         _0xmoveButton = document["getElementById"]("chat-list-action-move"),
+        _0xcopyButton = document.getElementById("chat-list-action-copy"),
         _0x241463 = document[_0x4a970f(0x1023)](_0x4a970f(0x1a5f)),
         _0x3859e6 = document["getElementById"](_0x4a970f(0x506));
       _0x4d4806[_0x4a970f(0x71a)] = _0x4d24fc[_0x4a970f(0x109c)]
@@ -30936,6 +30943,10 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
           _0x989e56("move");
         };
       }
+      if (_0xcopyButton) _0xcopyButton.onclick = () => {
+        _0x400332.classList.remove("visible");
+        _0x989e56("copy");
+      };
       const _0x19a362 = _0x241463[_0x4a970f(0x186d)](!![]);
       (_0x241463[_0x4a970f(0x1110)][_0x4a970f(0x676)](_0x19a362, _0x241463),
         (_0x19a362[_0x4a970f(0x5d3)] = () => {

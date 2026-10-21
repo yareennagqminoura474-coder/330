@@ -414,14 +414,25 @@
         await this.state.put(next); return next;
       });
     }
-    async checkout({ orderId, expectedCart, target, owner, vts, spaceId, now = Date.now() }) {
+    async selectCart(itemId, selected) {
+      return this.database.transaction("rw", this.state, async () => {
+        const state = await this.load();
+        if (itemId != null && !state.cart.some((line) => line.item.id === itemId)) throw new Error("商品已移出购物车，请重新打开。");
+        const next = { ...state, cart: state.cart.map((line) => itemId == null || line.item.id === itemId ? { ...line, selected: Boolean(selected) } : line) };
+        await this.state.put(next); return next;
+      });
+    }
+    async checkout({ orderId, expectedCart, selectedItemIds, target, owner, vts, spaceId, now = Date.now() }) {
       return this.database.transaction("rw", this.state, this.orders, this.wallet, this.bills, this.chats, async () => {
         const existing = await this.orders.get(orderId);
         if (existing) return { order: existing, alreadyPaid: true, balance: (await this.wallet.get("main"))?.balance || 0 };
         const state = await this.load();
         if (!state.cart?.length) throw new Error("购物车是空的。");
         if (JSON.stringify(state.cart) !== JSON.stringify(expectedCart)) throw new Error("购物车已发生变化，请核对后再下单。");
-        const totals = quote(state.cart), wallet = await this.wallet.get("main") || { id: "main", balance: 0, kinshipCards: [] };
+        const ids = selectedItemIds === undefined ? state.cart.map((line) => line.item.id) : selectedItemIds;
+        if (!Array.isArray(ids) || !ids.length || new Set(ids).size !== ids.length || ids.some((id) => !state.cart.some((line) => line.item.id === id))) throw new Error("请选择有效的商品再结算。");
+        const selected = new Set(ids), purchased = state.cart.filter((line) => selected.has(line.item.id)).map(({ item, quantity }) => ({ item, quantity }));
+        const totals = quote(purchased), wallet = await this.wallet.get("main") || { id: "main", balance: 0, kinshipCards: [] };
         const balance = cents(wallet.balance ?? 0, true), total = cents(totals.total);
         if (balance < total) throw new Error(`余额不足：需要¥${totals.total.toFixed(2)}，当前¥${(balance / 100).toFixed(2)}。`);
         const chat = target?.chatId ? await this.chats.get(target.chatId) : null;
@@ -429,17 +440,17 @@
             !(chat.members || []).some((member) => member.originalName === target.recipientName) :
             (chat.originalName || chat.name) !== target.recipientName)))) throw new Error("收货角色已改变或移走，请重新选择。");
         const order = { id: orderId, timestamp: now, vts, walletSpaceId: spaceId, status: "paid", virtual: true,
-          recipientName: target?.recipientName || owner?.name || "自己", chatId: target?.chatId || null, items: state.cart, ...totals,
+          recipientName: target?.recipientName || owner?.name || "自己", chatId: target?.chatId || null, items: purchased, ...totals,
           ...(owner?.key ? { ownerKey: owner.key, ownerName: owner.name, knownBy: [{ key: owner.key, name: owner.name, level: "details", source: "owner" }], phoneAccess: [owner.key], privateOrder: true } : {}) };
         await this.wallet.put({ ...wallet, balance: (balance - total) / 100 });
         for (const bill of orderBills(order, "expense", { timestamp: now, vts })) await this.bills.add(bill);
         await this.orders.add(order);
-        await this.state.put({ ...state, cart: [] });
+        await this.state.put({ ...state, cart: state.cart.filter((line) => !selected.has(line.item.id)) });
         if (chat) {
           chat.history ||= [];
           const notification = { role: "system", type: "pat_message", marketOrder: true, orderId,
             timestamp: Math.max(now, Number(chat.history.at(-1)?.timestamp || 0) + 1), vts,
-            content: `【逛逛·虚拟订单】已为${order.recipientName}下单：${state.cart.map((line) => `${line.item.name}×${line.quantity}`).join("、")}。总计¥${totals.total.toFixed(2)}，已从本空间钱包支付（含配送费¥${totals.delivery.toFixed(2)}）。${state.cart.some((line) => line.item.kind === "food") ? "外卖已下单，尚未送达。" : "商品已下单，尚未送达。"}` };
+            content: `【逛逛·虚拟订单】已为${order.recipientName}下单：${purchased.map((line) => `${line.item.name}×${line.quantity}`).join("、")}。总计¥${totals.total.toFixed(2)}，已从本空间钱包支付（含配送费¥${totals.delivery.toFixed(2)}）。${purchased.some((line) => line.item.kind === "food") ? "外卖已下单，尚未送达。" : "商品已下单，尚未送达。"}` };
           chat.history.push(root.ephoneMarketOrders?.makeMessage ? root.ephoneMarketOrders.makeMessage(order, "placed", notification) : notification);
           await this.chats.put(chat);
         }
