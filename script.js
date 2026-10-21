@@ -14147,11 +14147,15 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
     (_0x2dde7d(_0x2e08c2), _0x8abddb());
   }
   window[_0x3ce505(0x12f6)] = _0x4bf560;
+  let _ephoneNpcListRenderRevision = 0;
   async function _0x1f4e90() {
+    const renderRevision = ++_ephoneNpcListRenderRevision, sourceDb = _0x24f906.npcs.db;
     const _0x5e719d = _0x3ce505,
       _0x25e3f9 = document[_0x5e719d(0x1023)](_0x5e719d(0xe24));
     _0x25e3f9[_0x5e719d(0x1bf6)] = "";
     const _0x46be98 = await _0x24f906[_0x5e719d(0x94f)][_0x5e719d(0x16dd)]();
+    if (renderRevision !== _ephoneNpcListRenderRevision || sourceDb !== _0x24f906.npcs.db) return;
+    _0x25e3f9.replaceChildren();
     if (_0x46be98[_0x5e719d(0xa5d)] === 0x0) {
       _0x25e3f9[_0x5e719d(0x1bf6)] = _0x5e719d(0xc29);
       return;
@@ -14181,6 +14185,15 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
   async function _0x4760b1(_0x574c11 = null) {
     const _0x330b0c = _0x3ce505;
     editingNpcId = _0x574c11;
+    const copySection = document.getElementById("npc-copy-section"), copyButton = document.getElementById("copy-npc-to-space-btn");
+    if (copySection) copySection.hidden = _0x574c11 == null;
+    if (copyButton) copyButton.onclick = async () => {
+      if (editingNpcId == null) return;
+      const npc = await _0x24f906.npcs.get(editingNpcId);
+      if (!npc) return;
+      document.getElementById("npc-editor-modal").classList.remove("visible");
+      await window.EPhoneSpaces?.copyNpc(npc.id, npc.name);
+    };
     const _0x1e98ba = document[_0x330b0c(0x1023)](_0x330b0c(0x1aa4)),
       _0x5cf889 = document[_0x330b0c(0x1023)]("npc-editor-title"),
       _0x5dd55a = document[_0x330b0c(0x1023)](_0x330b0c(0xbd1)),

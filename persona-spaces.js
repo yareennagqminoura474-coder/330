@@ -435,6 +435,66 @@
     return result;
   }
 
+  function copyOrigin(source, table, database) {
+    const saved = source?.ephoneCopyOrigin;
+    return saved && typeof saved.database === "string" && ["chats", "npcs"].includes(saved.table) && typeof saved.id === "string"
+      ? { database: saved.database, table: saved.table, id: saved.id }
+      : { database, table, id: String(source.id) };
+  }
+  function sameOrigin(record, origin) {
+    const saved = record.ephoneCopyOrigin;
+    return saved && saved.database === origin.database && saved.table === origin.table && saved.id === origin.id;
+  }
+  // Legacy copies and moved records have no copy marker. Only reuse an exact
+  // identity/profile match, never a name-only match. Existing data is not erased.
+  function sameRoleProfile(a, b) {
+    return (a.originalName || a.name) === (b.originalName || b.name) &&
+      String(a.settings?.aiPersona || "") === String(b.settings?.aiPersona || "") &&
+      String(a.settings?.myPersona || "") === String(b.settings?.myPersona || "") &&
+      String(a.settings?.myNickname || "") === String(b.settings?.myNickname || "");
+  }
+  function copyNpc(source) {
+    return { name: source.name || "未命名NPC", persona: typeof source.persona === "string" ? source.persona : "",
+      avatar: typeof source.avatar === "string" ? source.avatar : "", associatedWith: [],
+      enableBackgroundActivity: false, actionCooldownMinutes: Number(source.actionCooldownMinutes) || 30 };
+  }
+  function reusableRole(rows, source, origin, hasSource = true) {
+    const roles = rows.filter((row) => !row.isGroup && !row.isSpectatorGroup && !row.ephoneNpcArchive);
+    return roles.find((row) => sameOrigin(row, origin)) || roles.find((row) => String(row.id) === String(source.id) && (!hasSource || sameRoleProfile(row, source))) ||
+      (source.ephonePersonKey && roles.find((row) => row.ephonePersonKey === source.ephonePersonKey)) ||
+      (hasSource && roles.find((row) => sameRoleProfile(row, source)));
+  }
+  function reusableNpc(rows, source, origin) {
+    return rows.find((row) => sameOrigin(row, origin)) ||
+      (source.ephonePersonKey && rows.find((row) => row.ephonePersonKey === source.ephonePersonKey)) ||
+      rows.find((row) => row.name === source.name && String(row.persona || "") === String(source.persona || ""));
+  }
+
+  async function copyNpcData(npcId, targetSpaceId) {
+    const source = window.db?.npcs?.db;
+    if (!source || !window.Dexie) throw new Error("数据库还在加载，请稍后再试。");
+    if (targetSpaceId === activeId || !readSpaces().some((space) => space.id === targetSpaceId)) throw new Error("请选择另一个有效空间。");
+    const { npc, associated } = await source.transaction("r", source.npcs, source.chats, async () => {
+      const npc = await source.npcs.get(npcId);
+      return { npc, associated: npc ? await source.chats.bulkGet((npc.associatedWith || []).filter((id) => id !== "user")) : [] };
+    });
+    if (!npc) throw new Error("找不到可复制的NPC，请先保存。");
+    const target = new window.Dexie(databaseNameFor(targetSpaceId));
+    target.version(source.verno).stores(schemaFor(source));
+    try {
+      await target.open();
+      return await target.transaction("rw", target.chats, target.npcs, async () => {
+        const origin = copyOrigin(npc, "npcs", source.name), existing = reusableNpc(await target.npcs.toArray(), npc, origin);
+        if (existing) return { id: existing.id, reused: true };
+        const record = { ...copyNpc(npc), ephoneCopyOrigin: origin };
+        // Only preserve associations to roles already present in the target.
+        const roles = await target.chats.toArray();
+        record.associatedWith = associated.filter(Boolean).map((role) => reusableRole(roles, role, copyOrigin(role, "chats", source.name))?.id).filter((id) => id != null);
+        return { id: await target.npcs.add(record), reused: false };
+      });
+    } finally { target.close(); }
+  }
+
   async function copyChatData(chatId, targetSpaceId) {
     const source = window.db?.chats?.db; // Capture the concrete space before awaiting.
     if (!source || !window.Dexie) throw new Error("数据库还在加载，请稍后再试。");
@@ -454,11 +514,17 @@
     try {
       await target.open();
       return await target.transaction("rw", target.chats, target.npcs, async () => {
-        const chat = snapshot.chat, id = freshId();
+        const chat = snapshot.chat, id = freshId(), origin = copyOrigin(chat, "chats", source.name);
+        const targetChats = await target.chats.toArray(), targetNpcs = await target.npcs.toArray();
         if (!chat.isGroup && !chat.isSpectatorGroup) {
-          await target.chats.add(copyRole(chat, id));
+          const existing = reusableRole(targetChats, chat, origin);
+          if (existing) return { id: existing.id, memberCount: 0, reused: true };
+          await target.chats.add({ ...copyRole(chat, id), ephoneCopyOrigin: origin });
           return { id, memberCount: 0 };
         }
+        // A copied group is always a NEW empty conversation, even when a group
+        // with the same source already exists (and may have its own history).
+        // Only member profiles are reused; never reuse an existing group/chat.
         const chatMap = Object.fromEntries(snapshot.chats.map((item) => [item.id, item]));
         const mapped = new Map(), members = [], npcCopies = [];
         for (const member of chat.members || []) {
@@ -471,15 +537,23 @@
           if (newId == null) {
             const name = original?.originalName || original?.name || member.originalName || member.groupNickname || "未命名角色";
             if (npc) {
-              const record = { name, persona: original?.persona || persona, avatar: original?.avatar || member.avatar || "",
-                associatedWith: [], enableBackgroundActivity: false, actionCooldownMinutes: original?.actionCooldownMinutes || 30 };
-              record.id = await target.npcs.add(record); npcCopies.push({ record, original });
+              const definition = original || { id: String(member.id).replace(/^npc_/, ""), name, persona, avatar: member.avatar };
+              const memberOrigin = copyOrigin(definition, "npcs", source.name), existing = reusableNpc(targetNpcs, definition, memberOrigin);
+              const record = existing || { ...copyNpc(definition), ephoneCopyOrigin: memberOrigin };
+              if (!existing) {
+                record.id = await target.npcs.add(record); npcCopies.push({ record, original }); targetNpcs.push(record);
+              }
               newId = "npc_" + record.id;
             } else {
-              newId = freshId();
-              await target.chats.add(copyRole(original && !original.isGroup && !original.isSpectatorGroup ? original : {
-                name, originalName: name, avatar: member.avatar, settings: { aiPersona: persona, aiAvatar: member.avatar || "" },
-              }, newId));
+              const definition = original && !original.isGroup && !original.isSpectatorGroup ? original : {
+                id: member.id, name, originalName: name, avatar: member.avatar, settings: { aiPersona: persona, aiAvatar: member.avatar || "" },
+              };
+              const memberOrigin = copyOrigin(definition, "chats", source.name), existing = reusableRole(targetChats, definition, memberOrigin, Boolean(original));
+              newId = existing?.id || freshId();
+              if (!existing) {
+                const record = { ...copyRole(definition, newId), ephoneCopyOrigin: memberOrigin };
+                await target.chats.add(record); targetChats.push(record);
+              }
             }
             mapped.set(key, newId);
           }
@@ -494,7 +568,7 @@
           record.associatedWith = (original?.associatedWith || []).map((oldId) => mapped.get("chat:" + oldId)).filter(Boolean);
           await target.npcs.put(record);
         }
-        await target.chats.add({ id, name: chat.name || "群聊", isGroup: true, isSpectatorGroup: Boolean(chat.isSpectatorGroup),
+        await target.chats.add({ id, ephoneCopyOrigin: origin, name: chat.name || "群聊", isGroup: true, isSpectatorGroup: Boolean(chat.isSpectatorGroup),
           settings: copySettings(chat.settings), members, history: [], longTermMemory: [], musicData: { totalTime: 0 } });
         return { id, memberCount: mapped.size };
       });
@@ -605,7 +679,7 @@
       const copying = moveMode?.action === "copy";
       title.textContent = moving ? copying ? "复制设定到空间" : "移动聊天到空间" : "人设空间";
       description.textContent = moving
-        ? copying ? `复制“${moveMode.name}”的设定；群成员的角色和NPC档案会一起复制。不会复制聊天、记忆、钱包、订单和行程。` : `选择目标空间；“${moveMode.name}”的聊天内容和相关记忆会一起移动。`
+        ? copying ? `复制“${moveMode.name}”的设定；群聊始终新建空聊天，成员的角色和NPC档案已有则复用，不重复创建、不覆盖。不会复制聊天、记忆、钱包、订单和行程。` : `选择目标空间；“${moveMode.name}”的聊天内容和相关记忆会一起移动。`
         : "角色、群聊、NPC 和相关记忆按空间保存；主题、API 与其他应用设置共用。";
       createSection.hidden = moving;
       moveButton.hidden = !moving;
@@ -662,7 +736,8 @@
       moveButton.disabled = true;
       moveButton.textContent = copying ? "正在复制…" : "正在移动…";
       try {
-        if (copying) await copyChatData(moveMode.id, moveTargetId);
+        let result;
+        if (copying) result = await (moveMode.kind === "npc" ? copyNpcData : copyChatData)(moveMode.id, moveTargetId);
         else await moveChatData(moveMode.id, moveTargetId);
         const resolve = resolveMove;
         resolveMove = null;
@@ -677,7 +752,7 @@
             console.error("移动后刷新角色列表失败", refreshError);
           }
         }
-        window.alert(`已将“${movingName}”${copying ? "的设定复制" : "移动"}到“${destination.name}”。${copying ? "原空间未改变，聊天记录和记忆未复制。" : ""}`);
+        window.alert(result?.reused ? `“${destination.name}”已有“${movingName}”，已复用原档案，没有重复创建或覆盖。` : `已将“${movingName}”${copying ? "的设定复制" : "移动"}到“${destination.name}”。${copying ? "原空间未改变，聊天记录和记忆未复制；已有群成员直接复用。" : ""}`);
       } catch (error) {
         console.error(copying ? "复制设定失败" : "移动角色失败", error);
         window.alert(error?.message || (copying ? "复制失败，请稍后重试。" : "移动角色失败，请稍后重试。"));
@@ -724,11 +799,14 @@
       modal.beginMove({ id: chatId, name: name || "角色" });
     window.EPhoneSpaces.copyChat = async (chatId, name) =>
       modal.beginMove({ id: chatId, name: name || "角色或群聊", action: "copy" });
+    window.EPhoneSpaces.copyNpc = async (npcId, name) =>
+      modal.beginMove({ id: npcId, name: name || "NPC", action: "copy", kind: "npc" });
   });
 
   window.EPhoneSpaces = {
     bindDatabases,
     copyChatData,
+    copyNpcData,
     async switchSpace(spaceId) {
       return switchSpace(spaceId);
     },
@@ -736,5 +814,6 @@
       throw new Error("空间界面还在加载，请稍后再试。");
     },
     copyChat: async () => { throw new Error("空间界面还在加载，请稍后再试。"); },
+    copyNpc: async () => { throw new Error("空间界面还在加载，请稍后再试。"); },
   };
 })();

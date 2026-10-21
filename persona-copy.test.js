@@ -28,7 +28,12 @@ const Dexie = require("dexie"), crypto = require("node:crypto"), groupContext = 
     await target.npcs.add({ id: 1, name: "乙", persona: "目标空间原有NPC", history: ["destination-data"] });
     const before = await source.chats.toArray(), copy = window.EPhoneSpaces.copyChatData;
     const first = await copy("a", "other"), second = await copy("a", "other");
-    assert.notEqual(first.id, "a"); assert.notEqual(first.id, second.id);
+    assert.notEqual(first.id, "a"); assert.equal(first.id, second.id); assert.equal(second.reused, true);
+    const npcCopy = await window.EPhoneSpaces.copyNpcData(1, "other");
+    const repeatedNpc = await window.EPhoneSpaces.copyNpcData(1, "other");
+    assert.equal(npcCopy.id, repeatedNpc.id); assert.equal(repeatedNpc.reused, true);
+    assert.deepEqual((await target.npcs.get(npcCopy.id)).associatedWith, [first.id]);
+    assert.doesNotMatch(JSON.stringify(await target.npcs.get(npcCopy.id)), /secret|old-npc-key|ephoneArchivedChatId/);
     const copied = await target.chats.get(first.id);
     assert.equal(copied.settings.aiPersona, "甲基础人设"); assert.equal(copied.settings.maxMemory, 60);
     assert.deepEqual(copied.settings.linkedWorldBookIds, ["shared-book"]); assert.deepEqual(copied.settings.linkedMemoryChatIds, []);
@@ -44,16 +49,41 @@ const Dexie = require("dexie"), crypto = require("node:crypto"), groupContext = 
       assert.deepEqual(profiles[1].npc.associatedWith, [group.members[0].id]);
       assert.doesNotMatch(JSON.stringify(group), /secret|old-person|old-npc-key/);
     }
-    assert.notEqual((await target.chats.get(groupIds[0])).members[0].id, (await target.chats.get(groupIds[1])).members[0].id);
+    assert.equal((await target.chats.get(groupIds[0])).members[0].id, first.id);
+    assert.equal((await target.chats.get(groupIds[1])).members[0].id, first.id);
+    assert.equal((await target.chats.get(groupIds[0])).members[1].id, "npc_" + npcCopy.id);
+    const countsBeforeRepeat = [await target.chats.count(), await target.npcs.count()];
+    const oldGroup = await target.chats.get(groupIds[1]); oldGroup.history = [{ content: "目标空间已有群聊记录" }]; await target.chats.put(oldGroup);
+    const duplicates = await Promise.all([copy("watch", "other"), copy("watch", "other")]);
+    assert.notEqual(duplicates[0].id, duplicates[1].id);
+    assert.deepEqual([await target.chats.count(), await target.npcs.count()], [countsBeforeRepeat[0] + 2, countsBeforeRepeat[1]], "new groups, no extra member profiles");
+    for (const result of duplicates) assert.equal((await target.chats.get(result.id)).history.length, 0, "copies must not reopen a target group with old chat history");
+    assert.deepEqual((await target.chats.get(groupIds[1])).history, oldGroup.history, "existing target conversation is untouched");
     assert.deepEqual(await source.chats.toArray(), before); assert.deepEqual((await target.chats.get("a")).history, ["destination-data"]);
     for (const table of ["memories", "userTransactions", "spaceProfiles", "spaceClock", "globalSettings"]) assert.equal(await target.table(table).count(), 0);
     assert.equal((await target.userWallet.get("main")).balance, 42);
     await assert.rejects(copy("a", "default"), /另一个/); await assert.rejects(copy("a", "absent"), /有效/); await assert.rejects(copy("missing", "other"), /找不到/);
+    const moved = { id: "moved-role", name: "已移动角色", originalName: "已移动角色", settings: { aiPersona: "目标空间更新后的人设" }, history: ["现有聊天"], longTermMemory: ["现有记忆"] };
+    await target.chats.add(moved);
+    await source.chats.add({ id: "group-with-moved", name: "包含已移动成员", isGroup: true, settings: {}, members: [{ id: "moved-role", originalName: "已移动角色", persona: "移动前的旧人设", ephonePersonaOverride: false }], history: [] });
+    const movedGroup = await copy("group-with-moved", "other");
+    assert.equal((await target.chats.get(movedGroup.id)).members[0].id, moved.id);
+    assert.deepEqual(await target.chats.get(moved.id), moved, "moved identity, edited persona and memories are reused without overwrite");
+    const movedOldGroup = { id: "watch", name: "原先移动来的群聊", isGroup: true, isSpectatorGroup: true, members: [], settings: {}, history: [{ content: "已移动群的旧聊天" }], longTermMemory: ["已移动群的总结"] };
+    await target.chats.add(movedOldGroup);
+    const cleanGroup = await copy("watch", "other");
+    assert.notEqual(cleanGroup.id, "watch");
+    assert.deepEqual((await target.chats.get(cleanGroup.id)).history, []);
+    assert.deepEqual((await target.chats.get(cleanGroup.id)).longTermMemory, []);
+    assert.deepEqual(await target.chats.get("watch"), movedOldGroup);
+    const legacy = await target.chats.get(first.id); delete legacy.ephoneCopyOrigin; await target.chats.put(legacy);
+    assert.equal((await copy("a", "other")).id, first.id, "unmarked v1.7.99 copies are reused by exact identity/profile");
+    await source.chats.add({ id: "fail-group", name: "failed group", isGroup: true, settings: {}, members: [{ id: "new-person", originalName: "新人物", persona: "全新人设" }, { id: "npc_77", isNpc: true, originalName: "新NPC", persona: "全新NPC人设" }], history: [] });
     const counts = [await target.chats.count(), await target.npcs.count()];
     class FaultDexie extends Dexie { async open() { await super.open(); this.chats.hook("creating", (_key, value) => { if (value.isGroup) throw new Error("injected copy failure"); }); return this; } }
     window.Dexie = FaultDexie;
-    await assert.rejects(copy("group", "other"), /injected/);
+    await assert.rejects(copy("fail-group", "other"), /injected/);
     assert.deepEqual([await target.chats.count(), await target.npcs.count()], counts, "all copied members roll back with a failed group");
-    console.log("PASS: settings-only private/ordinary/spectator copies, independent fresh member IDs, current/override/missing personas, scoped NPC links, no history/money/binding/API/clock copies, source unchanged, repeat-safe, atomic rollback");
+    console.log("PASS: settings-only role/NPC/group copies; direct, moved, legacy, repeated/concurrent and multiple-group member reuse; current/override/missing personas, scoped NPC links, target edits/history preserved, no history/money/binding/API/clock copies, atomic rollback");
   } finally { await source.delete(); await target.delete(); }
 })().catch((error) => { console.error(error); process.exitCode = 1; });
