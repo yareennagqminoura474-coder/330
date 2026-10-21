@@ -12,6 +12,8 @@
   }
   let screen, state = core.blank(), orders = [], balance = 0, chats = [], store, spaceId, spaceName, bindingName = "";
   let tab = "goods", category = "全部", selection = "全部", search = "", busy = false, controller, message = "", confirmation = false, recipient = "", openToken = 0;
+  let cardDestination = "auto";
+  const orderDestinations = new Map();
   function create() {
     if (screen) return;
     screen = document.createElement("section"); screen.id = "life-market-screen"; screen.className = "screen";
@@ -33,6 +35,13 @@
       if (button.dataset.action === "checkout" && !busy) { confirmation = true; render(); }
       if (button.dataset.action === "cancel") { confirmation = false; render(); }
       if (button.dataset.action === "pay") await pay();
+      if (button.dataset.action === "post-order") await postOrder(button.dataset.order);
+      if (button.dataset.action === "buy-again" && !busy) {
+        busy = true; confirmation = false; renderBusy();
+        try { state = await store.reorder(button.dataset.order); tab = "cart"; message = "已按原订单商品、数量和单价加入购物车，尚未扣款。请核对收货角色、发送群和金额后再付款。"; }
+        catch (error) { message = error.message; }
+        finally { busy = false; render(); }
+      }
     });
     screen.addEventListener("change", async (event) => {
       if (event.target.matches("[data-cart-check], #market-select-all")) {
@@ -43,6 +52,8 @@
         finally { busy = false; render(); }
       }
       if (event.target.id === "market-recipient") { recipient = event.target.value; confirmation = false; render(); }
+      if (event.target.id === "market-card-destination") { cardDestination = event.target.value; confirmation = false; render(); }
+      if (event.target.matches("[data-order-destination]")) { orderDestinations.set(event.target.dataset.orderDestination, event.target.value); render(); }
     });
     screen.addEventListener("input", (event) => {
       if (event.target.id !== "market-search") return;
@@ -54,6 +65,9 @@
     button.textContent = controller ? "停止刷新" : "刷新";
     button.disabled = busy && !controller;
     screen.querySelectorAll("[data-delta], [data-action=pay], [data-action=checkout], #market-recipient, [data-cart-check], #market-select-all").forEach((el) => { el.disabled = busy || (el.dataset.action === "checkout" && !state.cart.some((line) => line.selected !== false)); });
+    screen.querySelectorAll("#market-card-destination, [data-order-destination], [data-action=buy-again], [data-action=post-order]").forEach((el) => {
+      el.disabled = busy || (el.dataset.action === "post-order" && !orderDestinations.get(el.dataset.order));
+    });
     const selectAll = screen.querySelector("#market-select-all");
     if (selectAll) selectAll.indeterminate = state.cart.some((line) => line.selected !== false) && state.cart.some((line) => line.selected === false);
     screen.querySelector(".market-message").textContent = message;
@@ -65,6 +79,12 @@
       for (const name of [...new Set(names)].filter(Boolean)) options.push({ label: `${name} · ${chat.name}`, value: JSON.stringify({ chatId: chat.id, recipientName: name }) });
     }
     return options.map((option) => `<option value="${esc(option.value)}" ${option.value === recipient ? "selected" : ""}>${esc(option.label)}</option>`).join("");
+  }
+  function groupOptions(selected, checkout = false) {
+    const options = checkout ? [{ value: "auto", label: "自动跟随收货角色所在聊天" }, { value: "none", label: "不发到聊天，仅保存订单" }] : [{ value: "", label: "请选择要发送的群聊" }];
+    for (const chat of chats.filter((chat) => chat.isGroup || chat.isSpectatorGroup)) options.push({ value: JSON.stringify({ chatId: chat.id }), label: `${chat.name || "未命名群聊"}${chat.isSpectatorGroup ? "（观看群）" : ""}` });
+    if (selected && !options.some((option) => option.value === selected)) options.push({ value: selected, label: "原目标群已移走，请重新选择" });
+    return options.map((option) => `<option value="${esc(option.value)}" ${option.value === selected ? "selected" : ""}>${esc(option.label)}</option>`).join("");
   }
   function renderProducts() {
     const grid = screen.querySelector(".market-products"); if (!grid) return;
@@ -82,9 +102,9 @@
       renderProducts();
     } else if (tab === "cart") {
       const selectedCart = state.cart.filter((line) => line.selected !== false), totals = core.quote(selectedCart);
-      content.innerHTML = '<h2 class="market-section-title">购物车</h2>' + (state.cart.length ? `<label class="market-select-all"><input type="checkbox" id="market-select-all" ${selectedCart.length === state.cart.length ? "checked" : ""}>全选 · 已选${selectedCart.length}/${state.cart.length}件商品</label>` + state.cart.map((line) => `<article class="market-cart-line"><input type="checkbox" data-cart-check="${esc(line.item.id)}" aria-label="选择：${esc(line.item.name)}" ${line.selected !== false ? "checked" : ""}><span class="market-cart-emoji">${esc(line.item.emoji)}</span><div><h3>${esc(line.item.name)}</h3><small>${esc(line.item.merchant)} · ¥${money(line.item.price)}</small><div class="market-quantity"><button type="button" data-item="${esc(line.item.id)}" data-delta="-1" aria-label="减少：${esc(line.item.name)}">−</button><span>${line.quantity}</span><button type="button" data-item="${esc(line.item.id)}" data-delta="1" aria-label="增加：${esc(line.item.name)}">＋</button></div></div></article>`).join("") + `<div class="market-checkout"><label for="market-recipient">收货角色</label><select id="market-recipient">${recipientOptions()}</select><p>商品 ¥${money(totals.subtotal)} · 配送 ¥${money(totals.delivery)}</p><strong>已选合计 ¥${money(totals.total)}</strong><p class="market-disclaimer">仅小手机内的虚拟购买，不产生现实订单。绑定后，订单只属于绑定角色；聊天卡片不是全群公告，其他角色需被告知、看到到货或实际查看手机才知情。</p>${confirmation ? '<p>确认支付已选商品？未选商品将保留在购物车。</p><div class="market-confirm"><button type="button" data-action="cancel">取消</button><button type="button" data-action="pay" class="market-primary">确认付款</button></div>' : '<button type="button" data-action="checkout" class="market-primary">去下单</button>'}</div>` : '<div class="market-empty">购物车还是空的。刷新不会清空已加入的商品。</div>');
+      content.innerHTML = '<h2 class="market-section-title">购物车</h2>' + (state.cart.length ? `<label class="market-select-all"><input type="checkbox" id="market-select-all" ${selectedCart.length === state.cart.length ? "checked" : ""}>全选 · 已选${selectedCart.length}/${state.cart.length}件商品</label>` + state.cart.map((line) => `<article class="market-cart-line"><input type="checkbox" data-cart-check="${esc(line.item.id)}" aria-label="选择：${esc(line.item.name)}" ${line.selected !== false ? "checked" : ""}><span class="market-cart-emoji">${esc(line.item.emoji)}</span><div><h3>${esc(line.item.name)}</h3><small>${esc(line.item.merchant)} · ¥${money(line.item.price)}</small><div class="market-quantity"><button type="button" data-item="${esc(line.item.id)}" data-delta="-1" aria-label="减少：${esc(line.item.name)}">−</button><span>${line.quantity}</span><button type="button" data-item="${esc(line.item.id)}" data-delta="1" aria-label="增加：${esc(line.item.name)}">＋</button></div></div></article>`).join("") + `<div class="market-checkout"><label for="market-recipient">收货角色</label><select id="market-recipient">${recipientOptions()}</select><label for="market-card-destination">订单卡片发送到</label><select id="market-card-destination">${groupOptions(cardDestination, true)}</select><small>只选择卡片显示位置，不会自动让全群知情或获得查看手机、取消订单的权限。</small><p>商品 ¥${money(totals.subtotal)} · 配送 ¥${money(totals.delivery)}</p><strong>已选合计 ¥${money(totals.total)}</strong><p class="market-disclaimer">仅小手机内的虚拟购买，不产生现实订单。绑定后，订单只属于绑定角色；聊天卡片不是全群公告，其他角色需被告知、看到到货或实际查看手机才知情。</p>${confirmation ? '<p>确认支付已选商品？未选商品将保留在购物车。</p><div class="market-confirm"><button type="button" data-action="cancel">取消</button><button type="button" data-action="pay" class="market-primary">确认付款</button></div>' : '<button type="button" data-action="checkout" class="market-primary">去下单</button>'}</div>` : '<div class="market-empty">购物车还是空的。刷新不会清空已加入的商品。</div>');
     } else {
-      content.innerHTML = '<h2 class="market-section-title">我的订单</h2>' + (orders.length ? orders.map((order) => `<article class="market-order"><div><strong>${esc(order.recipientName)}</strong><span>${esc(window.ephoneMarketOrders.statusText(order))}</span></div><small>${esc(window.EPhoneMarketAdapter?.formatTime(order.vts) || new Date(order.timestamp).toLocaleString("zh-CN"))}</small>${orderDetailsHtml(order)}${order.cancelledBy ? `<p>${esc(order.cancelledBy)}取消 · 已退款¥${money(order.refundedAmount)}</p>` : ""}<strong>¥${money(order.total)}</strong><small> 含配送 ¥${money(order.delivery)}</small></article>`).join("") : '<div class="market-empty">还没有订单。手动刷新不会删除已付订单。</div>');
+      content.innerHTML = '<h2 class="market-section-title">我的订单</h2>' + (orders.length ? orders.map((order) => `<article class="market-order"><div><strong>${esc(order.recipientName)}</strong><span>${esc(window.ephoneMarketOrders.statusText(order))}</span></div><small>${esc(window.EPhoneMarketAdapter?.formatTime(order.vts) || new Date(order.timestamp).toLocaleString("zh-CN"))}</small>${orderDetailsHtml(order)}${order.cancelledBy ? `<p>${esc(order.cancelledBy)}取消 · 已退款¥${money(order.refundedAmount)}</p>` : ""}<strong>¥${money(order.total)}</strong><small> 含配送 ¥${money(order.delivery)}</small><div class="market-order-actions"><button type="button" data-action="buy-again" data-order="${esc(order.id)}">再买一次</button><label for="order-group-${esc(order.id)}">订单卡片发送到</label><select id="order-group-${esc(order.id)}" data-order-destination="${esc(order.id)}">${groupOptions(orderDestinations.get(order.id) || "")}</select><button type="button" data-action="post-order" data-order="${esc(order.id)}">发送到群聊</button><small>再买一次只加入购物车，确认后才付款；补发卡片不重复扣款。</small></div></article>`).join("") : '<div class="market-empty">还没有订单。手动刷新不会删除已付订单。</div>');
     }
     renderBusy();
   }
@@ -98,7 +118,7 @@
       const nextStore = new core.Store(window.db);
       const [loaded, wallet, records, characters, binding] = await Promise.all([nextStore.load(), nextStore.wallet.get("main"), nextStore.orders.orderBy("timestamp").reverse().limit(100).toArray(), nextStore.chats.toArray(), window.ephonePlayerIdentity?.load(window.db)]);
       if (token !== openToken || nextSpace !== (window.EPHONE_SPACE_ID || "default")) return;
-      if (spaceId !== nextSpace) { tab = "goods"; category = "全部"; selection = "全部"; search = ""; recipient = ""; }
+      if (spaceId !== nextSpace) { tab = "goods"; category = "全部"; selection = "全部"; search = ""; recipient = ""; cardDestination = "auto"; orderDestinations.clear(); }
       if (options.tab === "orders") tab = "orders";
       store = nextStore; spaceId = nextSpace; spaceName = window.EPHONE_SPACE_NAME; state = loaded;
       bindingName = binding?.valid ? binding.name : "";
@@ -133,13 +153,28 @@
       const binding = await window.ephonePlayerIdentity?.load(window.db);
       if (binding && !binding.valid) throw new Error("绑定角色已移走或删除，请到“我”重新绑定。");
       const target = recipient ? JSON.parse(recipient) : await adapter.orderTarget?.(binding);
-      const result = await store.checkout({ orderId: crypto.randomUUID(), expectedCart: state.cart, selectedItemIds: state.cart.filter((line) => line.selected !== false).map((line) => line.item.id), target, owner: binding, vts: adapter.now(target?.chatId), spaceId });
+      const cardChatId = cardDestination === "auto" ? undefined : cardDestination === "none" ? null : JSON.parse(cardDestination).chatId;
+      const result = await store.checkout({ orderId: crypto.randomUUID(), expectedCart: state.cart, selectedItemIds: state.cart.filter((line) => line.selected !== false).map((line) => line.item.id), target, cardChatId, owner: binding, vts: adapter.now(cardChatId || target?.chatId), spaceId });
       balance = result.balance; confirmation = false;
       state = await store.load(); orders = await store.orders.orderBy("timestamp").reverse().limit(100).toArray();
       // The transaction already committed. Display/cache synchronization must
       // never present a paid order as a failed payment or charge it again.
       try { await adapter.onPaid(result); } catch (error) { console.warn("商城显示同步失败", error); }
       message = "下单成功，已从本空间钱包付款。未选商品仍保留在购物车。"; tab = "orders";
+    } catch (error) { message = error.message; }
+    finally { busy = false; render(); }
+  }
+  async function postOrder(orderId) {
+    if (busy || !store) return;
+    const selected = orderDestinations.get(orderId);
+    if (!selected) return;
+    busy = true; message = "正在发送订单卡片…"; renderBusy();
+    try {
+      const { chatId } = JSON.parse(selected);
+      const result = await new window.ephoneMarketOrders.Service(store.database).postCard(orderId, chatId, { vts: window.EPhoneMarketAdapter.now(chatId) });
+      try { await window.EPhoneMarketAdapter.onPaid(result); } catch (error) { console.warn("订单卡片已保存，界面同步稍后刷新", error); }
+      orders = await store.orders.orderBy("timestamp").reverse().limit(100).toArray();
+      message = result.alreadyPosted ? "这个群里已有此订单卡片，没有重复发送或扣款。" : "订单卡片已发送到所选群聊，没有再次下单或扣款；订单归属和角色知情范围不变。";
     } catch (error) { message = error.message; }
     finally { busy = false; render(); }
   }

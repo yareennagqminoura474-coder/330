@@ -422,7 +422,27 @@
         await this.state.put(next); return next;
       });
     }
-    async checkout({ orderId, expectedCart, selectedItemIds, target, owner, vts, spaceId, now = Date.now() }) {
+    async reorder(orderId) {
+      return this.database.transaction("rw", this.state, this.orders, async () => {
+        const order = await this.orders.get(orderId);
+        if (!order?.items?.length) throw new Error("找不到可再次购买的订单商品。");
+        try { quote(order.items); } catch { throw new Error("旧订单缺少有效的商品单价或数量，不能直接再买一次。"); }
+        const state = await this.load(), cart = structuredClone(state.cart || []);
+        const signature = (item) => JSON.stringify(Object.keys(item).filter((k) => k !== "id").sort().map((k) => [k, item[k]]));
+        for (const [index, line] of order.items.entries()) {
+          const existing = cart.find((row) => signature(row.item) === signature(line.item));
+          if (existing) { existing.quantity += line.quantity; existing.selected = true; }
+          else {
+            const item = structuredClone(line.item); let suffix = 0;
+            while (!item.id || cart.some((row) => row.item.id === item.id)) item.id = `reorder:${orderId}:${index}:${suffix++}`;
+            cart.push({ item, quantity: line.quantity, selected: true });
+          }
+        }
+        quote(cart); // Includes the quantity cap; the whole add is atomic.
+        const next = { ...state, cart }; await this.state.put(next); return next;
+      });
+    }
+    async checkout({ orderId, expectedCart, selectedItemIds, target, cardChatId, owner, vts, spaceId, now = Date.now() }) {
       return this.database.transaction("rw", this.state, this.orders, this.wallet, this.bills, this.chats, async () => {
         const existing = await this.orders.get(orderId);
         if (existing) return { order: existing, alreadyPaid: true, balance: (await this.wallet.get("main"))?.balance || 0 };
@@ -435,12 +455,15 @@
         const totals = quote(purchased), wallet = await this.wallet.get("main") || { id: "main", balance: 0, kinshipCards: [] };
         const balance = cents(wallet.balance ?? 0, true), total = cents(totals.total);
         if (balance < total) throw new Error(`余额不足：需要¥${totals.total.toFixed(2)}，当前¥${(balance / 100).toFixed(2)}。`);
-        const chat = target?.chatId ? await this.chats.get(target.chatId) : null;
-        if (target?.chatId && (!chat || (!target.forSelf && (chat.isGroup || chat.isSpectatorGroup ?
-            !(chat.members || []).some((member) => member.originalName === target.recipientName) :
-            (chat.originalName || chat.name) !== target.recipientName)))) throw new Error("收货角色已改变或移走，请重新选择。");
+        const recipientChat = target?.chatId ? await this.chats.get(target.chatId) : null;
+        if (target?.chatId && (!recipientChat || (!target.forSelf && (recipientChat.isGroup || recipientChat.isSpectatorGroup ?
+            !(recipientChat.members || []).some((member) => member.originalName === target.recipientName) :
+            (recipientChat.originalName || recipientChat.name) !== target.recipientName)))) throw new Error("收货角色已改变或移走，请重新选择。");
+        const chat = cardChatId === undefined ? recipientChat : cardChatId === null ? null : await this.chats.get(cardChatId);
+        if (cardChatId != null && (!chat || !(chat.isGroup || chat.isSpectatorGroup))) throw new Error("订单卡片的目标群已移走或删除，请重新选择。");
         const order = { id: orderId, timestamp: now, vts, walletSpaceId: spaceId, status: "paid", virtual: true,
-          recipientName: target?.recipientName || owner?.name || "自己", chatId: target?.chatId || null, items: purchased, ...totals,
+          recipientName: target?.recipientName || owner?.name || "自己", recipientChatId: target?.chatId || null,
+          chatId: chat?.id || null, cardChatIds: chat ? [chat.id] : [], items: purchased, ...totals,
           ...(owner?.key ? { ownerKey: owner.key, ownerName: owner.name, knownBy: [{ key: owner.key, name: owner.name, level: "details", source: "owner" }], phoneAccess: [owner.key], privateOrder: true } : {}) };
         await this.wallet.put({ ...wallet, balance: (balance - total) / 100 });
         for (const bill of orderBills(order, "expense", { timestamp: now, vts })) await this.bills.add(bill);

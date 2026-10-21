@@ -16,6 +16,7 @@
       event === "inspected" ? `${actor}实际查看了${order.ownerName}的手机订单页，获知订单详情。` :
       event === "shared" ? `${actor}告知了订单，听到的人只知道被告知的内容。` :
       event === "delivered" ? `${actor}确认到货；只有列入知情名单的在场角色看到商品。` :
+      event === "forwarded" ? `订单卡片已放入本群，当前状态：${statusText(order)}。本次没有再次下单或扣款；卡片不是全群公告。` :
       `已为${order.recipientName}下单，已从本空间钱包支付，尚未到货。`;
     return { ...base, role: "system", type: "market_order", marketOrder: true, orderId: order.id, orderEvent: event,
       privateOrder: Boolean(order.ownerKey), ownerKey: order.ownerKey, actorName: actor,
@@ -40,6 +41,20 @@
       const chat = eligible.find((item) => item.id === activeChatId) || eligible.find((item) => item.isSpectatorGroup) || eligible[0];
       if (!chat) throw new Error("请先把绑定角色加入一个聊天，再购物或点外卖。");
       return { chatId: chat.id, recipientName: binding.name, forSelf: true };
+    }
+    async postCard(orderId, chatId, { vts, now = Date.now() } = {}) {
+      if (!Number.isFinite(vts)) throw new Error("订单发送时间无效。");
+      return this.db.transaction("rw", this.orders, this.chats, async () => {
+        const order = await this.orders.get(orderId), chat = await this.chats.get(chatId);
+        if (!order) throw new Error("订单不存在或不属于当前空间。");
+        if (!chat || !(chat.isGroup || chat.isSpectatorGroup)) throw new Error("请选择本空间仍然存在的群聊。");
+        if ((chat.history || []).some((message) => message.marketOrder && message.orderId === order.id)) return { order, chats: [], alreadyPosted: true };
+        const message = makeMessage(order, "forwarded", { timestamp: Math.max(now, Number(chat.history?.at(-1)?.timestamp || 0) + 1), vts });
+        chat.history ||= []; chat.history.push(message);
+        order.cardChatIds = [...new Set([order.chatId, ...(order.cardChatIds || []), chat.id].filter((id) => id != null))];
+        await this.orders.put(order); await this.chats.put(chat);
+        return { order, chats: [chat], alreadyPosted: false };
+      });
     }
     async adopt(binding) {
       if (!binding?.valid) return { chats: [] };
@@ -66,7 +81,7 @@
       const chats = await this.chats.toArray(), people = this.identity.participants(chat, chats);
       const keys = new Set(people.map((person) => person.key));
       const current = (await this.orders.orderBy("timestamp").reverse().toArray()).filter((order) =>
-        order.ownerKey ? keys.has(order.ownerKey) || (order.knownBy || []).some((person) => keys.has(person.key)) : order.chatId === chat.id).slice(0, 40);
+        order.ownerKey ? keys.has(order.ownerKey) || (order.knownBy || []).some((person) => keys.has(person.key)) : order.chatId === chat.id || (order.cardChatIds || []).includes(chat.id)).slice(0, 40);
       const binding = await this.identity.load(this.db);
       // No current order means no order actions can be executed. Keep identity
       // and privacy boundaries without sending a whole unused action manual.
