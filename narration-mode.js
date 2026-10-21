@@ -179,6 +179,7 @@
       if (index === owner) return part;
       const next = { ...part };
       for (const key of keys) delete next[key];
+      next.ephoneSceneTimingCovered = true;
       return next;
     });
   }

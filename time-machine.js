@@ -422,7 +422,9 @@
         config.flow === FLOWS.FROZEN
           ? "- 当前采用“按剧情推进”：本轮从上面的最新开场时刻起算，每轮重新起算，不能套用上一轮的绝对时间。时间按场景实际经过的时长推进，不按消息条数、字数或固定间隔机械跳时；长轮次中交谈、完成活动、转场要持续自然推进，不能整轮都停在开场时间。下一轮未手动跳转时，系统会从最新场景时间小幅自动推进开场，不得沿用上一轮开头。开场动作和台词先发生在开场时刻。\n- 在实际发生时间流逝的自然 narration 对象中（必要时也可在台词对象中）加 scene_elapsed_minutes（数字，表示距上一场景真实经过的分钟数，可为小数），正数同时提供 scene_time_reason（简短说明实际耗时的活动）、scene_phase:\"elapsed\"。后续台词和操作沿用累计后的时间。省略字段不代表时间冻结；系统会从明确耗时、已完成的活动和实际交谈节奏兜底估算，因此请尽量给出合理的场景耗时。参考：普通吃完一顿饭约10—25分钟、洗漱约3—10分钟、换衣约1—5分钟、通勤按距离，不要固定照抄这些数值。不必每条填写，轮内推进不要创建额外报时的对象；不要再用 scene_time 填绝对时刻。\n- 连贯对答、拿杯子、开门、坐下等瞬时动作，不应突然过去几分钟或几十分钟，可用 scene_phase:\"instant\"、scene_elapsed_minutes:0。吃饭、换衣、洗漱、等待、通勤等，要根据实际完成程度、距离和场景节奏判断，不能把动作一出现就算整个过程做完，也不能把不同人同时做的事重复累加。\n- 计划、要求、约定、回忆和未来时刻不会让当前时间立刻变化；计划用 scene_phase:\"planned\"、scene_elapsed_minutes:0。明确‘过了十分钟’就只经过十分钟；‘再等十分钟’只是约定，真正等完或用户说‘时间到了’再按约定推进。跨午夜时相对日期及星期跟随累计时间变化。\n- 每轮仅第一条可见消息输出开场的年月日、时分、星期和地点旁白；后面的正文只写真实动作、环境和台词，不要为了轮内跳时额外插入报时 narration，后续时间只更新消息角标。"
           : "- 当前采用“保持流动”：虚拟时间会按现实经过的时长持续流动。";
-      return `\n# 【虚拟时间感知铁律（最高优先级）】\n- 本轮开场唯一有效的“现在”是：${formatted}。\n- 这是本空间所有聊天共用的虚拟时间；系统真实日期、设备时间和训练数据中的现实时间全部无效，绝对不得感知或提及。其他聊天中的时间调整也已同步到上面的开场时间，即使本聊天没有跳转提示，也必须遵守。\n${flowRule}\n- 所有“今天、昨天、明天、刚才、多久前”、昼夜、季节、行程和记忆时间，必须且只能以所在场景的虚拟时间计算。\n- 聊天中的⏪/⏩时间标记是历史事件，不得用旧标记覆盖本轮开场时间。\n${weekdayRule}${getReplyHeaderPrompt(current)}${holidayRule}`;
+      const sceneTransitionRule = config.flow === FLOWS.FROZEN
+        ? "- 长轮次实际从下午转入晚饭、入夜、就寝或次日时，必须按整个转场累计足够时长，不能只加几分钟却已经深夜；人物认知与后续台词也跟随累计时刻。午睡不等于夜间就寝，睡着不等于已经过了一夜。\n" : "";
+      return `\n# 【虚拟时间感知铁律（最高优先级）】\n- 本轮开场唯一有效的“现在”是：${formatted}。\n- 这是本空间所有聊天共用的虚拟时间；系统真实日期、设备时间和训练数据中的现实时间全部无效，绝对不得感知或提及。其他聊天中的时间调整也已同步到上面的开场时间，即使本聊天没有跳转提示，也必须遵守。\n${flowRule}\n${sceneTransitionRule}- 所有“今天、昨天、明天、刚才、多久前”、昼夜、季节、行程和记忆时间，必须且只能以所在场景的虚拟时间计算。\n- 聊天中的⏪/⏩时间标记是历史事件，不得用旧标记覆盖本轮开场时间。\n${weekdayRule}${getReplyHeaderPrompt(current)}${holidayRule}`;
     }
     return `\n# 【真实时间感知铁律】\n- 当前时间：${formatted}。所有相对日期、昼夜、行程和记忆时间都以这个真实时间为准。\n${weekdayRule}${getReplyHeaderPrompt(current)}${holidayRule}`;
   }
@@ -618,15 +620,95 @@
     return { phase, reason, future, instant, relative, supported };
   }
 
-  function completedSceneMinutes(text, context = "") {
+  function actualSceneClauses(text) {
+    // A character mentioning a deadline is not a scene transition. Filter per
+    // clause so a later plan cannot hide an already narrated sunset.
+    return String(text).replace(/[“「『‘"][\s\S]*?[”」』’"]/g, "")
+      .split(/[。！？!?；;，,\n]/)
+      .filter((clause) => !/(?:准备|打算|计划|约好|约定|安排在|还要|再等|明天|后天|昨天|前天|上次|曾经|回忆|将要|等会|待会|如果|假如|要是|等到|还没|还未|没有|尚未|没能|未能|并未|并非|不是|未到|没到|吗|么|有没有|是不是|是否|没(?=吃完|用完|洗完|洗漱完|换好|收拾好|抵达|到达)|吃完.{0,8}(?:后再|才能|才可以))/.test(clause))
+      .filter((clause) => !/(?:想起|想象|梦见|梦到|希望|盼着|期待|预计|假设|将会|一到|等到|试图|记得|别忘|想(?:要)?(?:睡|在|今晚|晚上|明早|凌晨)|(?:等|待)[^，。]{0,12}(?:后再|再去|才能)|(?:第二天|次日|翌日|隔天|清晨|早晨|早上|上午|中午|下午|傍晚|晚上|凌晨|今晚|明早)[^，。]{0,14}(?:要|得|会|应该|必须))/.test(clause))
+      .filter((clause) => !/(?:说|问|提醒|叮嘱|告诉|提到)[：:]?\s*(?:今晚|晚上|明早|凌晨|\d+点)/.test(clause));
+  }
+
+  function narratedSceneTarget(text, current, allowCurrentScene = true, dayState = {}) {
+    const clauses = actualSceneClauses(text), actual = clauses.join("，");
+    if (!actual) return null;
+    const nextDay = /(?:第二天|次日|翌日|隔天)/.test(actual);
+    if (!allowCurrentScene && !nextDay) return null; // Keep a manual opening exact.
+    const day = new Date(current); day.setHours(0, 0, 0, 0);
+    const at = (minutes) => {
+      const date = new Date(day), hour = new Date(current).getHours();
+      // Several participants may describe the SAME next morning. Only a new
+      // completed day/night cycle can make a repeated "次日" mean another day.
+      if (nextDay && (dayState.nextDayStart !== day.getTime() ||
+          hour >= 17 && minutes < hour * 60 + new Date(current).getMinutes())) date.setDate(date.getDate() + 1);
+      // 00:30 is still last evening's night, not today's forthcoming 22:00.
+      if (!nextDay && hour < 6 && minutes >= 17 * 60) date.setDate(date.getDate() - 1);
+      date.setMinutes(minutes); return date.getTime();
+    };
+    // Read an actual clock in prose, not only the optional model metadata.
+    // Explicit clocks beat estimates; quantities such as 九点五元 do not count.
+    const clocks = [];
+    for (const clause of clauses) {
+      const pattern = /(凌晨|清晨|早晨|早上|上午|中午|下午|傍晚|晚上|晚间|夜里|深夜|午夜|子夜)?\s*([\d零〇一二两三四五六七八九十]{1,3})(?:[:：]([0-5]?\d)|[点时](?:\s*(半|一刻|三刻)|\s*([\d零〇一二两三四五六七八九十]{1,3})分?)?)/g;
+      for (const match of clause.matchAll(pattern)) {
+        const prefix = clause.slice(0, match.index), suffix = clause.slice(match.index + match[0].length);
+        if (/^(?:[\d.零〇一二两三四五六七八九十]*\s*(?:元|块|分(?:钱)?|折|度|公斤|千克))/.test(suffix)) continue;
+        if (!/(?:时间|时钟|钟表|钟面|挂钟|时针|显示|指向|敲响|已是|已经|到了|来到|此时|此刻|现在|这时|第二天|次日|翌日|隔天)/.test(prefix) &&
+            !(match[1] && !prefix.trim() && /(?:时分|了|他|她|两人|众人|窗外|天色|灯光)/.test(suffix))) continue;
+        let hour = chineseNumber(match[2]), minute = match[3] != null ? Number(match[3]) : match[5] != null ? chineseNumber(match[5]) : match[4] === "半" ? 30 : match[4] === "一刻" ? 15 : match[4] === "三刻" ? 45 : 0;
+        if (!Number.isFinite(hour) || hour > 23 || !Number.isFinite(minute) || minute >= 60) continue;
+        const period = match[1] || "";
+        if (/下午|傍晚|晚上|晚间|夜里|深夜/.test(period) && hour < 12) hour += 12;
+        else if (/中午/.test(period) && hour < 11) hour += 12;
+        else if (/凌晨|清晨|早晨|早上|上午|午夜|子夜/.test(period) && hour === 12) hour = 0;
+        else if (!period && !nextDay && hour < 12 && new Date(current).getHours() >= 12) hour += 12;
+        let time = at(hour * 60 + minute);
+        if (!nextDay && /凌晨|午夜|子夜/.test(period) && new Date(current).getHours() >= 18 && hour < 6) {
+          const next = new Date(time); next.setDate(next.getDate() + 1); time = next.getTime();
+        }
+        clocks.push(time);
+      }
+    }
+    if (clocks.length) return { time: Math.max(current, ...clocks), exact: true, nextDay };
+    // These are lower bounds of *actual* scene phases, not fixed durations per
+    // message. Repeating a night scene never rolls the date over again.
+    const bounds = [];
+    if (nextDay && /醒来|起床/.test(actual)) bounds.push(6 * 60);
+    if (/(?:清晨|黎明|天亮了|天已经亮|晨光|早晨|早上)/.test(actual)) bounds.push(6 * 60);
+    if (/上午/.test(actual)) bounds.push(9 * 60);
+    if (/中午|正午/.test(actual)) bounds.push(11 * 60 + 30);
+    if (/下午|午后/.test(actual)) bounds.push(13 * 60);
+    if (/傍晚|夕阳西下|日落时分/.test(actual)) bounds.push(17 * 60);
+    if (/黄昏|暮色渐浓/.test(actual)) bounds.push(17 * 60 + 30);
+    if (/夜幕(?:已经|已然|悄然|渐渐)?降临|入夜|天色(?:已经|渐渐|逐渐|渐)?(?:暗|黑)|天已经黑|华灯初上/.test(actual)) bounds.push(18 * 60);
+    if (/晚上|夜晚|夜色|夜里|晚间/.test(actual)) bounds.push(19 * 60);
+    if (/夜已深|夜色已深|夜深人静|深夜/.test(actual)) bounds.push(22 * 60);
+    const meal = /(?:吃完|吃着|吃起|用完|享用|端上|摆好|开始吃|正在吃)[^，。]{0,8}(早饭|早餐|午饭|午餐|晚饭|晚餐)|(早饭|早餐|午饭|午餐|晚饭|晚餐)[^，。]{0,8}(?:吃完|用完|结束|上桌)/.exec(actual);
+    if (meal) bounds.push(/早/.test(meal[1] || meal[2]) ? 6 * 60 + 30 : /午/.test(meal[1] || meal[2]) ? 11 * 60 + 30 : 17 * 60 + 30);
+    const sleeping = /(?:沉沉|渐渐|很快|终于)?(?:地)?(?:睡着了|睡着|睡去|入睡|进入梦乡)|(?:上了?床|爬上床|躺[^，。]{0,6}床|钻进被窝|盖好被子|熄灯)[^。]{0,24}(?:闭上眼|睡下)/.test(actual);
+    const night = new Date(current).getHours() >= 18 || /夜幕|入夜|夜色|夜晚|夜里|晚饭|晚餐|晚安|深夜/.test(actual);
+    if (sleeping && night && !/午睡|午休|小憩|打盹|补觉/.test(actual)) bounds.push(22 * 60);
+    if (!bounds.length) return null;
+    return { time: Math.max(current, at(Math.max(...bounds))), exact: false, nextDay };
+  }
+
+  function completedMealKey(text, current) {
+    const actual = actualSceneClauses(text).join("，");
+    if (!/(?:吃完|用完|吃好|结束)[^，。]{0,12}(?:饭|餐)|(?:饭|餐)[^，。]{0,8}(?:吃完|吃好|结束)|放下(?:了)?筷子|收起(?:了)?碗筷/.test(actual)) return null;
+    const hour = new Date(current).getHours();
+    const meal = /早餐|早饭/.test(actual) ? "breakfast" : /午餐|午饭/.test(actual) ? "lunch" : /晚餐|晚饭/.test(actual) ? "dinner" : hour < 10 ? "breakfast" : hour < 16 ? "lunch" : "dinner";
+    return new Date(current).toDateString() + ":" + meal;
+  }
+
+  function completedSceneMinutes(text, context = "", skipMeal = false) {
     // Only completed activities, never an intention, background description or
     // a quoted future deadline. Parallel activities use the longest estimate,
     // rather than adding a separate meal/journey for every participant.
-    text = text.replace(/[“「『][\s\S]*?[”」』]/g, "").split(/[。！？!?；;，,\n]/)
-      .filter((clause) => !/(?:准备|打算|计划|还要|再等|明天|后天|昨天|前天|上次|曾经|回忆|将要|等会|待会|如果|还没|还未|没有|尚未|没能|未能|并未|不是|吗|么|有没有|是不是|是否|没(?=吃完|用完|洗完|洗漱完|换好|收拾好|抵达|到达)|吃完.{0,8}(?:后再|才能|才可以))/.test(clause)).join("，");
+    text = actualSceneClauses(text).join("，");
     if (!text || sceneFacts({}, text).future) return 0;
     const estimates = [];
-    if (/(?:吃完|用完|结束了?)(?:了)?[^。！？!?]{0,12}(?:早餐|早饭|午饭|午餐|晚餐|晚饭|饭)|(?:饭|餐|早餐|午餐|晚餐)[^。！？!?]{0,8}(?:吃完|吃好|结束)|放下(?:了)?筷子|收起(?:了)?碗筷/.test(text)) estimates.push(15);
+    if (!skipMeal && /(?:吃完|用完|结束了?)(?:了)?[^。！？!?]{0,12}(?:早餐|早饭|午饭|午餐|晚餐|晚饭|饭)|(?:饭|餐|早餐|午餐|晚餐)[^。！？!?]{0,8}(?:吃完|吃好|结束)|放下(?:了)?筷子|收起(?:了)?碗筷/.test(text)) estimates.push(15);
     if (/(?:洗完|洗好|洗过)[^。！？!?]{0,8}(?:澡|淋浴)|(?:淋浴|洗澡)[^。！？!?]{0,6}(?:结束|完毕)/.test(text)) estimates.push(12);
     if (/(?:洗漱|刷牙洗脸)[^。！？!?]{0,5}(?:完|好|结束)|(?:完成|结束)[^。！？!?]{0,4}洗漱/.test(text)) estimates.push(6);
     if (/(?:换好|换完|穿好)[^。！？!?]{0,8}(?:衣|服|校服|外套|鞋)|(?:衣服|校服)[^。！？!?]{0,5}换好/.test(text)) estimates.push(3);
@@ -908,8 +990,8 @@
     const dynamic = config.mode === MODES.CUSTOM && config.flow === FLOWS.FROZEN;
     const result = [];
     let current = start, modelOpening = null, hasStory = false, pendingSeconds = 0;
-    // Prefer the model's scene plan when supplied. A missing plan must not
-    // freeze the entire reply: plain narration and dialogue have a local path.
+    // A declared scene plan covers conversational pacing, not every unmarked
+    // activity in a long reply. Missing local metadata must not freeze a scene.
     const declaredTimes = items.filter((item) => item && ["narration", "offline_text"].includes(item.type))
       .map((item) => parseSceneDate(item.scene_time) ?? splitSceneHeader(item.content)?.time).filter((time) => time != null);
     const hasScenePlan = declaredTimes.some((time, index) => index > 0 && time > declaredTimes[0]) ||
@@ -918,6 +1000,8 @@
         const facts = sceneFacts(item);
         return !facts.future && !facts.instant && facts.relative > 0 && facts.supported;
       });
+    const completedMeals = new Set();
+    const dayState = {};
     let location = inferLocation([]);
     let openingLocation = location;
     for (const source of items) {
@@ -931,11 +1015,15 @@
       if (openingHeader || (!hasStory && modelOpening == null && declared != null)) modelOpening = declared;
       const body = header ? header.body : messageText(item);
       const { phase, future, instant, relative, supported } = sceneFacts(item, body);
-      const elapsed = dynamic && narration && !openingHeader && !future
-        ? storyTarget([{ ...item, role: "assistant", content: body, isReplyHeader: false,
+      const elapsed = dynamic && narration && !openingHeader && phase !== "planned"
+        ? storyTarget([{ role: "assistant", type: "narration", content: actualSceneClauses(body).join("，"), isReplyHeader: false,
             ephoneSceneTimeResolved: false, vts: current }], current, options.chatId) : null;
+      const previousScene = result.slice(-6).map(messageText).join(" ");
+      const anchor = dynamic && narration && !openingHeader && phase !== "planned"
+        ? narratedSceneTarget(body, current, hasStory, dayState) : null;
+      const mealKey = narration ? completedMealKey(body, anchor?.time ?? current) : null;
       let target = current;
-      if (dynamic && !openingHeader && !future) {
+      if (dynamic && !openingHeader && (!future || elapsed != null && elapsed > current)) {
         if (elapsed != null && elapsed > current) target = elapsed;
         else if (!instant && relative != null && relative >= 0 && (relative === 0 || supported))
           target = current + relative * 60000;
@@ -943,13 +1031,21 @@
           // Legacy absolute clocks are a relative sequence anchored to THIS
           // opening, not instructions to replay the previous round's date.
           target = modelOpening != null ? start + declared - modelOpening : declared;
-        } else if (!hasScenePlan && !instant && relative == null) {
-          const previousScene = result.slice(-6).map(messageText).join(" ");
-          const completed = narration ? completedSceneMinutes(body, previousScene) : 0;
+        } else if (!instant && relative == null && !item.ephoneSceneTimingCovered) {
+          const completed = narration ? completedSceneMinutes(body, previousScene, completedMeals.has(mealKey)) : 0;
           if (completed > 0) target += Math.max(completed, Math.floor(pendingSeconds / 60)) * 60000;
-          else if (hasStory && pendingSeconds >= 60) target += Math.floor(pendingSeconds / 60) * 60000;
+          else if (!hasScenePlan && hasStory && pendingSeconds >= 60) target += Math.floor(pendingSeconds / 60) * 60000;
         }
       }
+      // Apply phase bounds independently of incomplete/zero model metadata.
+      // A precise narrated elapsed duration remains authoritative; never add a
+      // sunset estimate on top of an explicit "ten minutes later".
+      if (anchor && (anchor.exact || elapsed == null) && (anchor.exact || declared == null) &&
+          (anchor.exact || !item.ephoneSceneTimingCovered)) {
+        target = anchor.exact ? anchor.time : Math.max(target, anchor.time);
+        if (anchor.nextDay) { const day = new Date(target); day.setHours(0, 0, 0, 0); dayState.nextDayStart = day.getTime(); }
+      }
+      if (mealKey && (anchor || !future) && phase !== "planned") completedMeals.add(mealKey);
       if (target > current || relative != null || (narration && elapsed != null)) pendingSeconds = 0;
       if (Number.isFinite(target) && Number.isFinite(new Date(target).getTime()) && target >= current) current = target;
       location = header?.location || (typeof item.scene_location === "string" && item.scene_location.trim()) || location;
