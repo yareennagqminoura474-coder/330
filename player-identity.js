@@ -2,14 +2,16 @@
   "use strict";
   const nameOf = (item) => item?.originalName || item?.name || item?.groupNickname || "未命名角色";
   const personKey = (item, type = "chat") => item?.ephonePersonKey || type + ":" + item.id;
-  function memberKey(member, chats) {
-    if (member.ephonePersonKey) return member.ephonePersonKey;
+  function memberKey(member, chats, npcs = []) {
     if (member.isNpc || String(member.id).startsWith("npc_")) {
       const id = String(member.id).replace(/^npc_/, ""), archive = chats.find((c) => c.ephoneNpcArchive && String(c.ephoneNpcId) === id);
-      return archive ? personKey(archive) : "npc:" + id;
+      const npc = npcs.find((item) => String(item.id) === id);
+      return npc ? personKey(npc, "npc") : archive ? personKey(archive) : member.ephonePersonKey || "npc:" + id;
     }
     const source = chats.find((chat) => !chat.isGroup && String(chat.id) === String(member.id));
-    return source ? personKey(source) : "member:" + String(member.id);
+    // A copied/converted group slot may still carry an old identity snapshot.
+    // Resolve its live local archive first, exactly as the assets screen does.
+    return source ? personKey(source) : member.ephonePersonKey || "member:" + String(member.id);
   }
   function choices(chats = [], npcs = []) {
     const result = new Map();
@@ -17,15 +19,15 @@
     for (const npc of npcs) result.set(personKey(npc, "npc"), { key: personKey(npc, "npc"), kind: "npc", sourceId: npc.id, name: nameOf(npc), label: nameOf(npc) + " · NPC", persona: npc.persona || "" });
     for (const chat of chats) for (const member of chat.members || []) {
       if (member.id == null) continue;
-      const key = memberKey(member, chats);
+      const key = memberKey(member, chats, npcs);
       if (!result.has(key)) result.set(key, { key, kind: member.isNpc || String(member.id).startsWith("npc_") ? "npc" : "role", sourceId: member.id, name: nameOf(member), label: nameOf(member) + " · " + chat.name, persona: member.persona || "" });
     }
     return [...result.values()];
   }
-  function participants(chat, chats = []) {
+  function participants(chat, chats = [], npcs = []) {
     if (!chat) return [];
     if (!chat.isGroup && !chat.isSpectatorGroup) return [{ key: personKey(chat), name: nameOf(chat), aliases: [chat.name, chat.originalName].filter(Boolean) }];
-    return (chat.members || []).filter((member) => member.id != null).map((member) => ({ key: memberKey(member, chats), name: nameOf(member), aliases: [member.originalName, member.groupNickname, chats.find((item) => String(item.id) === String(member.id))?.name].filter(Boolean) }));
+    return (chat.members || []).filter((member) => member.id != null).map((member) => ({ key: memberKey(member, chats, npcs), name: nameOf(member), aliases: [member.originalName, member.groupNickname, chats.find((item) => String(item.id) === String(member.id))?.name].filter(Boolean) }));
   }
   function resolve(people, name) {
     const found = people.filter((person) => person.name === name || person.aliases?.includes(name));

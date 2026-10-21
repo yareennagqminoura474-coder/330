@@ -86,6 +86,9 @@ const { chromium } = require("playwright-core");
     for (const id of ["wallet-watch", "wallet-group", "r1"]) {
       const prompt = await generate(id, [{ type: "wallet_income", name: "乙", amount: 10, category: "bonus", content: "（实际到账的额外报酬）" }, { type: "text", name: "乙", content: "收到了报酬。" }]);
       assert.match(prompt, /角色独立资产与实际收支/); assert.match(prompt, /每个角色只直接知道自己的资产/);
+      const tail = calls.at(-1).messages.at(-1).content;
+      assert.match(tail, /本轮后台余额校验/);
+      assert.match(tail, /"name":"乙".*"availableCNY":"(?:380|390|400)\.00"/);
     }
     assert.equal(await page.evaluate(async () => (await window.db.characterWallets.get("chat:r1")).balance), 410);
     await generate("wallet-watch", [{ type: "transfer", name: "乙", receiver: "甲", amount: 10, note: "零花钱" }]);
@@ -134,6 +137,30 @@ const { chromium } = require("playwright-core");
     const financeAfter = await page.evaluate(async () => ({ main: (await window.db.userWallet.get("main")).balance, role: (await window.db.characterWallets.get("chat:r1")).balance, time: window.ephoneTimeMachine.nowMs() }));
     assert.deepEqual(financeAfter, financeBefore, "failed reply must not post projected future wages or advance time");
     await page.locator("#custom-modal-overlay button").filter({ hasText: /好的|确定|好/ }).last().click(); await page.waitForFunction(() => !window.isPersonaSpaceBusy()); fail = false;
+    // A copied group member with a stale source-space key must read the live
+    // local wallet. The latest balance follows contradictory chat memories,
+    // without a second model request or an extra visible chat message.
+    await page.evaluate(async () => {
+      const account = await window.db.characterWallets.get("chat:r1");
+      await window.db.characterWallets.put({ ...account, balance: 345678.90, automatic: false });
+      for (const id of ["wallet-watch", "wallet-group", "r1"]) {
+        const c = await window.db.chats.get(id);
+        if (c.members) c.members = c.members.map((m) => m.id === "r1" ? { ...m, ephonePersonKey: "old-source-account" } : m);
+        c.history.push({ role: "user", content: "旧记录：乙只剩三千元。", timestamp: Date.now() });
+        await window.db.chats.put(c);
+      }
+    });
+    for (const id of ["wallet-watch", "wallet-group", "r1"]) {
+      const before = calls.length;
+      await generate(id, [{ type: "text", name: "乙", content: "这次以当前钱包为准。" }]);
+      assert.equal(calls.length, before + 1, "only one reply API call");
+      const request = calls.at(-1), tail = request.messages.at(-1).content;
+      assert.match(tail, /"name":"乙".*"availableCNY":"345678\.90"/);
+      assert.match(request.messages[0].content, /"key":"chat:r1"/);
+      assert.equal(await page.evaluate(async (chatId) => JSON.stringify((await window.db.chats.get(chatId)).history).includes("本轮后台余额校验"), id), false);
+    }
+    const highBalance = await page.evaluate(async () => (await window.db.characterWallets.get("chat:r1")).balance);
+    assert.equal(highBalance, 345678.90);
     const count = calls.length; await page.evaluate(() => window.EPhoneCharacterWallet.open()); assert.equal(calls.length, count);
     await page.evaluate(async () => {
       const spaces = JSON.parse(localStorage.getItem("ephone-persona-spaces-v1")); localStorage.setItem("ephone-persona-spaces-v1", JSON.stringify([...spaces, { id: "wallet-isolated", name: "独立空间" }]));
@@ -141,7 +168,7 @@ const { chromium } = require("playwright-core");
     });
     assert.equal(await page.evaluate(() => window.db.characterWallets.count()), 0); assert.match(await page.locator("#cw-body").innerText(), /还没有角色/);
     await page.evaluate(async () => { await window.EPhoneSpaces.switchSpace("default"); await window.EPhoneCharacterWallet.open(); });
-    assert.equal(calls.length, count); assert.equal(await page.evaluate(async () => (await window.db.characterWallets.get("chat:r1")).balance), financeBefore.role);
+    assert.equal(calls.length, count); assert.equal(await page.evaluate(async () => (await window.db.characterWallets.get("chat:r1")).balance), highBalance);
     assert.deepEqual(errors, []);
     console.log("PASS: mobile wallet UI/edit/generate/batch, no automatic API, bound balance preserved, real time jumps and dedupe, watch/normal/private finances, atomic transfer receipts, scroll and reload");
   } finally { await browser.close(); await new Promise((r) => server.close(r)); }

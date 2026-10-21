@@ -17769,9 +17769,9 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
     try { await new window.ephoneCharacterSocialCore.Service(_0x24f906).act(action, chat, vts, timestamp); }
     catch (error) { console.warn("独立生活/关系变化未采纳，保留原设置", error.message); }
   }
-  async function _ephoneFinancePrompt(chat, vts) {
-    if (!window.ephoneCharacterWalletCore || !_0x24f906.characterWallets) return "";
-    return new window.ephoneCharacterWalletCore.Service(_0x24f906).prompt(chat, vts);
+  async function _ephoneFinanceContext(chat, vts) {
+    if (!window.ephoneCharacterWalletCore || !_0x24f906.characterWallets) return { prompt: "", reminder: "" };
+    return new window.ephoneCharacterWalletCore.Service(_0x24f906).replyContext(chat, vts);
   }
   async function _ephoneCaptureChatExpenses(chat, messages, vts) {
     if (!window.ephoneCharacterWalletCore || !messages.length) return;
@@ -17974,6 +17974,7 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
         _ephoneSpectatorTimePreparation?.afterMs ??
         window.ephoneTimeMachine?.nowMs(_0x4203ee) ??
         Date.now();
+      const _ephoneSpectatorFinance = await _ephoneFinanceContext(_0x326f3d, _ephoneSpectatorReplyTimeMs);
       const _0x53db97 =
           parseInt(_0x326f3d[_0xd07074(0x17c5)][_0xd07074(0x2a2)]) || 0xa,
         _0x1b5d7d = window.ephoneGroupContext.recentHistory(_0x326f3d, _0x53db97),
@@ -18052,7 +18053,7 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
           (window.ephoneChatImages?.getPromptRule(_0x5ea3c1.globalSettings) || "") +
           window.ephoneSpectatorMoney.ledger(_0x326f3d) +
           (await _ephoneOrderPrompt(_0x326f3d)) +
-          (await _ephoneFinancePrompt(_0x326f3d, _ephoneSpectatorReplyTimeMs)) +
+          (_ephoneSpectatorFinance.prompt) +
           (await _ephoneSocialPrompt(_0x326f3d, _ephoneSpectatorReplyTimeMs, [_0x3e48fd, _0x50a753, _0x34a92d].join("\n"))) +
           "\n# 围观模式的旁白与台词\n" +
           "每轮第一条为时间地点旁白，之后直接接续剧情，不再重复报时。角色真正说出口或打出的内容用 text；动作、心理、神态、环境、场景和时间一律用 narration。每位发言角色的动作按情境穿插旁白。旁白对象格式为 {\"type\":\"narration\",\"name\":\"角色名或旁白\",\"content\":\"内容\"}。不要把动作放进 text，也不要以旁白代替角色说话。\n" +
@@ -18069,7 +18070,7 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
       _ephoneSpectatorController.signal.throwIfAborted();
       const _ephoneSpectatorComplete = await window.ephoneChatResponse.complete(async () => {
         const _ephoneContextRequest = window.ephoneRequestContext?.start(_0x24f906, _0x326f3d.id, _0x45d813, 1) || { finish: async (raw) => raw };
-        const _ephoneRequestMessages = _0x235416;
+        const _ephoneRequestMessages = window.ephoneCharacterWalletCore?.withBalanceReminder(_0x235416, _ephoneSpectatorFinance.reminder) || _0x235416;
         let _0x4799c0 = _0x4dfdb5[_0xd07074(0x1507)](_0xd07074(0x328)),
           _0x13b518;
         if (_0x4799c0) {
@@ -20759,7 +20760,8 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
         "\n# 【回复长度与节奏（按情境灵活执行）】\n通常将内容拆分成约4到7条简短消息；简单回应可以更少，互动丰富或需要逐步展开时可以更多。此范围只是自然聊天的倾向，没有固定最低或最高条数。不要为凑数量添加空话，也不要把多个独立想法挤成一条。\n";
       _0x539674 += await _ephoneOrderPrompt(_0x5b16cb);
       _0x539674 += window.ephoneChatImages?.getPromptRule(_0x5ea3c1.globalSettings) || "";
-      _0x539674 += await _ephoneFinancePrompt(_0x5b16cb, _ephoneReplyTimeMs);
+      const _ephoneReplyFinance = await _ephoneFinanceContext(_0x5b16cb, _ephoneReplyTimeMs);
+      _0x539674 += _ephoneReplyFinance.prompt;
       _0x539674 += await _ephoneSocialPrompt(_0x5b16cb, _ephoneReplyTimeMs, _0x539674);
       _0x539674 +=
         "\n# 【发送前最终时间校验】\n" +
@@ -20777,7 +20779,7 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
       }
       const _ephoneCompleteReply = await window.ephoneChatResponse.complete(async () => {
         const _ephoneContextRequest = window.ephoneRequestContext?.start(_0x24f906, _0x5b16cb.id, _0x1d2298, 1) || { finish: async (raw) => raw };
-        const _ephoneRequestMessages = _0x4e7a2c;
+        const _ephoneRequestMessages = window.ephoneCharacterWalletCore?.withBalanceReminder(_0x4e7a2c, _ephoneReplyFinance.reminder) || _0x4e7a2c;
         let _0x401894 = _0x275228 === GEMINI_API_URL,
           _0x25b2a9 = _0x20e281(_0x1d2298, _0xdbefc3, _0x539674, _ephoneRequestMessages),
           _0x114828;
