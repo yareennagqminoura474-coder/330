@@ -128,7 +128,7 @@
       return this.db.transaction("rw", ...this.tables(), () => this.change(key, value, direction, data));
     }
     async expenseDuplicate(key, value, category, vts, quote) {
-      const rows = await this.characterTransactions.where("key").equals(key).toArray();
+      const rows = await this.ownLedger(key);
       return rows.find((r) => r.direction === "expense" && r.status === "posted" && amount(r.amount) === amount(value) &&
         ["story", "story_text"].includes(r.source) && (quote ? r.evidence?.quote?.replace(/[。！!？?]$/, "") === quote.replace(/[。！!？?]$/, "") : r.vts === vts && (r.category === category || category === "other")));
     }
@@ -151,7 +151,7 @@
           if (Number.isFinite(source.vts) && source.vts > vts) continue;
           const id = "story-expense:" + JSON.stringify([chat.id, claim.sourceTimestamp, claim.key, claim.quote]);
           if (await this.characterTransactions.get(id)) continue;
-          const recent = await this.characterTransactions.where("key").equals(claim.key).toArray(), mark = storyExpenses.fingerprint(claim);
+          const recent = await this.ownLedger(claim.key), mark = storyExpenses.fingerprint(claim);
           const sameDay = (r) => r.vts <= vts && dayKey(r.vts) === dayKey(vts);
           if (!claim.repeat && recent.some((r) => sameDay(r) && r.status === "posted" && r.storyFingerprint === mark && (!claim.estimated || Math.abs(r.vts - vts) < 5 * 60000))) continue;
           // Explicit wallet commands and plain-language descriptions of the same payment share one debit.
@@ -301,8 +301,13 @@
           projected: Object.fromEntries([...states.values()].filter((s) => s.changed || s.cursor != null).map((s) => [s.wallet.key, cashOf(s.wallet.key) / 100])) };
       });
     }
+    async ownLedger(key) {
+      const aliases = (await this.spaceProfiles.get("person-identity-aliases"))?.aliases || {};
+      const keys = [...new Set([key, ...Object.keys(aliases).filter((old) => this.identity.canonicalKey?.(old, aliases) === key)])];
+      return (await Promise.all(keys.map((k) => this.characterTransactions.where("key").equals(k).toArray()))).flat();
+    }
     async ledger(key, limit = 80) {
-      const own = await this.characterTransactions.where("key").equals(key).toArray();
+      const own = await this.ownLedger(key);
       const binding = await this.spaceProfiles.get("player");
       const rawUser = binding?.key === key ? await this.userTransactions.toArray() : [];
       const detailedUser = root.ephoneLifeMarketCore?.expandOrderBills ? await root.ephoneLifeMarketCore.expandOrderBills(rawUser, this.db) : rawUser;

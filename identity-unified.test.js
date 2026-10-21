@@ -34,12 +34,14 @@ const Dexie = require("dexie"), identity = require("./player-identity");
     assert.equal((await db.userWallet.get("main")).balance, 900); assert.equal((await db.characterWallets.get("chat:copy-new")).balance, 300000);
     assert.deepEqual((await db.chats.get(role.id)).history, role.history);
     const settled = await db.chats.toArray(); await identity.reconcile(db); assert.deepEqual(await db.chats.toArray(), settled, "idempotent reconciliation");
-    // A missing reference can fall back to a unique exact base profile, but
-    // a nickname/name alone or an ambiguous same-name profile cannot merge.
+    // Group-specific profiles do not create a second identity when the real
+    // name identifies exactly one archive. Explicit independent people and
+    // ambiguous duplicate archives must remain separate.
     const base = [{ id: "r", originalName: "丙", settings: { aiPersona: "医生" } }];
     assert.equal(identity.memberKey({ id: "orphan", originalName: "丙", persona: "医生" }, base), "chat:r");
-    assert.equal(identity.memberKey({ id: "orphan", originalName: "丙", persona: "教师" }, base), "member:orphan");
-    assert.equal(identity.memberKey({ id: "orphan", originalName: "丙" }, base), "member:orphan");
+    assert.equal(identity.memberKey({ id: "orphan", originalName: "丙", persona: "群里的不同设定" }, base), "chat:r");
+    assert.equal(identity.memberKey({ id: "orphan", originalName: "丙" }, base), "chat:r");
+    assert.equal(identity.memberKey({ id: "orphan", originalName: "丙", ephoneIndependentIdentity: true }, base), "member:orphan");
     assert.equal(identity.memberKey({ id: "orphan", originalName: "丙", persona: "医生" }, [...base, { ...base[0], id: "another" }]), "member:orphan");
     await identity.save(db, "chat:copy-new"); assert.equal((await identity.load(db)).key, "chat:copy-new");
     console.log("PASS: one canonical copied role/NPC across all groups/private/binding; provenance after persona edits; exact-profile and ambiguous-name safety; legacy binding repair; group persona/nickname/history and balances preserved; idempotent references only");
