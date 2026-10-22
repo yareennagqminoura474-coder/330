@@ -1,0 +1,67 @@
+const assert = require("node:assert/strict"), fs = require("node:fs"), vm = require("node:vm");
+require("fake-indexeddb/auto"); const Dexie = require("dexie");
+(async () => {
+  const window = {}, db = new Dexie(`evening-bedtime-${Date.now()}`);
+  db.version(51).stores({ chats: "&id", spaceClock: "&id" }); await db.open();
+  const history = [], document = { readyState: "loading", addEventListener() {}, getElementById() { return null; } };
+  const context = { window, Date, console, Number, String, Promise, setInterval, document, localStorage: { getItem: () => null, setItem() {} } };
+  vm.runInNewContext(fs.readFileSync("time-machine.js", "utf8"), context);
+  vm.runInNewContext(fs.readFileSync("narration-mode.js", "utf8"), context);
+  const clock = window.ephoneTimeMachine, at = (h, m = 0, day = 5) => new Date(2026, 2, day, h, m).getTime();
+  await clock.loadSpace(db); clock.bindChat({ id: "a", settings: { currentLocation: "家" }, getMessages: () => history, applyConfig: async () => {} });
+  await clock.jumpTo(at(19, 20), "frozen");
+  const n = (content, fields = {}) => ({ type: "narration", content, ...fields });
+  const build = (items, start = at(19, 20)) => clock.ensureReplyHeader(items, { chatId: "a", replyTimeMs: start, sceneTimeline: true, quietTimeline: true });
+  const after = (content, fields, start) => build([n("他坐在家里。"), n(content, fields)], start).at(-1).vts;
+  for (const content of ["他睡觉了。", "他关灯上床，钻进被窝。", "他上床休息，房间归于寂静。", "两人互道晚安，盖好被子闭上眼睛。", "他沉沉睡着了。"])
+    assert.equal(after(content), at(21, 20), `actual bedtime transition: ${content}`);
+  for (const content of ["他道过晚安。", "他即将入睡。", "他快要睡着了。", "他正要关灯上床。", "他准备睡觉了。", "他该去睡觉了。", "他躺在床上刷视频。", "他钻进被窝看手机。", "他洗完澡，正准备上床。"])
+    assert.equal(after(content), at(19, 20), `not yet an actual bedtime: ${content}`);
+  for (const content of ["他想去睡觉了。", "他不想去睡觉了。", "他说要睡觉了。", "他要睡觉了。", "可以去睡觉了。", "他无法入睡。", "他不肯睡觉了。", "甲仍旧睡着，呼吸平稳。", "他坐在床边陪着已经睡着的孩子。", "他上床休息一会儿。", "写完作业才能睡觉。", "等看完电影后再去睡觉。"])
+    assert.equal(after(content), at(19, 20), `intent, inability or existing sleep is not a new bedtime transition: ${content}`);
+  assert.equal(after("他已经睡觉了。", { scene_phase: "planned", scene_elapsed_minutes: 0 }), at(21, 20), "bad phase metadata cannot freeze an already completed bedtime");
+  assert.equal(after("他准备上床睡觉。", { scene_phase: "planned", scene_elapsed_minutes: 0 }), at(19, 20));
+  assert.equal(after("十分钟后，他已经睡觉了。"), at(19, 30), "precise narrated duration stays authoritative");
+  assert.equal(after("时钟已经指向19:30，他关灯上床睡觉了。"), at(19, 30), "explicit actual early clock stays authoritative");
+  assert.equal(after("他沉沉睡着了。", {}, at(19, 40)), at(21, 40));
+  assert.equal(after("他沉沉睡着了。", {}, at(20, 10)), at(22, 10));
+  assert.equal(after("他沉沉睡着了。", {}, at(21, 15)), at(21, 15), "already at plausible bedtime needs no new two-hour charge");
+  assert.equal(after("他沉沉睡着了。", {}, at(0, 30)), at(0, 30));
+  assert.equal(after("他正在午睡，很快睡着了。", {}, at(14)), at(14));
+  assert.equal(after("他睡觉了。", {}, at(7, 20)), at(7, 20), "unqualified daytime sleep is not a forced night transition");
+  const mixed = window.normalizeEPhoneNarrationOutput([{ type: "text", name: "林", content: "（他吃完了晚饭。）晚安。（他关灯上床，钻进被窝。）", scene_elapsed_minutes: 15, scene_phase: "elapsed", scene_time_reason: "用餐与收拾" }]);
+  const rows = build([n("他坐在家里。"), ...Array.from({ length: 130 }, (_, i) => ({ type: "text", name: "林", content: `晚间对话${i}。` })), ...mixed]);
+  assert.equal(rows.filter((item) => item.isReplyHeader).length, 1); assert.equal(rows[0].vts, at(19, 20));
+  assert.equal(rows.at(-1).vts, at(21, 20), "later independent bedtime survives a mixed message's earlier fifteen-minute meal");
+  assert.equal(rows.filter((item) => /^晚间对话/.test(item.content)).length, 130);
+  const activities = build([n("他坐在餐桌前。"), n("他吃完了晚饭。"), n("两人看完了一部电影。"), n("他洗完澡。"), n("他关灯上床，钻进被窝。")]);
+  const steps = activities.filter((item) => !item.isReplyHeader).map((item) => item.vts);
+  assert.ok(steps[1] > steps[0] && steps[2] > steps[1] + 60 * 60000 && steps[3] > steps[2], "substantial completed evening activities progress in stages, not only at final sleep");
+  assert.equal(steps[4], steps[3], "a later already plausible bedtime does not charge another arbitrary two hours");
+  const explicitGroup = window.normalizeEPhoneNarrationOutput([{ type: "text", content: "（他等完了十分钟。）晚安。（他关灯上床，钻进被窝。）", scene_elapsed_minutes: 10, scene_phase: "elapsed", scene_time_reason: "等了十分钟" }]);
+  assert.equal(build([n("他坐在家里。"), ...explicitGroup]).at(-1).vts, at(19, 30), "one source's explicit elapsed duration is not charged twice across fragments");
+  const early = build([n("他今晚19:30就上床睡觉。"), n("他坐在客厅。"), n("他关灯上床，钻进被窝。")]);
+  assert.equal(early.at(-1).vts, at(19, 30));
+  const delayed = build([n("他今晚23点半上床睡觉。"), n("他坐在客厅。"), n("他关灯上床，钻进被窝。")]);
+  assert.equal(delayed.at(-1).vts, at(23, 30), "own stated bedtime, not generic 22:00");
+  assert.equal(build([n("他遵医嘱今天需要早睡。"), n("他坐在床边。"), n("很快沉沉睡着。")]).at(-1).vts, at(19, 20));
+  const separated = build([n("甲今晚19:30上床睡觉。", { name: "甲" }), n("乙坐在客厅。", { name: "乙" }), n("乙关灯上床，钻进被窝。", { name: "乙" })]);
+  assert.equal(separated.at(-1).vts, at(21, 20), "another person's early plan is not shared by everyone");
+  const namedNarration = build([n("甲今晚19:30就上床睡觉。", { name: "旁白" }), n("乙坐在客厅。", { name: "旁白" }), n("乙关灯上床，钻进被窝。", { name: "旁白" })]);
+  assert.equal(namedNarration.at(-1).vts, at(21, 20), "explicit names inside anonymous narration also isolate bedtime plans");
+  for (const [plan, expected] of [["他今晚午夜12点上床睡觉。", at(0, 0, 6)], ["他今晚凌晨一点半上床睡觉。", at(1, 30, 6)], ["他今晚24:00上床睡觉。", at(0, 0, 6)], ["他今晚19点吃饭然后22点半上床睡觉。", at(22, 30)]])
+    assert.equal(build([n(plan), n("他坐在客厅。"), n("他关灯上床，钻进被窝。")]).at(-1).vts, expected, `correct appointed clock: ${plan}`);
+  const distant = build([n("他今晚19:30就上床睡觉。"), ...Array.from({ length: 200 }, (_, i) => ({ type: "text", content: `台词${i}` })), n("他关灯上床，钻进被窝。")]);
+  assert.equal(distant.at(-1).vts, at(19, 30), "an appointment at the beginning of this long round is retained");
+  history.push({ role: "user", type: "narration", content: "他今晚19:30就上床睡觉。", vts: at(19, 10) });
+  assert.equal(after("他关灯上床，钻进被窝。"), at(19, 30), "current-day existing chat appointment is read without another API call");
+  history.at(-1).vts = at(19, 10, 4);
+  assert.equal(after("他关灯上床，钻进被窝。"), at(21, 20), "yesterday's bedtime appointment does not alter today");
+  history.length = 0;
+  assert.equal(build([n("他关灯上床，钻进被窝。")])[1].vts, at(19, 20), "manual opening is not moved to hide an immediately rushed closing scene");
+  const prompt = clock.getPromptRule("a", at(19, 20));
+  assert.match(prompt, /不要为了结束一轮回复而强行用晚安收场/); assert.match(prompt, /不硬性规定22点/);
+  await clock.setFlow("flow"); assert.ok(build(rows).every((item) => item.vts === at(19, 20)));
+  await clock.useRealTime(); assert.ok(build(rows).every((item) => item.vts === at(19, 20)));
+  await db.delete(); console.log("PASS: evening bedtime variants, variable scene timing, appointments/early sleep/actor/day isolation, long mixed-source transitions, precise durations, no farewell/future/nap jumps, manual start and natural pacing prompt");
+})().catch((error) => { console.error(error); process.exitCode = 1; });

@@ -35,7 +35,7 @@ require("fake-indexeddb/auto"); const Dexie = require("dexie");
   assert.equal(after("过了十分钟，窗外夜幕降临。"), at(14, 10), "explicit duration wins over a fuzzy phase bound");
   assert.equal(after("过了十分钟，他说明天还要上班。"), at(14, 10), "a later future clause doesn't hide a completed duration");
   assert.equal(after("夜幕降临，窗外已经黑了。", { scene_elapsed_minutes: 0, scene_phase: "instant" }), at(18), "zero/instant metadata cannot erase an actual environmental transition");
-  assert.equal(after("夜幕降临，他说明天还要上班，随后沉沉睡去。"), at(22), "future clause does not hide actual earlier/later clauses");
+  assert.ok(after("夜幕降临，他说明天还要上班，随后沉沉睡去。") >= at(21), "future clause does not hide actual earlier/later clauses; bedtime is not universally 22:00");
   assert.equal(after("他还没睡着，打算今晚十点上床。"), at(14));
   for (const text of ["他打算今晚九点半睡觉。", "他说：‘今晚九点半睡觉。’", '他说："今晚九点睡觉。"',
     "他想起昨天晚饭后睡着的事。", "他梦见夜幕降临。", "如果到了晚上九点半就睡觉。", "他期待晚上吃完晚饭。",

@@ -175,11 +175,13 @@
     const keys = ["scene_elapsed_minutes", "scene_time_reason", "scene_phase", "scene_time", "scene_location"];
     if (!keys.some((key) => Object.prototype.hasOwnProperty.call(source, key))) return parts;
     const owner = Math.max(0, parts.findIndex((part) => part.type === "narration"));
+    const explicit = window.ephoneTimeMachine?.elapsedSceneMinutes?.(getMessageText(source));
     return parts.map((part, index) => {
       if (index === owner) return part;
       const next = { ...part };
       for (const key of keys) delete next[key];
       next.ephoneSceneTimingCovered = true;
+      next.ephoneSceneTimingExplicit = explicit != null && explicit > 0;
       return next;
     });
   }
