@@ -57,6 +57,13 @@ const gemini = (parts, reason = "STOP") => ({ candidates: [{ content: { parts },
   assert.deepEqual(response.recover(JSON.stringify([body]).slice(0, -1) + ',{"type":"transfer","amount":999'), [body], "unfinished operational events cannot become executable payments");
   assert.deepEqual(response.recover('[{"type":"text","content":"第一行\n第二行"},]'), [{ type: "text", content: "第一行\n第二行" }]);
   assert.deepEqual(response.recover('[{"t":"text","n":"林","c":"字段兼容"}]'), [{ t: "text", n: "林", c: "字段兼容", type: "text", name: "林", content: "字段兼容" }]);
+  for (const count of [201, 512, 1024]) {
+    const many = Array.from({ length: count }, (_, i) => ({ type: "text", name: "林", content: `完整的第${i + 1}条回复。` }));
+    let countCalls = 0;
+    const all = await response.complete(async () => { countCalls++; return openai(JSON.stringify(many), "length"); });
+    assert.equal(countCalls, 1, "large replies must not cause another generation request");
+    assert.deepEqual(all.items, many, `${count} actual returned messages survive without a 160/200 item cap, even if the provider labels finish_reason length`);
+  }
   assert.equal(response.recover('[{"type":"text","name":"林","dialogue":"兼容台词字段"}]')[0].content, "兼容台词字段");
   const unnamed = await response.complete(async () => openai("林轻轻放下了手里的书。"), { isRenderable: (item) => item.type === "narration" });
   assert.equal(unnamed.items[0].type, "narration"); assert.equal(unnamed.items[0].content, "林轻轻放下了手里的书。");

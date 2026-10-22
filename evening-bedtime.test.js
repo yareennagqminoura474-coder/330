@@ -51,12 +51,23 @@ require("fake-indexeddb/auto"); const Dexie = require("dexie");
   assert.equal(namedNarration.at(-1).vts, at(21, 20), "explicit names inside anonymous narration also isolate bedtime plans");
   for (const [plan, expected] of [["他今晚午夜12点上床睡觉。", at(0, 0, 6)], ["他今晚凌晨一点半上床睡觉。", at(1, 30, 6)], ["他今晚24:00上床睡觉。", at(0, 0, 6)], ["他今晚19点吃饭然后22点半上床睡觉。", at(22, 30)]])
     assert.equal(build([n(plan), n("他坐在客厅。"), n("他关灯上床，钻进被窝。")]).at(-1).vts, expected, `correct appointed clock: ${plan}`);
-  const distant = build([n("他今晚19:30就上床睡觉。"), ...Array.from({ length: 200 }, (_, i) => ({ type: "text", content: `台词${i}` })), n("他关灯上床，钻进被窝。")]);
-  assert.equal(distant.at(-1).vts, at(19, 30), "an appointment at the beginning of this long round is retained");
+  const distant = build([n("他今晚19:30就上床睡觉。"), ...Array.from({ length: 512 }, (_, i) => ({ type: "text", content: `台词${i}` })), n("他关灯上床，钻进被窝。")]);
+  assert.ok(distant.at(-1).vts >= at(19, 30) && distant.at(-1).vts < at(20), "an appointment at the beginning of this long round is retained without reversing actual elapsed conversation");
+  assert.equal(distant.filter((item) => /^台词\d+$/.test(item.content)).length, 512, "512 current-round messages are kept without a 160/200 item cap");
   history.push({ role: "user", type: "narration", content: "他今晚19:30就上床睡觉。", vts: at(19, 10) });
   assert.equal(after("他关灯上床，钻进被窝。"), at(19, 30), "current-day existing chat appointment is read without another API call");
   history.at(-1).vts = at(19, 10, 4);
   assert.equal(after("他关灯上床，钻进被窝。"), at(21, 20), "yesterday's bedtime appointment does not alter today");
+  history.length = 0;
+  history.push({ role: "user", type: "narration", content: "他今晚19:30就上床睡觉。", vts: at(19, 5) },
+    ...Array.from({ length: 512 }, (_, i) => ({ role: "assistant", type: "text", content: `上一轮台词${i}`, vts: at(19, 10), ephoneSceneTimeResolved: true })));
+  const historySnapshot = JSON.stringify(history);
+  assert.equal(after("他关灯上床，钻进被窝。"), at(19, 30), "a same-day appointment survives a previous round over 200 messages and is still used next round");
+  assert.equal(JSON.stringify(history), historySnapshot, "consulting a long previous round cannot edit or delete history");
+  history[0].vts = at(19, 5, 4);
+  assert.equal(after("他关灯上床，钻进被窝。"), at(21, 20), "older days are excluded by date, not by a fixed count");
+  history[0].vts = at(19, 40);
+  assert.equal(after("他关灯上床，钻进被窝。"), at(21, 20), "future records after a backward jump cannot leak an appointment");
   history.length = 0;
   assert.equal(build([n("他关灯上床，钻进被窝。")])[1].vts, at(19, 20), "manual opening is not moved to hide an immediately rushed closing scene");
   const prompt = clock.getPromptRule("a", at(19, 20));

@@ -1062,7 +1062,16 @@
       });
     const completedMeals = new Set();
     const dayState = new Date(start).getHours() >= 17 ? { eveningStart: start } : {};
-    const sceneContext = [...(options.sceneContext || (String(activeChatId) === String(options.chatId) ? activeBinding?.getMessages?.() || [] : []))].slice(-160);
+    const dayStart = new Date(start); dayStart.setHours(0, 0, 0, 0);
+    // This is local clock-reference context, never an output limit or an API
+    // prompt expansion. Keep today's earlier appointments even when one reply
+    // has hundreds of messages; exclude future/other-day records after a jump.
+    const sceneContext = [...(options.sceneContext || (String(activeChatId) === String(options.chatId) ? activeBinding?.getMessages?.() || [] : []))]
+      .filter((row) => {
+        if (!row || row.isHidden || row.type === "thought_chain") return false;
+        const time = finiteOrNull(row.vts);
+        return time == null || time >= dayStart.getTime() && time <= start;
+      });
     let location = inferLocation([]);
     let openingLocation = location;
     for (const source of items) {
