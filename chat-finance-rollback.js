@@ -61,7 +61,7 @@
           const destination = r.walletDestination || (bills.some((b) => b.characterEntryId === r.id) ? "space" : "character");
           add(destination === "space" ? "space" : r.key, r.direction, r.amount);
         }
-        for (const b of selectedBills) if (!rowIds.has(b.characterEntryId)) add("space", b.type, b.amount);
+        for (const b of selectedBills) if (!rowIds.has(b.characterEntryId) && !b.financialReversed && (b.status || "posted") === "posted") add("space", b.type, b.amount);
         for (const [key, delta] of adjustments) {
           const table = key === "space" ? this.userWallet : this.characterWallets, id = key === "space" ? "main" : key;
           const wallet = await table?.get(id); if (!wallet) throw new Error("找不到原收付款账户，未删除聊天。");
@@ -79,6 +79,9 @@
         for (const receipt of selectedReceipts) {
           if (removed.has(String(receipt.forTimestamp))) continue;
           const original = resetCards.get(String(receipt.forTimestamp)) || byTime.get(String(receipt.forTimestamp)); if (!original) continue;
+          // A ledger/order deletion may already have revoked the entire money
+          // event. Removing its retained receipt must not re-open that card.
+          if (original.financialReversed || original.walletVoided) continue;
           const card = structuredClone(original);
           if (card.type === "transfer") { card.status = "pending"; delete card.acceptedBy; card.isReceived = false; delete card.receivedAt; delete card.acceptedAt; delete card.acceptedVts; }
           if (card.type === "red_packet") { delete card.claimedBy?.[receipt.recipientName]; delete card.claimedVts?.[receipt.recipientName]; card.isFullyClaimed = false; if (Array.isArray(card.unclaimedAmounts)) card.unclaimedAmounts.push(receipt.amount); }

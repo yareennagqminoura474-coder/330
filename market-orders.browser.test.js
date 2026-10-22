@@ -104,6 +104,9 @@ const { chromium } = require("playwright-core");
       await page.evaluate(async ({ chatId, role }) => {
         await window.db.marketOrders.put({ id: chatId, status: "paid", timestamp: Date.now(), vts: 1, ownerKey: "chat:role0", ownerName: "甲", recipientName: "甲", total: 3,
           chatId, items: [{ item: { name: "测试商品", kind: "goods" }, quantity: 1 }], knownBy: [{ key: "chat:role0", name: "甲", level: "details" }], phoneAccess: ["chat:role0"] });
+        // A paid fixture needs its actual original debit. Cancellation must
+        // never invent a refund merely from an order's displayed total.
+        await window.ephoneSpaceWallet.book(window.db, 3, "expense", "测试订单原付款", { orderId: chatId, vts: 1 });
       }, { chatId, role });
       const actions = role === "乙" ? [{ type: "market_phone_check", name: role, order_id: chatId, content: "实际打开甲手机的订单页" }] : [];
       await generate(chatId, [...actions, { type: "cancel_market_order", name: role, order_id: chatId, reason: "取消测试订单" }, { type: "text", name: role, content: "已经处理好了。" }]);

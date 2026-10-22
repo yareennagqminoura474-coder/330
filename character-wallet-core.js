@@ -11,6 +11,7 @@
   function dailyBills(rows, asOf, names = new Map()) {
     const days = new Map();
     for (const row of [...rows].sort((a, b) => (a.vts ?? a.timestamp ?? 0) - (b.vts ?? b.timestamp ?? 0) || (a.timestamp || 0) - (b.timestamp || 0))) {
+      if (row.ledgerHidden) continue;
       const at = row.vts ?? row.timestamp, dated = Number.isFinite(at);
       if (dated && at > asOf) continue; // Do not give characters knowledge of future bills after time travel.
       const date = dated ? dayKey(at) : "日期未记录";
@@ -310,10 +311,11 @@
       const own = await this.ownLedger(key);
       const binding = await this.spaceProfiles.get("player");
       const rawUser = binding?.key === key ? await this.userTransactions.toArray() : [];
-      const detailedUser = root.ephoneLifeMarketCore?.expandOrderBills ? await root.ephoneLifeMarketCore.expandOrderBills(rawUser, this.db) : rawUser;
+      const visibleUser = rawUser.filter((row) => !row.ledgerHidden);
+      const detailedUser = root.ephoneLifeMarketCore?.expandOrderBills ? await root.ephoneLifeMarketCore.expandOrderBills(visibleUser, this.db) : visibleUser;
       const user = detailedUser.filter((row) => !row.characterEntryId).map((row) => ({ ...row, id: "user:" + row.id,
         key, direction: row.type, vts: row.vts ?? row.timestamp, status: row.status || "posted", source: row.source || "space_wallet" }));
-      return [...own, ...user].sort((a, b) => b.vts - a.vts || b.timestamp - a.timestamp).slice(0, limit);
+      return [...own, ...user].filter((row) => !row.ledgerHidden).sort((a, b) => b.vts - a.vts || b.timestamp - a.timestamp).slice(0, limit);
     }
     async correctEstimate(id, value) {
       const next = amount(value, false);
@@ -375,8 +377,9 @@
       if (!a.configured) { message.walletUntracked = true; return; }
       const total = message.type === "transfer" ? message.amount : message.totalAmount ?? message.amount;
       await this.db.transaction("rw", ...this.tables(), this.chats, async () => {
-        await this.change(sender.key, total, "expense", { id: `card:${chat.id}:${message.timestamp}`, vts: message.vts,
+        const funding = await this.change(sender.key, total, "expense", { id: `card:${chat.id}:${message.timestamp}`, vts: message.vts,
           category: message.type, source: "card", description: `${message.type === "transfer" ? "转账" : "红包"}给${message.receiverName || "群成员"}（已扣款，待领取）`, chatId: chat.id, sourceTimestamp: message.timestamp });
+        if (funding.financialReversed || funding.status !== "posted") throw new Error("这笔转账或红包已经撤销，不能重新扣款。");
         const saved = await this.chats.get(chat.id); if (!saved) throw new Error("聊天已不存在。");
         if (!(saved.history || []).some((m) => m.timestamp === message.timestamp)) saved.history = [...(chat.history || []), { ...message, walletFunded: true, walletSenderKey: sender.key }];
         await this.chats.put(saved);
@@ -384,10 +387,11 @@
       message.walletFunded = true; message.walletSenderKey = sender.key;
     }
     async creditReceived(chat, original, receipt) {
+      if (original.financialReversed || original.walletVoided) throw new Error("这笔转账或红包已撤销，未进行入账。");
       if (original.walletFunded) {
         const funding = await this.characterTransactions.get(`card:${chat.id}:${original.timestamp}`);
         const total = original.type === "transfer" ? original.amount : original.totalAmount ?? original.amount;
-        if (!funding || funding.key !== original.walletSenderKey || funding.direction !== "expense" || amount(funding.amount) !== amount(total))
+        if (!funding || funding.status !== "posted" || funding.financialReversed || funding.key !== original.walletSenderKey || funding.direction !== "expense" || amount(funding.amount) !== amount(total))
           throw new Error("已扣款卡片的金额或付款角色被改动，未进行入账。");
       }
       const binding = await this.spaceProfiles.get("player");

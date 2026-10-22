@@ -7,23 +7,26 @@
     const details = root.ephoneLifeMarketCore?.orderBreakdown(order);
     return details ? details.lines.map((line) => `${line.name}×${line.quantity}（单价¥${money(line.unitPrice)}，小计¥${money(line.amount)}）`).join("、") : itemsText(order);
   };
-  const statusText = (order) => order.status === "cancelled" ? "已取消·已退款" : order.status === "delivered" ? "已到货" : "已支付·待到货";
+  const statusText = (order) => order.financialReversed ? (order.status === "cancelled" ? "已取消·款项已撤销" : "商品保留·款项已撤销") :
+    order.status === "cancelled" ? "已取消·已退款" : order.paymentAdjusted ? `${order.status === "delivered" ? "已到货" : "待到货"}·实付¥${money(order.paidAmount)}` : order.status === "delivered" ? "已到货" : "已支付·待到货";
   function makeMessage(order, event, base = {}) {
     const details = root.ephoneLifeMarketCore?.orderBreakdown(order);
     const actor = text(base.actorName || order.ownerName || "用户", 80);
     const audience = (order.knownBy || []).map((person) => person.name).join("、") || "原订单通知聊天中的角色";
-    const note = event === "cancelled" ? `${actor}取消订单，¥${money(order.total)}已原路退回本空间钱包。` :
+    const note = event === "cancelled" ? `${actor}取消订单，本次¥${money(order.refundedAmount ?? order.total)}已原路退回本空间钱包；已经撤销的扣款不重复退款。` :
       event === "inspected" ? `${actor}实际查看了${order.ownerName}的手机订单页，获知订单详情。` :
       event === "shared" ? `${actor}告知了订单，听到的人只知道被告知的内容。` :
       event === "delivered" ? `${actor}确认到货；只有列入知情名单的在场角色看到商品。` :
       event === "forwarded" ? `订单卡片已放入本群，当前状态：${statusText(order)}。本次没有再次下单或扣款；卡片不是全群公告。` :
+      order.paymentAdjusted || order.financialReversed ? `为${order.recipientName}保留的商品记录；当前尚实际支付¥${money(order.paidAmount)}，已撤销的款项不再计入余额。` :
       `已为${order.recipientName}下单，已从本空间钱包支付，尚未到货。`;
     return { ...base, role: "system", type: "market_order", marketOrder: true, orderId: order.id, orderEvent: event,
       privateOrder: Boolean(order.ownerKey), ownerKey: order.ownerKey, actorName: actor,
       orderSnapshot: { id: order.id, status: order.status, recipientName: order.recipientName, ownerName: order.ownerName,
         ownerKey: order.ownerKey, items: itemsText(order), total: order.total, cancelledBy: order.cancelledBy,
         knownBy: order.knownBy || [], reason: order.cancelReason || "",
-        lineItems: details?.lines || [], deliveryFees: details?.deliveryFees || [], delivery: order.delivery },
+        lineItems: details?.lines || [], deliveryFees: details?.deliveryFees || [], delivery: order.delivery,
+        ...(order.paidAmount != null ? { paidAmount: order.paidAmount } : {}), paymentAdjusted: !!order.paymentAdjusted, financialReversed: !!order.financialReversed },
       content: `【逛逛订单 ${order.id}；${statusText(order)}；${order.ownerKey ? "私有记忆，不是全群公告" : "订单通知"}】${note} 商品：${itemsText(order)}。金额¥${money(order.total)}。知情范围：${audience}。未列入的角色不知道；听说或到货看到不等于知道订单金额及手机内详情。` };
   }
 
@@ -101,7 +104,8 @@
           status: order.status, orderedAt: order.vts, knownBy: order.knownBy || [], phoneAccess: order.phoneAccess || [],
           ownerOnlyDetails: { items: pricedItemsText(order),
             deliveryFees: (root.ephoneLifeMarketCore?.orderBreakdown(order)?.deliveryFees || []).map(({ merchant, amount }) => ({ merchant, amount })),
-            amount: order.total, cancelledBy: order.cancelledBy || null, cancelReason: order.cancelReason || null },
+            amount: order.total, ...(order.paidAmount != null ? { actuallyPaid: order.paidAmount } : {}), paymentAdjusted: !!order.paymentAdjusted,
+            financialReversed: !!order.financialReversed, cancelledBy: order.cancelledBy || null, cancelReason: order.cancelReason || null },
         }))) + "\n";
     }
     async captureDisclosures(chat) {
@@ -177,12 +181,32 @@
           if (!owner && !(order.phoneAccess || []).includes(actor.key)) throw new Error("当前角色未实际查看并取得手机操作权限，不能取消订单。");
           if (order.status === "cancelled") return { order, chats: [], alreadyApplied: true, balance: (await this.wallet.get("main"))?.balance || 0 };
           if (order.status !== "paid") throw new Error("这笔订单已经到货或不支持取消，未退款。");
-          const wallet = await this.wallet.get("main") || { id: "main", balance: 0 };
-          const balance = Math.round(Number(wallet.balance || 0) * 100), refund = Math.round(Number(order.total) * 100);
-          if (!Number.isSafeInteger(balance) || !Number.isSafeInteger(refund) || refund <= 0 || !Number.isSafeInteger(balance + refund)) throw new Error("订单退款金额无效。");
-          await this.wallet.put({ ...wallet, balance: (balance + refund) / 100 });
-          for (const bill of root.ephoneLifeMarketCore.orderBills(order, "income", { timestamp, vts, refundedBy: actor.name })) await this.bills.add(bill);
-          Object.assign(order, { status: "cancelled", cancelledBy: actor.name, cancelledByKey: actor.key, cancelReason: text(action.reason), cancelledVts: vts, refundedAmount: refund / 100 });
+          const finance = root.ephoneFinanceRecordsCore || (typeof require === "function" ? require("./finance-records-core.js") : null);
+          if (finance) await new finance.Service(this.db).materializeOrder(order.id);
+          const rows = (await this.bills.toArray()).filter((row) => row.orderId === order.id && !row.characterEntryId && row.status !== "superseded");
+          if (!rows.length && !order.financialReversed) throw new Error("缺少原始订单账单，无法安全退款。");
+          const groups = new Map();
+          for (const row of rows) {
+            if (row.financialReversed || (row.status || "posted") !== "posted" || !["income", "expense"].includes(row.type)) continue;
+            const id = row.orderLineId || row.refundOfLineId || "__legacy", group = groups.get(id) || { net: 0, original: row };
+            const value = Math.round(Number(row.amount) * 100);
+            if (!Number.isSafeInteger(value) || value < 0) throw new Error("订单退款金额无效。");
+            group.net += value * (row.type === "expense" ? 1 : -1); if (row.type === "expense") group.original = row;
+            groups.set(id, group);
+          }
+          const refund = [...groups.values()].reduce((sum, group) => sum + group.net, 0);
+          if ([...groups.values()].some((group) => group.net < 0) || !Number.isSafeInteger(refund) || refund < 0) throw new Error("订单原收退款金额不平衡，未退款。");
+          const wallet = await this.wallet.get("main") || { id: "main", balance: 0 }, balance = Math.round(Number(wallet.balance || 0) * 100);
+          if (!Number.isSafeInteger(balance) || !Number.isSafeInteger(balance + refund)) throw new Error("订单退款金额无效。");
+          if (refund) await this.wallet.put({ ...wallet, balance: (balance + refund) / 100 });
+          for (const group of groups.values()) if (group.net > 0) {
+            const bill = { ...group.original, type: "income", amount: group.net / 100, timestamp, vts, refundedBy: actor.name,
+              description: `逛逛退款：${group.original.name || "原订单商品"}`, ...(group.original.orderLineId ? { refundOfLineId: group.original.orderLineId } : {}) };
+            for (const key of ["id", "ledgerHidden", "financialReversed", "financeRevision", "legacyParentId"]) delete bill[key];
+            bill.status = "posted"; await this.bills.add(bill);
+          }
+          Object.assign(order, { status: "cancelled", cancelledBy: actor.name, cancelledByKey: actor.key, cancelReason: text(action.reason), cancelledVts: vts, refundedAmount: refund / 100, paidAmount: 0,
+            financeRevision: Number(order.financeRevision || 0) + 1 });
           event = "cancelled";
         }
         if (before === JSON.stringify(order)) return { order, chats: [], alreadyApplied: true };

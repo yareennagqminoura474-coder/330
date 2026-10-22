@@ -85,3 +85,19 @@
 .market-order-actions button { padding: 10px; border-radius: 10px; color: #a64d2b; background: #ffe8d8; }
 .market-order-actions button:disabled { opacity: .45; }
 .market-order-actions small, .market-checkout>small { display: block; font-size: 11px; line-height: 1.7; color: #93867b; }
+.market-record-buttons { display: flex; gap: 10px; }
+.market-record-buttons button { flex: 1; min-width: 0; }
+.market-order-actions .market-delete-record { color: #a1322e; background: #fff0ed; }
+.market-payment-state { color: #92612c; padding: 8px 10px; border-radius: 9px; background: #fff5df; overflow-wrap: anywhere; }
+.market-order-editor { display: block; min-width: 0; padding: 14px 0; margin-top: 14px; border-top: 1px dashed #dbcbb8; scroll-margin-top: 10px; }
+.market-order-editor h3 { color: #9b4d31; }
+.market-order-editor label { display: block; min-width: 0; margin-bottom: 12px; font-size: 12px; line-height: 1.7; }
+.market-order-editor input, .market-order-editor textarea { display: block; width: 100%; min-width: 0; min-height: 44px; margin-top: 5px; padding: 10px; border: 1px solid #ded3c7; border-radius: 9px; font: inherit; font-size: 16px; color: inherit; background: #fff; }
+.market-order-editor textarea { resize: vertical; }
+.market-order-editor fieldset { min-width: 0; padding: 12px 10px 0; margin: 14px 0; border: 1px solid #e6ded5; border-radius: 10px; }
+.market-order-editor legend { font-size: 12px; padding: 0 5px; color: #8b624c; }
+.market-editor-numbers { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0 10px; }
+.market-editor-preview { padding: 12px 0; font-size: 12px; line-height: 1.8; color: #9b4d31; overflow-wrap: anywhere; }
+.market-editor-buttons { display: flex; gap: 10px; }
+.market-editor-buttons button { flex: 1; min-height: 44px; margin: 0; padding: 12px; border-radius: 10px; background: #f2ebe3; color: #6c5848; }
+.market-editor-buttons .market-primary { color: #fff; background: #ed6946; }

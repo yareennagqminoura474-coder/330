@@ -3,6 +3,7 @@
   const core = window.ephoneCharacterWalletCore, esc = (v) => String(v ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
   const money = (v) => Number(v || 0).toFixed(2), now = () => window.ephoneTimeMachine?.nowMs() || Date.now();
   let screen, service, people = [], key = "", account, entries = [], busy = false, mutating = false, controller, message = "", editing = false, token = 0, space, draftCache;
+  let ledgerEditing = null, entryLimit = 200;
   async function sync(vts = now()) {
     if (!window.db?.characterWallets) return;
     const result = await new core.Service(window.db).settle(vts);
@@ -14,22 +15,41 @@
     screen.innerHTML = '<header class="header"><button type="button" id="cw-back" aria-label="返回">‹</button><span>角色钱包</span><button type="button" id="cw-settle">结算</button></header><div class="cw-scroll"><select id="cw-person" aria-label="选择角色"></select><div id="cw-notice" role="status"></div><div id="cw-body"></div></div>';
     document.getElementById("phone-screen").append(screen);
     screen.querySelector("#cw-back").onclick = () => { window.showScreen("chat-list-screen"); document.querySelector('.nav-item[data-view="me-view"]')?.click(); };
-    screen.querySelector("#cw-person").onchange = async (e) => { if (!busy) { key = e.target.value; editing = false; await load(); } };
+    screen.querySelector("#cw-person").onchange = async (e) => { if (!busy) { key = e.target.value; editing = false; ledgerEditing = null; entryLimit = 200; await load(); } };
     screen.querySelector("#cw-settle").onclick = () => operate(async () => { const result = await sync(); message = result?.pending ? "已结算一批，还有未结算日期；再点结算继续，不会漏记或重复记账。" : "已按本空间时间结算，没有重复入账。"; await load(); });
     screen.addEventListener("change", (event) => {
       if (event.target.dataset.field === "counterpartyKey") event.target.closest(".cw-rule").querySelector('[data-field="counterpartyName"]').value = "";
+      rememberEntryInput(event.target);
     });
+    screen.addEventListener("input", (event) => rememberEntryInput(event.target));
     screen.addEventListener("click", async (event) => {
-      const action = event.target.closest("[data-cw-action]")?.dataset.cwAction;
+      const button = event.target.closest("[data-cw-action]"), action = button?.dataset.cwAction;
       if (!action) return;
       if (action === "stop") { controller?.abort(); return; }
       if (busy) return;
+      if (action === "more-entries") { entryLimit += 200; render(); return; }
+      if (action === "edit-entry") {
+        const entry = entries[Number(button.dataset.entryIndex)]; if (!entry) return;
+        editing = false; ledgerEditing = { original: structuredClone(entry), draft: structuredClone(entry), key, space };
+        render(); screen.querySelector("#cw-entry-editor")?.scrollIntoView({ block: "nearest" }); return;
+      }
+      if (action === "cancel-entry-edit") { ledgerEditing = null; render(); return; }
+      if (action === "save-entry") { await saveEntry(); return; }
+      if (action === "delete-entry") {
+        const entry = entries[Number(button.dataset.entryIndex)]; if (!entry) return;
+        const original = structuredClone(entry), personKey = key;
+        if (!window.confirm(`删除这条账单？\n${entry.description || "收支记录"} · ¥${money(entry.amount)}\n删除支出会退回对应款项，删除收入会扣回款项；已撤销的同笔资金不会重复回退。\n只删除这里的账单，商城订单、商品和另一方账单不会被删除；关联记录会标明资金已撤销。`)) return;
+        await operate(async () => {
+          const result = await recordsService().deleteLedger(personKey, original);
+          ledgerEditing = null; await refreshRecords(result); message = "本处账单已删除，对应资金已按实际入账情况撤销；其他位置的记录已保留，不会重复回退。"; await load();
+        }); return;
+      }
       if (action === "correct-estimate") {
         const entry = entries.find((e) => e.id === event.target.closest("button").dataset.entryId); if (!entry) return;
         const value = window.prompt("校正这笔估算支出（原扣款会同步调整，不会另扣一笔）", String(entry.amount));
         if (value != null) await operate(async () => { const updated = await service.correctEstimate(entry.id, value); await window.ephoneRefreshFinanceChat?.(updated.chatId); await window.EPhoneMarketAdapter?.onPaid({ balance: Number((await service.userWallet.get("main"))?.balance || 0) }); message = "已校正金额，余额和原流水已同步调整。"; await load(); });
       }
-      if (action === "edit") { editing = true; draftCache = account; render(); }
+      if (action === "edit") { editing = true; ledgerEditing = null; draftCache = account; render(); }
       if (action === "cancel-edit") { editing = false; render(); }
       if (action === "generate") await generate(false);
       if (action === "generate-all") await generate(true);
@@ -52,6 +72,11 @@
   async function operate(fn, { generation = false } = {}) {
     if (busy || window.isEPhoneMutationBusy?.() || !generation && window.isEPhoneTimeChangeBusy?.()) { message = "请先完成当前收付款或回复，再修改钱包；资产生成可与回复同时进行。"; render(); return; }
     busy = true; mutating = !generation;
+    // Disable controls without rebuilding the form: readForm/saveEntry still
+    // need its current values, and a mid-save role switch must not mislabel it.
+    screen?.querySelectorAll("#cw-person, #cw-settle, #cw-body button, #cw-entry-editor input, #cw-entry-editor textarea, #cw-entry-editor select").forEach((field) => {
+      if (field.dataset.cwAction !== "stop") field.disabled = true;
+    });
     try { await fn(); } catch (error) { message = error.name === "AbortError" ? "已停止生成。" : error.message; } finally { busy = false; mutating = false; render(); }
   }
   async function open() {
@@ -59,7 +84,7 @@
     if (window.isEPhoneMutationBusy?.()) { window.alert("正在保存收付款，请稍后打开角色钱包。"); return; }
     create(); window.showScreen("character-wallet-screen"); busy = true;
     try {
-      service = new core.Service(window.db); space = window.EPHONE_SPACE_ID || "default"; editing = false; message = "";
+      service = new core.Service(window.db); space = window.EPHONE_SPACE_ID || "default"; editing = false; ledgerEditing = null; entryLimit = 200; message = "";
       const result = await sync(); if (result?.pending) message = "尚有未结算日期，可点击结算继续。";
       people = await service.people();
       if (!people.some((p) => p.key === key)) key = people[0]?.key || "";
@@ -72,7 +97,69 @@
     if (!key) { account = null; entries = []; render(); return; }
     const [next, ledger] = await Promise.all([service.account(key), service.ledger(key, Infinity)]);
     if (current !== token || space !== (window.EPHONE_SPACE_ID || "default")) return;
-    account = next; entries = ledger; render();
+    account = next; entries = ledger.filter((entry) => !entry.ledgerHidden); render();
+  }
+  function recordsService() {
+    if (!window.ephoneFinanceRecordsCore?.Service) throw new Error("账单编辑组件尚未加载，请刷新后重试。");
+    if (space !== (window.EPHONE_SPACE_ID || "default") || service.db !== window.db.characterWallets.db) throw new Error("空间已切换，请重新打开角色资产。");
+    return new window.ephoneFinanceRecordsCore.Service(service.db);
+  }
+  async function refreshRecords(result) {
+    // Financial writes have already committed. A failed UI refresh must not
+    // encourage another debit/refund or turn a successful edit into a failure.
+    try {
+      await window.EPhoneMarketAdapter?.onPaid(result);
+      for (const chat of result.chats || []) await window.ephoneRefreshFinanceChat?.(chat.id);
+    } catch (error) { console.warn("账单已保存，界面同步稍后刷新", error); }
+  }
+  function localDateTime(value) {
+    const date = new Date(Number(value)); if (!Number.isFinite(date.getTime())) return "";
+    const pad = (n) => String(n).padStart(2, "0");
+    return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
+  }
+  function rememberEntryInput(field) {
+    if (!ledgerEditing || !field.closest("#cw-entry-editor")) return;
+    const name = field.id.replace("cw-entry-", "");
+    if (["description", "category", "direction"].includes(name)) ledgerEditing.draft[name] = field.value;
+    if (name === "amount") ledgerEditing.draft.amount = field.value;
+    if (name === "time") ledgerEditing.draft.vts = new Date(field.value).getTime();
+  }
+  function renderEntry(entry, index) {
+    const source = entry.estimated ? entry.estimateCorrected ? "估算支出 · 已由你校正" : "估算支出 · 不是明说的实际金额" :
+      entry.source === "story_text" ? "聊天支出 · 有原文依据" : entry.source === "scheduled" ? "定期收支" : entry.adjustment ? "资产调整" : "实际收支";
+    const voided = entry.status === "voided";
+    const amount = voided ? `原${entry.direction === "income" ? "收入" : "支出"}<br>¥${money(entry.amount)}<small>款项已撤销</small>` :
+      entryStatus(entry) || (entry.direction === "income" ? "+" : "−") + money(entry.amount);
+    return `<article class="cw-entry${voided ? " cw-entry-voided" : ""}"><div><strong>${esc(entry.description)}</strong>` +
+      `<small>${esc(window.EPhoneMarketAdapter.formatTime(entry.vts))} · ${esc(entry.category || "其他")} · ${source}</small>` +
+      (entry.estimated ? `<small>${esc(entry.estimate?.reason || "按商品参考估算")}</small>` : "") +
+      `<div class="cw-entry-actions"><button type="button" data-cw-action="edit-entry" data-entry-index="${index}">编辑</button> ` +
+      `<button type="button" class="cw-danger" data-cw-action="delete-entry" data-entry-index="${index}">删除</button>` +
+      (entry.estimated && entry.status === "posted" ? ` <button type="button" data-cw-action="correct-estimate" data-entry-id="${esc(entry.id)}">校正金额</button>` : "") +
+      `</div></div><span class="${voided ? "cw-reversed" : entry.direction}">${amount}</span></article>`;
+  }
+  function renderEntryEditor() {
+    const slot = screen.querySelector("#cw-entry-editor"); if (!slot || !ledgerEditing) return;
+    const entry = ledgerEditing.original, draft = ledgerEditing.draft, posted = (entry.status || "posted") === "posted";
+    const linked = Boolean(entry.orderId || entry.transferId || entry.source === "card" || entry.moneyReceipt);
+    slot.innerHTML = `<section class="cw-entry-edit cw-form"><h3>编辑这条账单</h3><small>金额按新旧差额同步余额，不会重新全额记账。这里只修改记录，不改商品、订单归属或收支计划。</small><label>收支方向<select id="cw-entry-direction" ${linked || !posted ? "disabled" : ""}>${options([["expense", "支出"], ["income", "收入"]], draft.direction)}</select></label><label>金额（元）<input id="cw-entry-amount" type="number" min="0.01" step="0.01" value="${esc(draft.amount)}" ${!posted || (entry.source === "card" || entry.moneyReceipt) ? "disabled" : ""}></label><label>用途 / 收入来源<textarea id="cw-entry-description" rows="3" maxlength="600">${esc(draft.description || "")}</textarea></label><label>分类<input id="cw-entry-category" maxlength="30" value="${esc(draft.category || "other")}"></label><label>虚拟日期和时间<input id="cw-entry-time" type="datetime-local" value="${esc(localDateTime(draft.vts ?? draft.timestamp))}"></label>${!posted ? '<small>这笔资金未入账或已撤销，可修改说明和时间，不会因此恢复收付款。</small>' : ""}${(entry.source === "card" || entry.moneyReceipt) ? '<small>转账 / 红包卡片金额保持不变，以免已领取的份额和卡片不一致。</small>' : ""}${linked ? '<small>关联款项的方向保持不变；金额调整会核对相应账单，避免重复增减。</small>' : ""}<button type="button" data-cw-action="save-entry">保存账单</button> <button type="button" data-cw-action="cancel-entry-edit">取消</button></section>`;
+  }
+  async function saveEntry() {
+    if (!ledgerEditing) return;
+    const edit = ledgerEditing, value = (id) => screen.querySelector("#" + id).value;
+    const timeText = value("cw-entry-time"), vts = new Date(timeText).getTime();
+    if (!timeText || !Number.isFinite(vts) || localDateTime(vts) !== timeText) { message = "请选择有效的虚拟日期和时间。"; screen.querySelector("#cw-notice").textContent = message; return; }
+    const originalTime = Number(edit.original.vts ?? edit.original.timestamp);
+    const patch = { description: value("cw-entry-description"), category: value("cw-entry-category"),
+      vts: timeText === localDateTime(originalTime) ? originalTime : vts };
+    if (!screen.querySelector("#cw-entry-amount").disabled) patch.amount = Number(value("cw-entry-amount"));
+    if (!screen.querySelector("#cw-entry-direction").disabled) patch.direction = value("cw-entry-direction");
+    edit.draft = { ...edit.draft, ...patch };
+    await operate(async () => {
+      if (edit.space !== space || edit.key !== key) throw new Error("角色或空间已切换，请重新编辑账单。");
+      const result = await recordsService().editLedger(edit.key, edit.original, patch);
+      ledgerEditing = null; await refreshRecords(result); message = "账单已保存，余额与关联流水已按差额同步。"; await load();
+    });
   }
   function render() {
     if (!screen) return;
@@ -87,8 +174,9 @@
       `<section class="cw-summary"><span>${esc(month)} 收入<br>+${money(sum("income"))}</span><span>支出<br>−${money(sum("expense"))}</span></section>` +
       `<section class="cw-panel"><h3>${esc(account.job || "身份 / 工作尚未设置")}</h3><p>${esc(account.family || "家庭条件以角色人设为准")}</p><small>${esc(account.note || "可按人设生成资产及工资、零花钱和生活开销计划，也可手动设置。未设置不代表角色没有财富。")}</small><p>本空间时间：${esc(window.EPhoneMarketAdapter.formatTime(now()))}</p><p>${account.configured ? account.automatic ? "自动结算已开启" : "自动结算已暂停" : "尚未设置收支计划"}</p><button data-cw-action="edit">编辑资产与计划</button> <button data-cw-action="generate">按人设生成</button> <button data-cw-action="generate-all">初始化未设置角色</button>${busy && controller ? ' <button data-cw-action="stop">停止生成</button>' : ""}</section><div id="cw-editor"></div>` +
       `<section class="cw-panel"><h3>记一笔</h3><div class="cw-book"><select id="cw-book-direction"><option value="expense">支出</option><option value="income">收入</option></select><input id="cw-book-amount" type="number" min="0.01" step="0.01" placeholder="金额"><input id="cw-book-note" placeholder="用途 / 收入来源"><button data-cw-action="book">记账</button></div></section>` +
-      `<section class="cw-panel"><h3>收支明细</h3><small>按虚拟日期显示最近200笔；资产初始设定不计工资收入。</small>${entries.length ? entries.slice(0, 200).map((e) => `<article class="cw-entry"><div><strong>${esc(e.description)}</strong><small>${esc(window.EPhoneMarketAdapter.formatTime(e.vts))} · ${e.estimated ? e.estimateCorrected ? "估算支出 · 已由你校正" : "估算支出 · 不是明说的实际金额" : e.source === "story_text" ? "聊天支出 · 有原文依据" : e.source === "scheduled" ? "定期收支" : e.adjustment ? "资产调整" : "实际收支"}</small>${e.estimated ? `<small>${esc(e.estimate?.reason || "按商品参考估算")}</small>${e.status === "posted" ? `<button data-cw-action="correct-estimate" data-entry-id="${esc(e.id)}">校正金额</button>` : ""}` : ""}</div><span class="${e.direction}">${entryStatus(e) || (e.direction === "income" ? "+" : "−") + money(e.amount)}</span></article>`).join("") : "<p>暂无流水。</p>"}</section>`;
+      `<section class="cw-panel"><h3>收支明细</h3><small>按虚拟日期显示${Math.min(entryLimit, entries.length)} / ${entries.length}笔；资产初始设定不计工资收入。删账单只隐藏这里的记录，同一笔资金最多撤销一次。</small><div id="cw-entry-editor"></div>${entries.length ? entries.slice(0, entryLimit).map(renderEntry).join("") : "<p>暂无流水。</p>"}${entries.length > entryLimit ? '<button type="button" data-cw-action="more-entries">查看更多账单</button>' : ""}</section>`;
     if (editing) renderForm(draftCache || account);
+    if (ledgerEditing) renderEntryEditor();
     body.querySelectorAll("button").forEach((b) => { if (b.dataset.cwAction !== "stop") b.disabled = busy; });
   }
   const input = (id, label, value, type = "text") => `<label>${label}<input id="${id}" type="${type}" value="${esc(value)}" ${type === "number" ? 'min="0" step="0.01"' : ""}></label>`;

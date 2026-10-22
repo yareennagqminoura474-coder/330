@@ -48,6 +48,17 @@ const at = (minute) => new Date(2026, 2, 5, 10, minute).getTime();
     await db.userWallet.update("main", { balance: 0 });
     await db.userTransactions.add({ chatId: "g", forTimestamp: 40, timestamp: 41, moneyReceipt: true, amount: 30, type: "income" });
     await assert.rejects(service.remove("g", [40]), /余额会不足/); assert.equal((await db.chats.get("g")).history.length, 1);
-    console.log("PASS: chat-scoped actual balance/ledger undo, unrelated chat/order preservation, notices, card and receipt-only rollback/reclaim, original wallet after binding changes, idempotency, clock/first-round hold, complete atomic failure and spent-income safety");
+    // A bill deleted in the ledger keeps a tombstone: removing its original
+    // chat later cannot apply its already-reversed money for a second time.
+    await db.chats.put({ id: "revoked", history: [{ type: "transfer", timestamp: 50, status: "declined", walletVoided: true, financialReversed: true, vts: at(20) }, { type: "pat_message", timestamp: 51, forTimestamp: 50, moneyReceipt: true, recipientName: "乙", amount: 30, vts: at(21) }] });
+    await db.userTransactions.add({ chatId: "revoked", forTimestamp: 50, timestamp: 51, moneyReceipt: true, amount: 30, type: "income", status: "voided", financialReversed: true });
+    await service.remove("revoked", [51]);
+    assert.equal((await db.userWallet.get("main")).balance, 0, "already reversed user receipt cannot debit again");
+    assert.equal((await db.chats.get("revoked")).history[0].status, "declined", "a revoked funding card never becomes claimable again");
+    await db.chats.put({ id: "revoked-expense", history: [{ type: "text", timestamp: 52, vts: at(21) }] });
+    await db.userTransactions.add({ chatId: "revoked-expense", sourceTimestamp: 52, amount: 40, type: "expense", status: "voided", financialReversed: true, ledgerHidden: true });
+    await service.remove("revoked-expense", [52]);
+    assert.equal((await db.userWallet.get("main")).balance, 0, "a hidden reversed expense cannot be refunded again by chat deletion");
+    console.log("PASS: chat-scoped actual balance/ledger undo, unrelated chat/order preservation, notices, card and receipt-only rollback/reclaim, original wallet after binding changes, idempotency, clock/first-round hold, complete atomic failure, spent-income safety and no double reversal of ledger-deleted money");
   } finally { db.close(); await Dexie.delete(db.name); }
 })().catch((e) => { console.error(e); process.exitCode = 1; });

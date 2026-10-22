@@ -14,9 +14,16 @@
 .cw-panel h3 { font-size: 15px; margin-top: 0; }
 .cw-panel button { background: #e7f0ff; color: #1763b6; border: 0; border-radius: 10px; padding: 10px 12px; margin: 4px 0; font: inherit; font-size: 12px; }
 .cw-panel button:disabled { opacity: .5; }
-.cw-form input:not([type=checkbox]), .cw-form select, .cw-book input, .cw-book select { width: 100%; min-width: 0; border: 1px solid #d9dfe7; border-radius: 9px; padding: 10px; margin: 5px 0 10px; background: #fff; color: #242b3a; font: inherit; font-size: 13px; }
+.cw-form input:not([type=checkbox]), .cw-form select, .cw-form textarea, .cw-book input, .cw-book select { width: 100%; min-width: 0; border: 1px solid #d9dfe7; border-radius: 9px; padding: 10px; margin: 5px 0 10px; background: #fff; color: #242b3a; font: inherit; font-size: 13px; }
+.cw-form textarea { resize: vertical; min-height: 80px; }
+.cw-form input:disabled, .cw-form select:disabled { background: #f3f5f8; color: #6f7886; }
 .cw-form label { font-size: 12px; line-height: 1.7; display: block; }
 .cw-rule { padding: 12px; margin: 12px 0; border: 1px solid #dce5f1; border-radius: 12px; }
 .cw-entry { display: flex; gap: 12px; justify-content: space-between; padding: 12px 0; border-bottom: 1px solid #edf0f5; font-size: 13px; }
 .cw-entry div { flex: 1; min-width: 0; } .cw-entry span { max-width: 40%; }
 .cw-entry .income { color: #168668; } .cw-entry .expense { color: #b65543; }
+.cw-entry-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 4px; }
+.cw-panel .cw-danger { color: #b0473b; background: #fff0ee; }
+.cw-entry .cw-reversed { color: #737e8e; text-align: right; }
+.cw-entry-voided strong { color: #737e8e; }
+.cw-entry-edit { border: 1px solid #c6d9f4; border-radius: 12px; padding: 14px; margin: 14px 0; background: #f8fbff; scroll-margin-top: 12px; }
