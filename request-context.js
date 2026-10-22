@@ -1,8 +1,8 @@
 (function (root) {
   "use strict";
-  const labels = { base: "人设/记忆/系统规则", history: "本轮聊天消息", social: "关系与当天生活", life: "生活连续性/私有记忆", wallet: "角色资产", orders: "购物订单", money: "转账红包" };
+  const labels = { base: "人设/记忆/系统规则", history: "本轮聊天消息", social: "关系与当天生活", life: "生活连续性/私有记忆", wallet: "角色资产", orders: "购物订单/购物车", money: "转账红包" };
   const headingCategory = (heading) => /人物关系网与独立生活/.test(heading) ? "social" : /生活连续性与信息差/.test(heading) ? "life" :
-    /角色独立资产与实际收支/.test(heading) ? "wallet" : /本空间角色身份与订单记忆边界/.test(heading) ? "orders" :
+    /角色独立资产与实际收支/.test(heading) ? "wallet" : /本空间角色身份与订单记忆边界|购物车/.test(heading) ? "orders" :
     /转账和红包的实际状态|观看模式转账与红包/.test(heading) ? "money" : "base";
   // This is explicitly a character-based approximation, NOT a model tokenizer.
   const estimate = (chars) => Math.ceil(chars / 1.5);

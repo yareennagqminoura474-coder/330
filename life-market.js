@@ -164,6 +164,11 @@
       const visible = orders.filter((order) => order.marketHidden !== true);
       content.innerHTML = '<h2 class="market-section-title">我的订单</h2>' + (visible.length ? visible.map((order) => `<article class="market-order" data-order-record="${esc(order.id)}"><div><strong>${esc(order.recipientName)}</strong><span>${esc(window.ephoneMarketOrders.statusText(order))}</span></div><small>${esc(window.EPhoneMarketAdapter?.formatTime(order.vts) || new Date(order.timestamp).toLocaleString("zh-CN"))}</small>${orderDetailsHtml(order)}${order.address ? `<p>收货地址：${esc(order.address)}</p>` : ""}${order.note ? `<p>备注：${esc(order.note)}</p>` : ""}${order.cancelledBy ? `<p>${esc(order.cancelledBy)}取消 · 已退款¥${money(order.refundedAmount)}</p>` : ""}<strong>¥${money(order.total)}</strong><small> 含配送 ¥${money(order.delivery)}</small>${paymentHtml(order)}${editorHtml(order)}<div class="market-order-actions"><div class="market-record-buttons"><button type="button" data-action="edit-order" data-order="${esc(order.id)}">编辑订单</button><button type="button" class="market-delete-record" data-action="delete-order" data-order="${esc(order.id)}">删除商城记录</button></div><button type="button" data-action="buy-again" data-order="${esc(order.id)}">再买一次</button><label for="order-group-${esc(order.id)}">订单卡片发送到</label><select id="order-group-${esc(order.id)}" data-order-destination="${esc(order.id)}">${groupOptions(orderDestinations.get(order.id) || "")}</select><button type="button" data-action="post-order" data-order="${esc(order.id)}">发送到群聊</button><small>再买一次只加入购物车，确认后才付款；补发卡片不重复扣款。删除商城记录不会删除角色资产里的账单，已撤销的钱不会再次退回。</small></div></article>`).join("") : '<div class="market-empty">还没有订单。手动刷新不会删除已付订单。</div>');
     }
+    if (tab === "cart") {
+      const hint = document.createElement("p"); hint.className = "market-cart-memory";
+      hint.textContent = bindingName ? `充当你的${bindingName}会在下一轮聊天读取购物车，包括未勾选商品；其他角色需被告知或实际查看手机才知道。加购不等于下单，不会自动扣款。` : "在“我”里绑定充当你的角色后，该角色会在聊天中知道购物车里的商品；购物车尚未付款，不会自动向其他角色公开。";
+      content.querySelector(".market-section-title")?.after(hint);
+    }
     renderBusy();
   }
   async function open(options = {}) {

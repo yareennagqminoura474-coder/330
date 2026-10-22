@@ -43,6 +43,7 @@
 .market-nav button.selected { color: #db5c38; font-weight: 700; }
 .market-empty { grid-column: 1/-1; padding: 50px 12px; color: #a09084; text-align: center; font-size: 13px; line-height: 2; }
 .market-section-title { margin: 4px 4px 18px; font-size: 22px; }
+.market-cart-memory { margin: -6px 4px 16px; color: #897565; font-size: 12px; line-height: 1.7; overflow-wrap: anywhere; }
 .market-cart-line,.market-order,.market-checkout { background: white; border-radius: 16px; padding: 16px; margin-bottom: 12px; border: 1px solid #eee6dd; }
 .market-cart-line { display: flex; gap: 16px; align-items: center; }
 .market-cart-line input[type=checkbox], .market-select-all input { width: 22px; height: 22px; flex-shrink: 0; accent-color: #ed6946; cursor: pointer; }
