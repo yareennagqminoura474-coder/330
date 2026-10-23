@@ -92,6 +92,18 @@ const { chromium } = require("playwright-core");
       const combinedBody = "补齐时间标题之后，这里的剧情不能被一起删除。";
       await generate(id, [openai(json([{ ...header, content: header.content + "\n\n" + combinedBody }]))]);
       assert.ok(await page.evaluate(async ({ id, content }) => (await window.db.chats.get(id)).history.some((item) => item.content === content), { id, content: combinedBody }));
+      const quoted = '问的时候客气一点，不要说"我今晚带爸妈来"，说家里人想登门感谢。';
+      const following = "下一条独立消息也完整保留。";
+      const literalMarkup = "这里的 <visit> 和 a < b & c > d 也必须完整显示。";
+      const malformed = json([reply(quoted), reply(following), reply(literalMarkup)]).replace(/\\"/g, '"');
+      const quoteRequests = await generate(id, [openai(malformed)]);
+      assert.equal(quoteRequests.length, 1, id + ": quote recovery is local, not a second API call");
+      for (const content of [quoted, following, literalMarkup]) {
+        const saved = await page.evaluate(async ({ id, content }) => (await window.db.chats.get(id)).history.filter((item) => item.content === content), { id, content });
+        assert.equal(saved.length, 1, id + ": save the full original sentence exactly once");
+        const bubble = page.locator(`.message-bubble[data-timestamp="${saved[0].timestamp}"]`);
+        assert.ok((await bubble.textContent()).includes(content), id + ": the actual mobile bubble must show all received words");
+      }
     }
     for (const id of ["reply-person", "reply-standard", "reply-watch"]) {
       for (const [fixture, message] of [[{ httpStatus: 500 }, "500"], [{ rawHttp: '{"choices":[' }, "接口响应数据未完整传输"],

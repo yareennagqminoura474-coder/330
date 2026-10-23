@@ -56,6 +56,51 @@ const gemini = (parts, reason = "STOP") => ({ candidates: [{ content: { parts },
   assert.deepEqual(response.recover('{"messages":' + broken), recovered.items, "an incomplete wrapper preserves its complete children and text tail");
   assert.deepEqual(response.recover(JSON.stringify([body]).slice(0, -1) + ',{"type":"transfer","amount":999'), [body], "unfinished operational events cannot become executable payments");
   assert.deepEqual(response.recover('[{"type":"text","content":"第一行\n第二行"},]'), [{ type: "text", content: "第一行\n第二行" }]);
+  // A provider sometimes forgets to escape quotation marks inside JSON prose.
+  // Recover the whole sentence, not just the prefix before its first quote.
+  const quotedSentences = [
+    '问的时候客气一点，不要说"我今晚带爸妈来"，说家里人想登门感谢。',
+    '别说"我要去你家"。要说"家里人想登门感谢"。',
+    '英文也保留："hello", 然后继续说完整。',
+    '代码也保留："value": 不是新字段；"}" 和 "]" 都是原话。',
+    '字符串"}"和"]"均保留。',
+    '没说完的引号也照收："我今晚带爸妈来',
+    '转义和引号混合："原话"，路径 C:\\temp\\note，末尾完整。',
+  ];
+  const malformedMessage = (content, alias = "content") => '{"type":"text","name":"林","' + alias + '":"' +
+    JSON.stringify(content).slice(1, -1).replace(/\\"/g, '"') + '"}';
+  for (const content of quotedSentences) {
+    const expected = [{ type: "text", name: "林", content }, { type: "text", name: "林", content: "后面的消息不能消失或并入上一条。" }];
+    const malformed = '[' + malformedMessage(content) + ',' + JSON.stringify(expected[1]) + ']';
+    for (const input of [malformed, malformed.slice(0, -1), '{"messages":' + malformed + '}',
+      '```json\n' + malformed + '\n```', malformedMessage(content) + '\n' + JSON.stringify(expected[1])]) {
+      assert.deepEqual(response.recover(input), expected, input);
+    }
+    assert.deepEqual(response.recover(JSON.stringify(expected)), expected, "valid escaped JSON must be unchanged");
+    for (const alias of ["content", "message", "c", "dialogue"]) {
+      assert.equal(response.recover('[' + malformedMessage(content, alias) + ']')[0].content, content, alias);
+    }
+    let quoteCalls = 0;
+    const result = await response.complete(async () => { quoteCalls++; return openai(malformed); }, {
+      parse: (text) => response.inspect(text).items,
+    });
+    assert.equal(quoteCalls, 1, "local recovery must never make a paid repair call");
+    assert.equal(result.raw, malformed); assert.deepEqual(result.items, expected);
+  }
+  assert.deepEqual(response.recover('[{"type":"text","name":"林","content":"不要说"我要去你家"，后面收到的半句'), [
+    { type: "text", name: "林", content: '不要说"我要去你家"，后面收到的半句' },
+  ], "an actually truncated quoted sentence preserves everything received, without inventing an ending");
+  const nestedQuoted = { type: "quote_reply", name: "林", reply_content: '保留 "英文引号"。', data: { target: { content: '嵌套 { } [ ] 和 "引号"', labels: ["甲", "乙"] } } };
+  assert.deepEqual(response.recover('```json\n' + JSON.stringify([nestedQuoted]) + '\n```'), [nestedQuoted], "valid nested cards remain intact");
+  assert.deepEqual(response.recover('[' + malformedMessage(quotedSentences[0]) + ',{"type":"transfer","content":"说明"引号"完整","amount":999'), [
+    { type: "text", name: "林", content: quotedSentences[0] },
+  ], "fixing prose must not turn a malformed payment into an executable card");
+  const afterContent = '{"content":"别说"现在来"，说完整。","type":"text","name":"林","extra":{"labels":["甲","乙"]}}';
+  assert.deepEqual(response.recover('[' + afterContent + ']'), [{ type: "text", name: "林", content: '别说"现在来"，说完整。' }], "content before speaker/type metadata still preserves the complete sentence and speaker");
+  const chineseQuotes = { type: "text", name: "林", content: '中文“引号”和「引号」也不变，英文 "引号" 也保留。' };
+  assert.deepEqual(response.recover(JSON.stringify([chineseQuotes]) + '\n这是格式块之后的文字。'), [chineseQuotes, { type: "text", content: "这是格式块之后的文字。" }], "strict valid roots followed by prose are not swallowed into a value");
+  const quotedBatch = Array.from({ length: 512 }, (_, i) => ({ type: "text", name: "林", content: `第${i + 1}句："原话"的后半句也必须保留。` }));
+  assert.deepEqual(response.recover('[' + quotedBatch.map((item) => malformedMessage(item.content)).join(',') + ']'), quotedBatch, "large malformed batches do not merge speakers or cap the reply count");
   assert.deepEqual(response.recover('[{"t":"text","n":"林","c":"字段兼容"}]'), [{ t: "text", n: "林", c: "字段兼容", type: "text", name: "林", content: "字段兼容" }]);
   for (const count of [201, 512, 1024]) {
     const many = Array.from({ length: count }, (_, i) => ({ type: "text", name: "林", content: `完整的第${i + 1}条回复。` }));

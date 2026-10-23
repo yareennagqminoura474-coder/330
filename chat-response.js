@@ -140,11 +140,36 @@
 
   // Decode only characters actually received, including an unfinished final
   // string. Do not invent a continuation or run a second generation request.
-  function readString(text, start) {
+  function skipSpace(text, start) {
+    while (start < text.length && /\s/.test(text[start])) start++;
+    return start;
+  }
+  function endsValueString(text, end, container) {
+    let next = skipSpace(text, end);
+    if (next === text.length) return true;
+    if (text[next] === ",") {
+      next = skipSpace(text, next + 1);
+      if (next === text.length || text[next] === (container === "[" ? "]" : "}")) return true;
+      if (container === "[") return /["{\[\-\d]/.test(text[next]) || /^(?:true|false|null)\b/.test(text.slice(next));
+      // A comma in quoted speech is not an object-field separator. A real
+      // separator must be followed by a quoted key and colon, not more prose.
+      if (text[next] !== '"') return false;
+      const key = readString(text, next);
+      return key.complete && text[skipSpace(text, key.end)] === ":";
+    }
+    if (text[next] !== (container === "[" ? "]" : "}")) return false;
+    // Quoted examples such as "}" and "]" belong to the sentence too.
+    // Only accept closing containers at a structural boundary, not mid-prose.
+    while (next < text.length && /[\s}\]]/.test(text[next])) next++;
+    return next === text.length || /[,\[{]/.test(text[next]) || text.startsWith("```", next);
+  }
+  function readString(text, start, container = null) {
     let value = "";
     for (let i = start + 1; i < text.length; i++) {
       const char = text[i];
-      if (char === '"') return { value, end: i + 1, complete: true };
+      // Keys use strict quotes. In malformed value strings, an embedded quote
+      // is literal unless the following syntax can actually end this value.
+      if (char === '"' && (!container || endsValueString(text, i + 1, container))) return { value, end: i + 1, complete: true };
       if (char !== "\\") { value += char; continue; }
       const next = text[++i], escapes = { '"': '"', "\\": "\\", "/": "/", b: "\b", f: "\f", n: "\n", r: "\r", t: "\t" };
       if (next === undefined) { value += "\\"; break; }
@@ -153,23 +178,46 @@
     }
     return { value, end: text.length, complete: false };
   }
-  function readValue(text, start) {
-    if (text[start] === '"') return readString(text, start);
+  function scanContainer(text, start, tolerant) {
+    const stack = []; let previous = "";
+    for (let i = start; i < text.length; i++) {
+      const char = text[i];
+      if (char === '"') {
+        const container = stack.at(-1), isKey = container === "{" && ["{", ","].includes(previous);
+        const string = readString(text, i, tolerant && !isKey ? container : null);
+        if (!string.complete) break;
+        i = string.end - 1; previous = '"';
+      } else if (char === "{" || char === "[") { stack.push(char); previous = char; }
+      else if (char === "}" || char === "]") {
+        if (stack.pop() !== (char === "}" ? "{" : "[")) return { end: i + 1, complete: false };
+        if (!stack.length) return { end: i + 1, complete: true };
+        previous = char;
+      } else if (!/\s/.test(char)) previous = char;
+    }
+    return { end: text.length, complete: false };
+  }
+  function readValue(text, start, container = null) {
+    if (text[start] === '"') return readString(text, start, container);
     if (text[start] !== "{" && text[start] !== "[") {
       let end = start; while (end < text.length && !/[,\]}\s]/.test(text[end])) end++;
       return { end: Math.max(start + 1, end), complete: true };
     }
-    const stack = [];
-    for (let i = start; i < text.length; i++) {
-      const char = text[i];
-      if (char === '"') { const string = readString(text, i); if (!string.complete) break; i = string.end - 1; }
-      else if (char === "{" || char === "[") stack.push(char);
-      else if (char === "}" || char === "]") {
-        if (stack.pop() !== (char === "}" ? "{" : "[")) return { end: i + 1, complete: false };
-        if (!stack.length) return { end: i + 1, complete: true };
+    // Prefer strict JSON, including valid nested cards and roots followed by
+    // plain text. Quote recovery is only for a fragment that really is invalid.
+    const strict = scanContainer(text, start, false);
+    if (strict.complete) {
+      const next = skipSpace(text, strict.end);
+      // A quote before a literal brace can accidentally form a valid *prefix*
+      // of an invalid message. Do not accept that prefix unless its boundary
+      // also fits the parent, or the rest of this sentence would disappear.
+      const boundary = next === text.length || (container
+        ? text[next] === "," || text[next] === (container === "[" ? "]" : "}")
+        : !/["\]}:]/.test(text[next]));
+      if (boundary) {
+        try { JSON.parse(text.slice(start, strict.end)); return strict; } catch { /* Recover prose locally below. */ }
       }
     }
-    return { end: text.length, complete: false };
+    return scanContainer(text, start, true);
   }
   function recoverFragment(text) {
     try { return messageItems(JSON.parse(text)); } catch { /* Salvage complete messages and the received text tail locally. */ }
@@ -178,7 +226,7 @@
       while (i < text.length) {
         while (/[\s,]/.test(text[i] || "")) i++;
         if (i >= text.length || text[i] === "]") break;
-        const token = readValue(text, i);
+        const token = readValue(text, i, "[");
         if (text[i] === "{" || text[i] === "[") items.push(...recoverFragment(text.slice(i, token.end)));
         i = token.end;
       }
@@ -194,7 +242,7 @@
       if (text[i++] !== ":") break;
       while (/\s/.test(text[i] || "")) i++;
       if (i >= text.length) break;
-      const token = readValue(text, i);
+      const token = readValue(text, i, "{");
       if (text[i] === '"') fields[key.value] = token.value;
       else if (["messages", "replies"].includes(key.value) && text[i] === "[") nested.push(...recoverFragment(text.slice(i, token.end)));
       i = token.end;

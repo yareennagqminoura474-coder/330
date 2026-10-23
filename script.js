@@ -17533,7 +17533,10 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
                     _0x200523(0x45e)));
               else {
                 let _0x142765 = _0xc8f23a(_0x4c82bb, _0x481875);
-                _0x770263 = _0xce6e2b(_0x142765)["replace"](
+                // Ordinary prose is text, not HTML. Keep literal <...> words
+                // visible; explicit HTML cards and user rendering rules above
+                // still use their existing dedicated branches.
+                _0x770263 = _0xce6e2b(escapeHTML(_0x142765))["replace"](
                   /\n/g,
                   _0x200523(0x70f),
                 );
