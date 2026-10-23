@@ -82,7 +82,7 @@ function appHarness() {
   const source = fs.readFileSync("script.js", "utf8");
   const button = { disabled: false, dataset: { idleHtml: "▶" }, setAttribute() {} };
   const reroll = { disabled: true, dataset: {}, title: "重抽" };
-  const input = { disabled: false };
+  const input = { disabled: false, dataset: {} };
   const controls = { querySelectorAll: () => [button, reroll, input] };
   const errors = [], rendered = [], saved = [], requests = [];
   let rollbacks = 0;
@@ -114,7 +114,7 @@ function appHarness() {
     _0x57e676: async () => {},
     _0x1f9d16: async (title, options) => options[0]?.value,
     _0x1e5953: async (...args) => errors.push(args), _ephoneRestoreChatScrolling() {},
-    _0xephoneSpectatorGenerating: false, _0xephoneSpectatorController: null, _0xephoneGenerationController: null,
+    _0xephoneSpectatorGenerating: false, _0xephoneSpectatorController: null, _0xephoneGenerationController: null, _ephoneReplyOwner: null,
     lastRawAiResponse: "", lastResponseTimestamps: [],
     _ephoneApiFetch: async (url, options) => {
       requests.push({ url, options, body: JSON.parse(options.body) });

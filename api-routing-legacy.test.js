@@ -21,7 +21,7 @@ function harness(missing = false) {
     _0x24f906: { chats: { put: async () => {} }, doubanPosts: { get: async () => ({ title: "帖子", content: "今天的见闻", author: "我", comments: [{ commenter: "我", content: "你怎么看" }] }) } },
     _0x5a302c: { isActive: true, activeChatId: chat.id, callHistory: [], preCallContext: "聊天摘要", initiator: "user", isUserParticipating: true },
     _0x7f3744: chat.id, _0x55cb08: "post-id", _0x494a0a: { players: [{ id: "user", name: "我", isAlive: true }] }, _0x6b54d: {},
-    _0xephoneSpectatorGenerating: false, _0xephoneGenerationController: null, _0xff446d: {},
+    _0xephoneSpectatorGenerating: false, _0xephoneGenerationController: null, _ephoneReplyOwner: null, _0xff446d: {},
     _0x49ef5f: async (history) => history, _0x514c4c: () => "", _0x4898fd: () => "", _0x31d550: () => "", _0x4b14d7: () => "周四",
     _0x20e281: () => ({}), GEMINI_API_URL: "https://generativelanguage.googleapis.com/v1beta/models",
     _0x1e5953: async (...args) => alerts.push(args), _0xff8a5b() {}, _0x3922f3() {}, _0x598116() {}, _0x28010b() {}, _0x3d226f: () => "小游戏上下文",

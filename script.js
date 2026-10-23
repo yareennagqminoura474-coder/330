@@ -9142,6 +9142,7 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
     _0xephoneRerollInstruction = "",
     _0xephoneIsRerolling = ![],
     _0xephoneGenerationController = null,
+    _ephoneReplyOwner = null,
     _0xc5146b = null,
     _0x5ea87c = ![],
     _0x38870c = null,
@@ -14928,7 +14929,7 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
   function _ephoneSyncRerollButtons(chat) {
     if (!chat || String(_0x5ea3c1.activeChatId) !== String(chat.id)) return;
     const kind = chat.isSpectatorGroup ? "spectator" : "standard";
-    const allowed = Boolean(_ephoneGetRerollBatch(chat, kind));
+    const allowed = !_0xephoneSpectatorGenerating && !_0xephoneGenerationController && Boolean(_ephoneGetRerollBatch(chat, kind));
     const ids = chat.isSpectatorGroup
       ? ["spectator-reroll-btn"]
       : ["regenerate-btn", "reroll-with-note-btn"];
@@ -14996,6 +14997,57 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
       _ephoneSyncRerollButtons(_0x5ea3c1.chats[_0x5ea3c1.activeChatId]);
       _ephoneRestoreChatScrolling();
     }
+  }
+  function _ephoneReplyMatchesActive(kind) {
+    return Boolean(_ephoneReplyOwner && _ephoneReplyOwner.kind === kind &&
+      String(_ephoneReplyOwner.chatId) === String(_0x5ea3c1.activeChatId) &&
+      _ephoneReplyOwner.spaceId === (window.EPHONE_SPACE_ID || "default"));
+  }
+  function _ephoneSyncReplyControls() {
+    const chat = _0x5ea3c1.chats[_0x5ea3c1.activeChatId];
+    const group = Boolean(chat?.isGroup || chat?.isSpectatorGroup);
+    const busy = Boolean(_0xephoneSpectatorGenerating || _0xephoneGenerationController);
+    const owns = chat && _ephoneReplyMatchesActive(chat.isSpectatorGroup ? "spectator" : "standard");
+    const stopping = Boolean(owns && _ephoneReplyOwner.controller.signal.aborted);
+    const bars = '<span class="ephone-generating-bars" aria-hidden="true"><i></i><i></i><i></i></span><span class="ephone-generating-stop" aria-hidden="true"></span>';
+    for (const [id, kind, idleLabel] of [["wait-reply-btn", "standard", "等待回复"], ["spectator-propel-btn", "spectator", "推进剧情"]]) {
+      const button = document.getElementById(id); if (!button) continue;
+      if (!button.dataset.idleHtml) button.dataset.idleHtml = button.innerHTML || "▶";
+      const ownButton = busy && owns && _ephoneReplyOwner.kind === kind;
+      const state = ownButton ? stopping ? "stopping" : "running" : busy ? "blocked" : "idle";
+      button.dataset.replyState = state;
+      button.disabled = state === "blocked" || state === "stopping";
+      button.classList?.toggle("is-generating", Boolean(ownButton));
+      button.setAttribute("aria-pressed", String(Boolean(ownButton)));
+      button.setAttribute("aria-busy", String(Boolean(ownButton)));
+      button.title = ownButton ? stopping ? "正在停止回复" : "停止回复" : busy ? "其他聊天正在回复" : idleLabel;
+      button.setAttribute("aria-label", button.title);
+      button.innerHTML = ownButton ? bars : button.dataset.idleHtml;
+    }
+    // Navigation rebuilds the watch toolbar. Capture/restore each LIVE control,
+    // rather than holding only the detached nodes from the start of a request.
+    document.querySelector(".ephone-spectator-controls")?.querySelectorAll("button, textarea").forEach((element) => {
+      if (element === document.getElementById("spectator-propel-btn")) return;
+      if (busy) {
+        if (!Object.hasOwn(element.dataset, "replyWasDisabled")) element.dataset.replyWasDisabled = String(element.disabled);
+        element.disabled = true;
+      } else if (Object.hasOwn(element.dataset, "replyWasDisabled")) {
+        element.disabled = element.dataset.replyWasDisabled === "true";
+        delete element.dataset.replyWasDisabled;
+      }
+    });
+    const typing = document.getElementById("typing-indicator");
+    if (typing) {
+      typing.textContent = stopping ? "正在停止回复…" : "成员们正在输入...";
+      typing.style.display = busy && owns && group ? "block" : "none";
+    }
+    const title = document.getElementById("chat-header-title");
+    if (title && chat) {
+      title.style.opacity = "1";
+      title.textContent = busy && owns && !group ? stopping ? "正在停止回复…" : "对方正在输入..." : chat.name;
+      title.classList.toggle("typing-status", Boolean(busy && owns && !group));
+    }
+    _ephoneSyncRerollButtons(chat);
   }
   function _ephoneBuildSpectatorControls(chat) {
     const host = document.getElementById("chat-lock-content");
@@ -15331,6 +15383,7 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
           (_0x4679ba[_0x2ad8a8(0x791)][_0x2ad8a8(0x1a1c)] = _0x2ad8a8(0x2fb)));
     }
     _ephoneSyncRerollButtons(_0xc04a0d);
+    _ephoneSyncReplyControls();
     _0x4cac0d["innerHTML"] = "";
     const _0x1e4355 = _0xc04a0d[_0x2ad8a8(0x8e6)];
     _0x1fc256 = 0x0;
@@ -15361,6 +15414,7 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
       (_0x7ca9ca[_0x2ad8a8(0x791)][_0x2ad8a8(0xab9)] = _0x2ad8a8(0x1099)),
       (_0x7ca9ca[_0x2ad8a8(0x71a)] = _0x2ad8a8(0x834)),
       _0x4cac0d[_0x2ad8a8(0x3fe)](_0x7ca9ca));
+    _ephoneSyncReplyControls();
     const _0x53098e = _0x4cac0d[_0x2ad8a8(0xa9b)](_0x2ad8a8(0x13ab)),
       _0x174b29 = [];
     (_0x53098e[_0x2ad8a8(0x9bb)]((_0x4051e2) => {
@@ -17929,7 +17983,8 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
     const _0xd07074 = _0x3ce505;
     if (!_0x5ea3c1[_0xd07074(0x1aba)]) return;
     if (_0xephoneSpectatorGenerating) {
-      _0xephoneSpectatorController?.abort();
+      if (_ephoneReplyMatchesActive("spectator")) _0xephoneSpectatorController?.abort();
+      _ephoneSyncReplyControls();
       return;
     }
     if (_0xephoneGenerationController || _ephoneSpectatorMoneyBusy || window.isEPhoneMutationBusy?.()) return;
@@ -17938,21 +17993,11 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
     _0xephoneSpectatorController = _ephoneSpectatorController;
     const _0x4203ee = _0x5ea3c1["activeChatId"],
       _0x326f3d = _0x5ea3c1[_0xd07074(0x1255)][_0x4203ee];
+    _ephoneReplyOwner = { kind: "spectator", chatId: _0x4203ee, spaceId: window.EPHONE_SPACE_ID || "default", controller: _ephoneSpectatorController };
+    _ephoneSyncReplyControls();
     let _ephoneSpectatorTimePreparation = null;
     let _ephoneSpectatorTimeCommitted = false;
     ((lastRawAiResponse = ""), (lastResponseTimestamps = []));
-    const _0x23a16d = document[_0xd07074(0x1023)]("spectator-propel-btn");
-    const _ephoneSpectatorControls = document.querySelector(".ephone-spectator-controls");
-    const _ephoneSpectatorDisabledStates = new Map();
-    _ephoneSpectatorControls?.querySelectorAll("button, textarea").forEach((element) => {
-      _ephoneSpectatorDisabledStates.set(element, element.disabled);
-      element.disabled = element !== _0x23a16d;
-    });
-    _0x23a16d &&
-      ((_0x23a16d.disabled = false),
-      (_0x23a16d.innerHTML = '<span class="ephone-generating-bars" aria-hidden="true"><i></i><i></i><i></i></span><span class="ephone-generating-stop" aria-hidden="true"></span>'),
-      (_0x23a16d.title = "停止回复"),
-      (_0x23a16d.setAttribute("aria-label", "停止回复")));
     _0xff8a5b(_0x4203ee, !![]);
     try {
       const {
@@ -18280,13 +18325,9 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
     } finally {
       _0xephoneSpectatorGenerating = false;
       if (_0xephoneSpectatorController === _ephoneSpectatorController) _0xephoneSpectatorController = null;
-      for (const [element, wasDisabled] of _ephoneSpectatorDisabledStates) element.disabled = wasDisabled;
-      (_0x23a16d &&
-        ((_0x23a16d[_0xd07074(0x1794)] = ![]),
-        (_0x23a16d.innerHTML = _0x23a16d.dataset.idleHtml || "▶"),
-        (_0x23a16d.title = "推进剧情"),
-        (_0x23a16d.setAttribute("aria-label", "推进剧情"))),
-        _0xff8a5b(_0x4203ee, ![]));
+      if (_ephoneReplyOwner?.controller === _ephoneSpectatorController) _ephoneReplyOwner = null;
+      _ephoneSyncReplyControls();
+      _0xff8a5b(_0x4203ee, ![]);
       if (_ephoneSpectatorTimeCommitted) {
         _ephoneRememberReplyBatch(_0x326f3d, "spectator");
         await _0x24f906.chats.put(_0x326f3d);
@@ -18296,16 +18337,7 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
     }
   }
   function _0xephoneSetGenerating(_0xActive) {
-    const _0xButton = document.getElementById("wait-reply-btn");
-    if (!_0xButton) return;
-    if (!_0xButton.dataset.idleHtml) _0xButton.dataset.idleHtml = _0xButton.innerHTML;
-    _0xButton.classList.toggle("is-generating", Boolean(_0xActive));
-    _0xButton.setAttribute("aria-pressed", String(Boolean(_0xActive)));
-    _0xButton.title = _0xActive ? "停止回复" : "等待回复";
-    _0xButton.setAttribute("aria-label", _0xButton.title);
-    _0xButton.innerHTML = _0xActive
-      ? '<span class="ephone-generating-bars" aria-hidden="true"><i></i><i></i><i></i></span><span class="ephone-generating-stop" aria-hidden="true"></span>'
-      : _0xButton.dataset.idleHtml;
+    _ephoneSyncReplyControls();
   }
   function _0xephoneUpdateSendAsButton() {
     const _0xButton = document.getElementById("send-as-character-btn");
@@ -18350,7 +18382,8 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
     if (!_0x5ea3c1["activeChatId"]) return;
     if (_0xephoneSpectatorGenerating) return;
     if (_0xephoneGenerationController) {
-      _0xephoneGenerationController.abort();
+      if (_ephoneReplyMatchesActive("standard")) _0xephoneGenerationController.abort();
+      _ephoneSyncReplyControls();
       return;
     }
     if (window.isEPhoneMutationBusy?.()) return;
@@ -18358,6 +18391,7 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
       _0xephoneGenerationController = new AbortController();
     }
     const _0xephoneController = _0xephoneGenerationController;
+    _ephoneReplyOwner = { kind: "standard", chatId: _0x5ea3c1.activeChatId, spaceId: window.EPHONE_SPACE_ID || "default", controller: _0xephoneController };
     _0xephoneSetGenerating(!![]);
     const _0x973a29 = _0x5ea3c1[_0x25f1e5(0x1aba)],
       _0x5b16cb = _0x5ea3c1[_0x25f1e5(0x1255)][_0x5ea3c1[_0x25f1e5(0x1aba)]],
@@ -18366,9 +18400,7 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
           _0x25f1e5(0x1928)
         ]("active") && _0x5ea3c1[_0x25f1e5(0x1aba)] === _0x973a29;
     _0xff8a5b(_0x973a29, !![]);
-    const _0x47be92 = document[_0x25f1e5(0x1023)](_0x25f1e5(0x80e)),
-      _0x4dc728 = document["getElementById"]("typing-indicator"),
-      _0x4fcd36 = document[_0x25f1e5(0x8ad)](
+    const _0x4fcd36 = document[_0x25f1e5(0x8ad)](
         _0x25f1e5(0x5a9) + _0x973a29 + "\x22]",
       ),
       _0x1f7038 = _0x4fcd36
@@ -18376,18 +18408,6 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
         : null;
     _0x1f7038 &&
       _0x1f7038[_0x25f1e5(0xd57)][_0x25f1e5(0x17db)](_0x25f1e5(0x1bc7));
-    _0x5b16cb[_0x25f1e5(0x126)]
-      ? _0x4dc728 &&
-        ((_0x4dc728[_0x25f1e5(0x71a)] = "成员们正在输入..."),
-        (_0x4dc728[_0x25f1e5(0x791)][_0x25f1e5(0xab9)] = _0x25f1e5(0xd87)))
-      : _0x47be92 &&
-        ((_0x47be92[_0x25f1e5(0x791)][_0x25f1e5(0x24c)] = 0x0),
-        setTimeout(() => {
-          const _0x8d2d1c = _0x25f1e5;
-          ((_0x47be92[_0x8d2d1c(0x71a)] = _0x8d2d1c(0x834)),
-            _0x47be92[_0x8d2d1c(0xd57)][_0x8d2d1c(0x17db)]("typing-status"),
-            (_0x47be92[_0x8d2d1c(0x791)][_0x8d2d1c(0x24c)] = 0x1));
-        }, 0xc8));
     let _0xephoneTimePreparation = null,
       _0xephoneTimeCommitted = ![];
     try {
@@ -23473,24 +23493,9 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
       }
       (_0xephoneGenerationController === _0xephoneController &&
         (_0xephoneGenerationController = null),
+        _ephoneReplyOwner?.controller === _0xephoneController && (_ephoneReplyOwner = null),
         _0xephoneSetGenerating(![]),
         _0xff8a5b(_0x973a29, ![]),
-        _0x5b16cb[_0x25f1e5(0x126)]
-          ? _0x4dc728 &&
-            (_0x4dc728[_0x25f1e5(0x791)]["display"] = _0x25f1e5(0x1099))
-          : _0x47be92 &&
-            _0x5ea3c1[_0x25f1e5(0x1255)][_0x973a29] &&
-            ((_0x47be92["style"][_0x25f1e5(0x24c)] = 0x0),
-            setTimeout(() => {
-              const _0xde4f95 = _0x25f1e5;
-              // The user may have switched chats/spaces during this animation.
-              if (_0x5ea3c1[_0xde4f95(0x1aba)] !== _0x973a29 ||
-                  !_0x5ea3c1.chats[_0x973a29] || !_0x47be92.isConnected) return;
-              ((_0x47be92[_0xde4f95(0x71a)] =
-                _0x5ea3c1["chats"][_0x973a29][_0xde4f95(0xeda)]),
-                _0x47be92[_0xde4f95(0xd57)]["remove"](_0xde4f95(0x267)),
-                (_0x47be92[_0xde4f95(0x791)][_0xde4f95(0x24c)] = 0x1));
-            }, 0xc8)),
         _0x4bb316(),
         _0x17004b && _0x2586fa(_0x973a29),
         _0x257b23());
