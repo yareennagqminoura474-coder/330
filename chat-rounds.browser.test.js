@@ -64,6 +64,15 @@ const { chromium } = require("playwright-core");
       assert.ok(await target.isVisible());
       const bottom = await page.locator("#reply-round-nav").evaluate(el => el.getBoundingClientRect().bottom);
       assert.ok((await target.boundingBox()).y >= bottom - 2, "the first sentence is below the navigation/header, not covered by buttons");
+      await separateLayout();
+    }
+    async function separateLayout() {
+      const bounds = await page.evaluate(() => {
+        const nav = document.getElementById("reply-round-nav").getBoundingClientRect();
+        const messages = document.getElementById("chat-messages").getBoundingClientRect();
+        return { navBottom: nav.bottom, messagesTop: messages.top };
+      });
+      assert.ok(bounds.messagesTop >= bounds.navBottom - 1, "the toolbar must be physically outside the scrolling viewport, including during manual scrolling " + JSON.stringify(bounds));
     }
     async function continuous(id) {
       const actual = await page.locator("#chat-messages > .message-wrapper").evaluateAll(rows => rows.map(row => Number(row.querySelector("[data-timestamp]")?.dataset.timestamp ?? row.dataset.timestamp)));
@@ -85,11 +94,23 @@ const { chromium } = require("playwright-core");
       await open(id); const before = await stored(id);
       await jump(false, 5000); await continuous(id);
       if (id === "round-watch") {
-        const screenshot = path.join(require("node:os").tmpdir(), "ephone-round-controls-v115.png");
+        const screenshot = path.join(require("node:os").tmpdir(), "ephone-round-controls-v116.png");
         await page.screenshot({ path: screenshot }); console.log("SCREENSHOT " + screenshot);
       }
       await jump(true, 3000); await continuous(id);
-      await jump(false, 5000);
+      await jump(false, 3000);
+      await jump(true, 1000); await continuous(id);
+      await jump(false, 1000);
+      assert.equal(await page.locator("#reply-round-previous-btn").isDisabled(), true, "previous at the first round must stop, not wrap to a newer round");
+      // Simulate moving the reading position into the middle of an older round.
+      await page.locator('.message-bubble[data-timestamp="3100"]').evaluate(node => {
+        const scroller = document.getElementById("chat-messages");
+        scroller.dispatchEvent(new WheelEvent("wheel", { deltaY: 100 }));
+        scroller.scrollTop += node.getBoundingClientRect().top - scroller.getBoundingClientRect().top - 20;
+      });
+      await page.waitForTimeout(80); await separateLayout();
+      await jump(false, 3000); await jump(true, 1000);
+      await page.locator("#reply-round-latest-btn").click(); await jump(false, 5000);
       await menu(5001); await page.locator("#convert-message-narration-btn").click();
       await awaitType(id, 5001, "narration", "旁白");
       assert.ok((await page.locator('.message-bubble[data-timestamp="5001"]').getAttribute("class")).includes("narration-bubble"));
@@ -131,6 +152,8 @@ const { chromium } = require("playwright-core");
       assert.ok(generated.length >= 3);
       assert.ok(generated.every(m => m.ephoneReplyRoundId));
       assert.equal(new Set(generated.map(m => m.ephoneReplyRoundId)).size, 1);
+      await jump(false, 5000); // New background replies cannot change the round being read.
+      await page.locator("#reply-round-latest-btn").click();
       await jump(true, 5000); await continuous(id);
       await page.locator("#reply-round-latest-btn").click();
       assert.ok(await page.locator("#chat-messages").evaluate(el => el.scrollHeight - el.scrollTop - el.clientHeight < 3));
@@ -150,6 +173,6 @@ const { chromium } = require("playwright-core");
     assert.deepEqual((await stored("round-normal")).history, otherBefore.history);
     await open("round-empty"); assert.equal(await page.locator("#reply-round-nav").isVisible(), false);
     assert.deepEqual(errors, []);
-    console.log("PASS: watch/normal/private mobile round jumps auto-load 200+ replies without gaps, preserve reading position, convert prose both ways with role selection and exact IDs/time, synchronize director and persist, keep parenthesized speech explicit, tag actual reply rounds and make no extra API calls");
+    console.log("PASS: watch/normal/private navigation has a non-overlapping reserved toolbar, current/previous follow the reading position and repeated previous stops at the first round; manual scrolling and background replies keep correct rounds, 200+ replies load without gaps, conversion/director/IDs/time persist with no extra API calls");
   } finally { await browser.close(); await new Promise(resolve => server.close(resolve)); }
 })().catch(error => { console.error(error); process.exitCode = 1; });

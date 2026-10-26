@@ -15175,19 +15175,46 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
   }
   let _ephoneHistoryView = null;
   let _ephoneMessageKindBusy = false;
+  function _ephoneReadingRoundReference(view) {
+    const scroller = document.getElementById("chat-messages");
+    if (!view?.ready || view !== _ephoneHistoryView || !scroller) return null;
+    if (view.readingRoundId && Math.abs(scroller.scrollTop - view.roundCursorScrollTop) < 2)
+      return { roundId: view.readingRoundId };
+    // At the live end, a short new round may share the screen with the old one.
+    if (scroller.scrollHeight - scroller.scrollTop - scroller.clientHeight < 3) return null;
+    const top = scroller.getBoundingClientRect().top + 2;
+    for (const row of scroller.querySelectorAll(":scope > .message-wrapper")) {
+      if (row.getBoundingClientRect().bottom <= top) continue;
+      const node = row.matches("[data-timestamp]") ? row : row.querySelector("[data-timestamp]");
+      if (node) return { timestamp: node.dataset.timestamp };
+    }
+    return null;
+  }
+  function _ephoneLayoutRoundNavigation() {
+    const root = document.getElementById("chat-interface-screen"), nav = document.getElementById("reply-round-nav");
+    const header = root?.querySelector(":scope > .header");
+    if (!root || !nav || !header) return;
+    const enabled = !nav.hidden;
+    root.classList.toggle("has-round-navigation", enabled);
+    if (!enabled) return;
+    const headerBottom = header.offsetTop + header.offsetHeight;
+    const top = `${headerBottom}px`, readingTop = `${headerBottom + nav.offsetHeight}px`;
+    if (nav.style.top !== top) nav.style.top = top;
+    if (root.style.getPropertyValue("--ephone-reading-top") !== readingTop)
+      root.style.setProperty("--ephone-reading-top", readingTop);
+  }
   function _ephoneSyncRoundNavigation(chat) {
     const nav = document.getElementById("reply-round-nav");
     if (!nav || !window.ephoneChatRounds || String(chat?.id) !== String(_0x5ea3c1.activeChatId)) return;
     const count = window.ephoneChatRounds.rounds(chat).length;
     nav.hidden = !count;
+    const previous = window.ephoneChatRounds.target(chat, true, _ephoneReadingRoundReference(_ephoneHistoryView));
     const busy = Boolean(_ephoneHistoryView?.navigating);
-    for (const [id, allowed] of [["reply-round-current-btn", count > 0], ["reply-round-previous-btn", count > 1], ["reply-round-latest-btn", true]]) {
+    for (const [id, allowed] of [["reply-round-current-btn", count > 0], ["reply-round-previous-btn", Boolean(previous)], ["reply-round-latest-btn", true]]) {
       const button = document.getElementById(id);
       if (button) button.disabled = busy || !allowed;
     }
-    // This floating strip sits below the existing header, not in the crowded composer.
-    const header = document.querySelector("#chat-interface-screen > .header");
-    if (header) nav.style.top = `${header.offsetTop + header.offsetHeight + 4}px`;
+    _ephoneLayoutRoundNavigation();
   }
   function _ephoneMessageNode(timestamp) {
     return [...document.querySelectorAll("#chat-messages [data-timestamp]")]
@@ -15196,7 +15223,7 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
   async function _ephoneJumpReplyRound(previous) {
     const view = _ephoneHistoryView, chat = _0x5ea3c1.chats[_0x5ea3c1.activeChatId];
     if (!view?.ready || view.chat !== chat || view.navigating) return;
-    const target = window.ephoneChatRounds?.target(chat, previous);
+    const target = window.ephoneChatRounds?.target(chat, previous, _ephoneReadingRoundReference(view));
     if (!target) return;
     view.navigating = true; view.autoBottom = false; view.keepReadingRound = true;
     view.releaseAnchor?.();
@@ -15212,8 +15239,10 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
       await new Promise(resolve => requestAnimationFrame(resolve));
       if (view !== _ephoneHistoryView || !node.isConnected) return;
       const nav = document.getElementById("reply-round-nav");
-      const top = Math.max(scroller.getBoundingClientRect().top, nav.getBoundingClientRect().bottom + 8);
+      const top = scroller.getBoundingClientRect().top + 8;
       scroller.scrollTop += node.getBoundingClientRect().top - top;
+      view.readingRoundId = target.roundId;
+      view.roundCursorScrollTop = scroller.scrollTop;
       document.querySelectorAll("#chat-messages .reply-round-target").forEach(row => row.classList.remove("reply-round-target"));
       node.classList.add("reply-round-target");
       nav.dataset.targetTimestamp = String(target.timestamp);
@@ -15291,7 +15320,10 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
     const restore = () => {
       if (!active || view !== _ephoneHistoryView || !node.isConnected) return;
       const delta = node.getBoundingClientRect().top - scroller.getBoundingClientRect().top - offset;
-      if (Math.abs(delta) > 0.5) scroller.scrollTop += delta;
+      if (Math.abs(delta) > 0.5) {
+        scroller.scrollTop += delta;
+        if (view.readingRoundId) view.roundCursorScrollTop = scroller.scrollTop;
+      }
     };
     // Late image/layout changes above the reading position must not move it.
     const observer = new ResizeObserver(restore);
@@ -64460,12 +64492,16 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
     document.getElementById("reply-round-latest-btn")?.addEventListener("click", () => {
       const view = _ephoneHistoryView;
       if (!view) return;
-      view.releaseAnchor?.(); view.keepReadingRound = false; view.autoBottom = true;
+      view.releaseAnchor?.(); view.keepReadingRound = false; view.autoBottom = true; view.readingRoundId = null;
       _0x3875f9.scrollTop = _0x3875f9.scrollHeight;
+      _ephoneSyncRoundNavigation(view.chat);
     });
     document.getElementById("convert-message-narration-btn")?.addEventListener("click", () => _ephoneConvertSelectedMessage("narration"));
     document.getElementById("convert-message-character-btn")?.addEventListener("click", () => _ephoneConvertSelectedMessage("text"));
     window.addEventListener("resize", () => _ephoneSyncRoundNavigation(_0x5ea3c1.chats[_0x5ea3c1.activeChatId]));
+    const roundLayoutObserver = new ResizeObserver(_ephoneLayoutRoundNavigation);
+    for (const node of [document.querySelector("#chat-interface-screen > .header"), document.getElementById("reply-round-nav")])
+      if (node) roundLayoutObserver.observe(node);
     for (const event of ["touchstart", "wheel", "pointerdown", "keydown"]) {
       _0x3875f9.addEventListener(event, () => {
         if (_ephoneHistoryView) _ephoneHistoryView.autoBottom = false;
@@ -64473,6 +64509,15 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
     }
     _0x3875f9[_0x274136(0x111e)](_0x274136(0xee2), () => {
       const _0x51cd97 = _0x274136;
+      const view = _ephoneHistoryView;
+      if (view && !view.navigating && !view.roundSyncPending) {
+        if (view.readingRoundId && Math.abs(_0x3875f9.scrollTop - view.roundCursorScrollTop) >= 2) view.readingRoundId = null;
+        view.roundSyncPending = true;
+        requestAnimationFrame(() => {
+          view.roundSyncPending = false;
+          if (view === _ephoneHistoryView) _ephoneSyncRoundNavigation(view.chat);
+        });
+      }
       if (_0x3875f9[_0x51cd97(0xa06)] < 0x1 && !_0x5baa4a && !_ephoneHistoryView?.navigating) {
         _ephoneHistoryStart(_ephoneHistoryView) > 0 && _0x1dfcdf();
       }

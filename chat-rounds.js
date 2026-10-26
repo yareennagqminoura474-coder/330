@@ -49,8 +49,17 @@
     }
     return result.sort((a, b) => a.index - b.index);
   }
-  function target(chat, previous = false) {
-    const found = rounds(chat).at(previous ? -2 : -1);
+  function target(chat, previous = false, reference = null) {
+    const all = rounds(chat);
+    let current = all.length - 1;
+    const pinned = reference?.roundId ? all.findIndex(round => round.id === reference.roundId) : -1;
+    if (pinned >= 0) current = pinned;
+    else if (reference?.timestamp != null) {
+      const index = (chat?.history || []).findIndex(message => String(message.timestamp) === String(reference.timestamp));
+      if (index >= 0) current = Math.max(0, all.findLastIndex(round => round.index <= index));
+    }
+    const index = current - (previous ? 1 : 0);
+    const found = index >= 0 ? all[index] : null;
     return found ? { index: found.index, timestamp: found.messages[0].timestamp, roundId: found.id } : null;
   }
   function speakers(chat) {

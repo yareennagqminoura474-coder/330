@@ -9,6 +9,12 @@ const chat = { id: "group", isGroup: true, members: [{ originalName: "林" }, { 
 assert.deepEqual(core.rounds(chat).map(r => r.messages[0].timestamp), [1, 4, 8]);
 assert.equal(core.target(chat).timestamp, 8);
 assert.equal(core.target(chat, true).timestamp, 4);
+assert.equal(core.target(chat, false, { timestamp: 999 }).timestamp, 4, "current means the round containing the reading position, not the newest round");
+assert.equal(core.target(chat, true, { timestamp: 999 }).timestamp, 1, "previous is relative to the currently read round, using history order not numeric IDs");
+assert.equal(core.target(chat, false, { roundId: "legacy:4" }).timestamp, 4);
+assert.equal(core.target(chat, true, { roundId: "legacy:4" }).timestamp, 1);
+assert.equal(core.target(chat, true, { timestamp: 2 }), null, "previous on the first round cannot wrap to the newest round");
+assert.equal(core.target(chat, false, { timestamp: 7 }).timestamp, 4, "intervening user/role messages belong to the preceding reading position");
 assert.equal(core.target({ history: [] }), null);
 assert.equal(core.target({ history: [text(1)] }, true), null);
 assert.deepEqual(core.speakers(chat), ["林", "杨"]);
