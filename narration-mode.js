@@ -247,6 +247,7 @@
         /^(?:（[^（）\r\n]{1,1000}）|\([^()\r\n]{1,1000}\)|\*[^*\r\n]{1,1000}\*)$/;
 
       actionBubbles.forEach((bubble) => {
+        if (bubble.dataset.messageKindOverride === "text") return;
         const content = bubble.querySelector(":scope > .content");
         const rawText = content ? content.textContent.trim() : "";
         if (!fullActionPattern.test(rawText) || !isActionMarker(rawText, rawText, 0)) return;

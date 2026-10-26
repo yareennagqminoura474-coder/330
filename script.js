@@ -14924,6 +14924,7 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
     const editorTimestamps = chat.history.filter((message) => editable.has(String(message.timestamp)) && _ephoneEditableReplyMessage(message)).map((message) => message.timestamp);
     if (editorTimestamps.length) chat.ephoneReplyEditor = { timestamps: editorTimestamps,
       privateMessages: typeof lastPrivateMessagesSent === "undefined" ? [] : lastPrivateMessagesSent.map((message) => ({ ...message })) };
+    _ephoneSyncRoundNavigation(chat);
     _ephoneSyncRerollButtons(chat);
   }
   function _ephoneSyncRerollButtons(chat) {
@@ -15173,6 +15174,105 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
     });
   }
   let _ephoneHistoryView = null;
+  let _ephoneMessageKindBusy = false;
+  function _ephoneSyncRoundNavigation(chat) {
+    const nav = document.getElementById("reply-round-nav");
+    if (!nav || !window.ephoneChatRounds || String(chat?.id) !== String(_0x5ea3c1.activeChatId)) return;
+    const count = window.ephoneChatRounds.rounds(chat).length;
+    nav.hidden = !count;
+    const busy = Boolean(_ephoneHistoryView?.navigating);
+    for (const [id, allowed] of [["reply-round-current-btn", count > 0], ["reply-round-previous-btn", count > 1], ["reply-round-latest-btn", true]]) {
+      const button = document.getElementById(id);
+      if (button) button.disabled = busy || !allowed;
+    }
+    // This floating strip sits below the existing header, not in the crowded composer.
+    const header = document.querySelector("#chat-interface-screen > .header");
+    if (header) nav.style.top = `${header.offsetTop + header.offsetHeight + 4}px`;
+  }
+  function _ephoneMessageNode(timestamp) {
+    return [...document.querySelectorAll("#chat-messages [data-timestamp]")]
+      .find(node => String(node.dataset.timestamp) === String(timestamp))?.closest(".message-wrapper");
+  }
+  async function _ephoneJumpReplyRound(previous) {
+    const view = _ephoneHistoryView, chat = _0x5ea3c1.chats[_0x5ea3c1.activeChatId];
+    if (!view?.ready || view.chat !== chat || view.navigating) return;
+    const target = window.ephoneChatRounds?.target(chat, previous);
+    if (!target) return;
+    view.navigating = true; view.autoBottom = false; view.keepReadingRound = true;
+    view.releaseAnchor?.();
+    _ephoneSyncRoundNavigation(chat);
+    try {
+      while (_0x5baa4a && view === _ephoneHistoryView) await new Promise(resolve => setTimeout(resolve, 16));
+      if (view !== _ephoneHistoryView) return;
+      if (target.index < _ephoneHistoryStart(view)) await _0x1dfcdf(target.index);
+      if (view !== _ephoneHistoryView || String(chat.id) !== String(_0x5ea3c1.activeChatId)) return;
+      const node = _ephoneMessageNode(target.timestamp), scroller = document.getElementById("chat-messages");
+      if (!node) throw new Error("目标消息尚未加载，请重试。");
+      view.releaseAnchor?.();
+      await new Promise(resolve => requestAnimationFrame(resolve));
+      if (view !== _ephoneHistoryView || !node.isConnected) return;
+      const nav = document.getElementById("reply-round-nav");
+      const top = Math.max(scroller.getBoundingClientRect().top, nav.getBoundingClientRect().bottom + 8);
+      scroller.scrollTop += node.getBoundingClientRect().top - top;
+      document.querySelectorAll("#chat-messages .reply-round-target").forEach(row => row.classList.remove("reply-round-target"));
+      node.classList.add("reply-round-target");
+      nav.dataset.targetTimestamp = String(target.timestamp);
+      _ephoneAnchorHistory(scroller, view).observe?.();
+    } catch (error) { _0x4bc2bd(error.message || "定位失败，请重试。", "error"); }
+    finally {
+      view.navigating = false;
+      if (view === _ephoneHistoryView) { _ephoneSyncRoundNavigation(chat); _ephoneRestoreChatScrolling(); }
+    }
+  }
+  async function _ephoneConvertSelectedMessage(kind) {
+    const chat = _0x5ea3c1.chats[_0x5ea3c1.activeChatId], timestamp = _0x1e97da;
+    const original = chat?.history.find(message => String(message.timestamp) === String(timestamp));
+    if (!window.ephoneChatRounds?.canConvert(original)) return;
+    _0x5d9529();
+    if (_0xephoneSpectatorGenerating || _0xephoneGenerationController || window.isEPhoneMutationBusy?.()) {
+      await _0x1e5953("提示", "请先停止回复或等待本轮完成，再修改消息类型。"); return;
+    }
+    const table = _0x24f906.chats, database = table.db.name, signature = JSON.stringify(original);
+    let speaker;
+    if (kind === "text") {
+      speaker = await _0x1f9d16("选择这句旁白的说话角色", window.ephoneChatRounds.speakers(chat)
+        .map(name => ({ text: escapeHTML(name), value: name })));
+      if (!speaker) return;
+    }
+    if (String(chat.id) !== String(_0x5ea3c1.activeChatId) || database !== _0x24f906.chats.db.name) return;
+    if (_0xephoneSpectatorGenerating || _0xephoneGenerationController || window.isEPhoneMutationBusy?.()) {
+      await _0x1e5953("提示", "聊天状态已变化，请等回复完成后重试。"); return;
+    }
+    _ephoneMessageKindBusy = true;
+    try {
+      let updated, replacement;
+      await table.db.transaction("rw", table, async () => {
+        updated = await table.get(chat.id);
+        const index = updated?.history.findIndex(message => String(message.timestamp) === String(timestamp));
+        if (index == null || index < 0 || JSON.stringify(updated.history[index]) !== signature)
+          throw new Error("这条消息已被修改或删除，请重新长按后操作。");
+        _ephoneReplyEditorMessages(updated);
+        replacement = window.ephoneChatRounds.convert(updated.history[index], kind, speaker, updated);
+        updated.history[index] = replacement;
+        await table.put(updated);
+      });
+      if (database !== _0x24f906.chats.db.name || chat !== _0x5ea3c1.chats[_0x5ea3c1.activeChatId]) return;
+      Object.assign(chat, updated);
+      _ephoneSetReplyEditorCache(chat);
+      _ephoneSyncRerollButtons(chat);
+      _ephoneSyncRoundNavigation(chat);
+      if (database !== _0x24f906.chats.db.name || String(chat.id) !== String(_0x5ea3c1.activeChatId)) return;
+      const view = _ephoneHistoryView, old = _ephoneMessageNode(timestamp);
+      const next = await _0x426585(replacement, chat);
+      if (view !== _ephoneHistoryView || !old?.isConnected || !next) return;
+      const scroller = document.getElementById("chat-messages"), before = old.getBoundingClientRect().top;
+      view.releaseAnchor?.(); view.autoBottom = false; view.keepReadingRound = true;
+      old.replaceWith(next);
+      scroller.scrollTop += next.getBoundingClientRect().top - before;
+      _ephoneAnchorHistory(scroller, view).observe?.();
+    } catch (error) { await _0x1e5953("修改未完成", error.message || "保存失败，原消息未更改。"); }
+    finally { _ephoneMessageKindBusy = false; _ephoneRestoreChatScrolling(); }
+  }
   function _ephoneHistoryStart(view) {
     if (!view || view !== _ephoneHistoryView || !view.ready) return 0;
     if (!view.first) return 0;
@@ -15405,6 +15505,7 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
       (_0x1fc256 = _0x5634d1[_0x2ad8a8(0xa5d)]));
     historyView.first = _0x5634d1[0] || null;
     historyView.ready = true;
+    _ephoneSyncRoundNavigation(_0xc04a0d);
     const scrollToLatest = () => {
       if (historyView === _ephoneHistoryView && historyView.autoBottom)
         _0x4cac0d.scrollTop = _0x4cac0d.scrollHeight;
@@ -15444,14 +15545,15 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
         0x0,
       ));
   }
-  async function _0x1dfcdf() {
+  async function _0x1dfcdf(targetIndex = null) {
     const view = _ephoneHistoryView;
     if (_0x5baa4a || !view?.ready || view.chat.id !== _0x5ea3c1.activeChatId) return;
     const end = _ephoneHistoryStart(view);
     if (!end) return;
     const scroller = document.getElementById("chat-messages");
     const pageSize = Math.max(1, Number(_0x5ea3c1.globalSettings[_0x3ce505(0x180c)]) || 50);
-    const messages = view.chat.history.slice(Math.max(0, end - pageSize), end);
+    const start = Number.isInteger(targetIndex) && targetIndex >= 0 ? Math.min(targetIndex, Math.max(0, end - pageSize)) : Math.max(0, end - pageSize);
+    const messages = view.chat.history.slice(start, end);
     const firstVisible = scroller.querySelector(".message-wrapper [data-timestamp]");
     const anchor = _ephoneAnchorHistory(scroller, view);
     view.autoBottom = false;
@@ -16594,7 +16696,8 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
       return wrapper;
     }
     if (_0x45add0[_0x200523(0x1140)] === _0x200523(0xaa5)) {
-      const narrationText = window.ephoneTimeMachine?.narrationDisplayText?.(_0x45add0) ?? _0x45add0.content;
+      const narrationSource = window.ephoneTimeMachine?.narrationDisplayText?.(_0x45add0) ?? _0x45add0.content;
+      const narrationText = _0x45add0.ephoneMessageKindOverride === "narration" ? escapeHTML(String(narrationSource || "")) : narrationSource;
       if (!narrationText) return null;
       const _0x24c2c9 = document["createElement"]("div");
       ((_0x24c2c9[_0x200523(0xf4)] = _0x200523(0x16ee)),
@@ -16668,6 +16771,7 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
         _0x4a8dae[_0x200523(0x3fe)](_0xa138c3));
     }
     const _0x310183 = document[_0x200523(0x139f)](_0x200523(0x192d));
+    if (_0x45add0.ephoneMessageKindOverride) _0x310183.dataset.messageKindOverride = _0x45add0.ephoneMessageKindOverride;
     ((_0x310183[_0x200523(0xf4)] =
       _0x200523(0x15ec) + (_0x1c09c7 ? _0x200523(0x16b1) : "ai")),
       (_0x310183[_0x200523(0x151)][_0x200523(0x18df)] =
@@ -17627,7 +17731,7 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
   async function _0xbb356a(_0x5e47bd, _0x759d78, _0x29b05b = ![]) {
     const appendView = _ephoneHistoryView;
     if (appendView?.chat.id !== _0x759d78.id || _0x5ea3c1.activeChatId !== _0x759d78.id) return;
-    if (!_0x29b05b) {
+    if (!_0x29b05b && !appendView.keepReadingRound) {
       appendView.releaseAnchor?.();
       appendView.autoBottom = true;
     }
@@ -17682,6 +17786,7 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
     // Keep the loaded range contiguous. Removing old DOM rows while retaining
     // their loaded count made the next history page skip those messages.
     _ephoneSyncRerollButtons(_0x759d78);
+    _ephoneSyncRoundNavigation(_0x759d78);
   }
   async function _0x7baf0e(_0x5e3a89) {
     const _0x48e04c = _0x3ce505;
@@ -18302,6 +18407,8 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
             continue;
         }
         if (_0x14c18c) {
+          _ephoneSpectatorController.ephoneRoundId ||= "reply:" + String(_0x14c18c.timestamp);
+          _0x14c18c.ephoneReplyRoundId = _ephoneSpectatorController.ephoneRoundId;
           _0x14c18c = await _ephoneFundMoneyCard(_0x326f3d, _0x14c18c);
           _ephoneSpectatorTimeCommitted = true;
           _0x326f3d.history.push(_0x14c18c);
@@ -23373,6 +23480,8 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
             break;
         }
         if (_0x4c93fd) {
+          _0xephoneController.ephoneRoundId ||= "reply:" + String(_0x4c93fd.timestamp);
+          _0x4c93fd.ephoneReplyRoundId = _0xephoneController.ephoneRoundId;
           _0x4c93fd.vts = _ephoneSceneTimeMs;
           _0x4c93fd.ephoneSceneTimeResolved = Boolean(_0x58c66c.ephoneSceneTimeResolved);
           _0x4c93fd.ephoneSceneLocation = _0x58c66c.ephoneSceneLocation;
@@ -27395,6 +27504,12 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
     document[_0x10fbc8(0x1023)](_0x10fbc8(0x1af0))["style"][_0x10fbc8(0xab9)] =
       _0x60554b[_0x10fbc8(0x126)] ? _0x10fbc8(0xd87) : "none";
     if (_0x229236) return;
+    const selected = _0x60554b.history.find(message => String(message.timestamp) === String(_0x4f3eca));
+    const convertible = Boolean(window.ephoneChatRounds?.canConvert(selected));
+    for (const [id, kind] of [["convert-message-narration-btn", "text"], ["convert-message-character-btn", "narration"]]) {
+      const button = document.getElementById(id);
+      if (button) button.style.display = convertible && (selected.type || "text") === kind ? "" : "none";
+    }
     ((_0x1e97da = _0x4f3eca),
       document[_0x10fbc8(0x1023)]("message-actions-modal")[_0x10fbc8(0xd57)][
         _0x10fbc8(0x17db)
@@ -27795,6 +27910,9 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
           isHidden: _0x5b0a4e[_0x47418a(0x7ca)],
           vts: _0x5b0a4e.vts,
           sentAsCharacter: _0x5b0a4e.sentAsCharacter,
+          ephoneReplyRoundId: _0x5b0a4e.ephoneReplyRoundId,
+          ephoneMessageKindOverride: _0x5b0a4e.ephoneMessageKindOverride ? _0x15d1ba.type : undefined,
+          isReplyHeader: _0x5b0a4e.isReplyHeader,
           ephoneSummaryMessageId: _0x36c6ec.length ? undefined : _0x5b0a4e.ephoneSummaryMessageId,
         };
       switch (_0x15d1ba[_0x47418a(0x1140)]) {
@@ -33721,6 +33839,9 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
         timestamp: _ephoneOriginalMessage?.timestamp ?? _0x18284c++,
         vts: _ephoneOriginalMessage?.vts ?? _ephoneBinding.sources.values().next().value?.vts ?? window.ephoneTimeMachine?.nowMs(_0x3d176c.id),
         ephoneSummaryMessageId: _ephoneOriginalMessage?.ephoneSummaryMessageId,
+        ephoneReplyRoundId: _ephoneOriginalMessage?.ephoneReplyRoundId ?? _ephoneBinding.sources.values().next().value?.ephoneReplyRoundId,
+        ephoneMessageKindOverride: _ephoneOriginalMessage?.ephoneMessageKindOverride ? _0x11da09.type : undefined,
+        isReplyHeader: _ephoneOriginalMessage?.isReplyHeader,
       };
       switch (_0x11da09["type"]) {
         case "narration":
@@ -56921,7 +57042,7 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
       }),
       // API tasks have their own controllers/results. Only actual mutations
       // serialize; broad busy stays reserved for switching/deleting space data.
-      (window.isEPhoneMutationBusy = () => Boolean(_ephoneSpectatorMoneyBusy || _ephoneWalletPending || window.ephonePlayerIdentity?.isBusy?.() || window.EPhoneCharacterWallet?.isMutating?.())),
+      (window.isEPhoneMutationBusy = () => Boolean(_ephoneMessageKindBusy || _ephoneSpectatorMoneyBusy || _ephoneWalletPending || window.ephonePlayerIdentity?.isBusy?.() || window.EPhoneCharacterWallet?.isMutating?.())),
       (window.isEPhoneTimeChangeBusy = () => Boolean(_0xephoneGenerationController || _0xephoneSpectatorGenerating || window.isEPhoneMutationBusy())),
       (window.isPersonaSpaceBusy = () => Boolean(window.isEPhoneTimeChangeBusy() || window.ephoneImageApi?.isBusy() || window.EPhoneLifeMarket?.isBusy() || window.EPhoneCharacterWallet?.isBusy() || window.EPhoneCharacterSocial?.isBusy() || window.EPhoneCharacterDaily?.isBusy() || window.EPhoneLifeSimulation?.isBusy())),
       (window.EPhoneMarketAdapter = {
@@ -64334,6 +64455,17 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
         },
       ));
     const _0x3875f9 = document["getElementById"]("chat-messages");
+    document.getElementById("reply-round-current-btn")?.addEventListener("click", () => _ephoneJumpReplyRound(false));
+    document.getElementById("reply-round-previous-btn")?.addEventListener("click", () => _ephoneJumpReplyRound(true));
+    document.getElementById("reply-round-latest-btn")?.addEventListener("click", () => {
+      const view = _ephoneHistoryView;
+      if (!view) return;
+      view.releaseAnchor?.(); view.keepReadingRound = false; view.autoBottom = true;
+      _0x3875f9.scrollTop = _0x3875f9.scrollHeight;
+    });
+    document.getElementById("convert-message-narration-btn")?.addEventListener("click", () => _ephoneConvertSelectedMessage("narration"));
+    document.getElementById("convert-message-character-btn")?.addEventListener("click", () => _ephoneConvertSelectedMessage("text"));
+    window.addEventListener("resize", () => _ephoneSyncRoundNavigation(_0x5ea3c1.chats[_0x5ea3c1.activeChatId]));
     for (const event of ["touchstart", "wheel", "pointerdown", "keydown"]) {
       _0x3875f9.addEventListener(event, () => {
         if (_ephoneHistoryView) _ephoneHistoryView.autoBottom = false;
@@ -64341,7 +64473,7 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
     }
     _0x3875f9[_0x274136(0x111e)](_0x274136(0xee2), () => {
       const _0x51cd97 = _0x274136;
-      if (_0x3875f9[_0x51cd97(0xa06)] < 0x1 && !_0x5baa4a) {
+      if (_0x3875f9[_0x51cd97(0xa06)] < 0x1 && !_0x5baa4a && !_ephoneHistoryView?.navigating) {
         _ephoneHistoryStart(_ephoneHistoryView) > 0 && _0x1dfcdf();
       }
     });

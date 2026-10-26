@@ -111,7 +111,7 @@ function appHarness() {
     _0x297b4d: JSON.parse, getGeminiResponseText: (response) => response.choices[0].message.content,
     _ephoneBuildApiEndpoint: (base, path) => base + "/" + path,
     _0xff8a5b() {}, _0xbb356a: async (message) => rendered.push(message), _0x4bb316() {},
-    _0x57e676: async () => {},
+    _0x57e676: async () => {}, _ephoneSyncRoundNavigation() {},
     _0x1f9d16: async (title, options) => options[0]?.value,
     _0x1e5953: async (...args) => errors.push(args), _ephoneRestoreChatScrolling() {},
     _0xephoneSpectatorGenerating: false, _0xephoneSpectatorController: null, _0xephoneGenerationController: null, _ephoneReplyOwner: null,

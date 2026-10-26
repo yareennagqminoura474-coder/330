@@ -18614,3 +18614,12 @@ body.frame-mode-active .cphone-dock-container {
 .ephone-money-description { font-size: 12px; line-height: 1.5; overflow-wrap: anywhere; margin: 8px 0; }
 .ephone-money-receive { border: 0; border-radius: 16px; background: #fff; color: #b44b23; padding: 8px 24px; font-size: 15px; cursor: pointer; }
 .ephone-money-wallet-note { font-size: 11px; margin-top: 6px; opacity: .9; }
+
+/* Small reading controls, independent of the crowded chat composer. */
+#reply-round-nav { position: absolute; right: 10px; z-index: 99; display: flex; gap: 4px; padding: 3px; border-radius: 18px; background: rgba(248,248,250,.95); box-shadow: 0 1px 5px #0001; }
+#reply-round-nav[hidden], #chat-interface-screen.selection-mode #reply-round-nav { display: none; }
+#reply-round-nav button { border: 0; background: transparent; color: var(--accent-color, #007aff); font-size: 12px; min-height: 30px; padding: 4px 9px; border-radius: 15px; cursor: pointer; }
+#reply-round-nav button:disabled { opacity: .4; cursor: default; }
+#reply-round-nav button:focus-visible { outline: 2px solid var(--accent-color, #007aff); }
+#phone-screen.dark-mode #reply-round-nav { background: rgba(40,40,43,.96); }
+.reply-round-target { outline: 2px solid #007aff44; outline-offset: 2px; border-radius: 10px; }
