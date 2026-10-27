@@ -73,7 +73,58 @@ const { chromium } = require("playwright-core");
     assert.equal(await page.evaluate(async () => (await window.db.userWallet.get("main")).balance), 180);
     const rows = await page.evaluate(() => window.db.characterTransactions.filter((r) => r.transferId).toArray());
     assert.equal(rows.length, 2); assert.equal(rows[0].transferId, rows[1].transferId);
+    // Reproduce separately configured old payer/recipient plans with different
+    // hours and amounts, then exercise migration, review and both-way editing.
+    await page.evaluate(() => window.showScreen("chat-list-screen")); await page.locator('.nav-item[data-view="messages-view"]').click();
+    await page.locator('.chat-list-item[data-chat-id="giver"]').click(); await page.waitForSelector("#chat-interface-screen.active");
+    await page.evaluate(async () => {
+      const a = await window.db.characterWallets.get("chat:giver");
+      a.rules[0].independentTransfer = true; await window.db.characterWallets.put(a);
+      await window.db.characterWallets.put({ key: "chat:child", balance: 0, otherAssets: 0, configured: true, automatic: true, revision: 1,
+        settledThrough: window.ephoneTimeMachine.nowMs(), rules: [{ id: "family-income", label: "家庭每周零花钱", category: "allowance", direction: "income",
+          counterpartyKey: "chat:giver", independentTransfer: true, cadence: "weekly", day: 1, hour: 10, min: 200, max: 200, enabled: true }] });
+      await window.ephoneTimeMachine.jumpTo(new Date(2026, 0, 12, 12).getTime(), "frozen");
+      for (const k of ["chat:giver", "chat:child"]) {
+        const w = await window.db.characterWallets.get(k); w.rules[0].independentTransfer = false; await window.db.characterWallets.put(w);
+      }
+    });
+    await page.evaluate(() => window.EPhoneCharacterWallet.open()); await page.locator("#cw-person").selectOption("chat:child");
+    await page.waitForFunction(() => document.querySelector(".cw-balance")?.textContent.includes("480.00"));
+    assert.equal(await page.locator('[data-cw-action="undo-duplicate"]').count(), 1);
+    await page.locator('[data-cw-action="undo-duplicate"]').scrollIntoViewIfNeeded();
+    await page.screenshot({ path: path.join(require("node:os").tmpdir(), "ephone-transfer-duplicates-v117.png") });
+    page.once("dialog", (dialog) => dialog.accept()); await page.locator('[data-cw-action="undo-duplicate"]').click();
+    await page.waitForFunction(() => !window.EPhoneCharacterWallet.isBusy());
+    await page.waitForFunction(() => document.querySelector(".cw-balance")?.textContent.includes("280.00"));
+    assert.equal(await page.locator('[data-cw-action="undo-duplicate"]').count(), 0);
+    assert.equal(await page.evaluate(async () => (await window.db.characterWallets.get("chat:giver")).balance), 800);
+    await page.locator('[data-cw-action="edit"]').click();
+    assert.match(await page.locator("#cw-editor").innerText(), /已与「每周生活费」关联/);
+    const incoming = page.locator(".cw-rule");
+    assert.equal(await incoming.locator('[data-field="hour"]').inputValue(), "9");
+    assert.equal(await incoming.locator('[data-field="min"]').inputValue(), "100");
+    assert.equal(await incoming.locator('[data-field="linkedRuleId"] option[value="__independent__"]').count(), 1);
+    await incoming.locator('[data-field="min"]').fill("150"); await incoming.locator('[data-field="max"]').fill("150");
+    await incoming.locator('[data-field="hour"]').fill("11");
+    await page.locator('[data-cw-action="save"]').click(); await page.waitForFunction(() => !window.EPhoneCharacterWallet.isBusy());
+    await page.locator("#cw-person").selectOption("chat:giver"); await page.waitForFunction(() => document.querySelector(".cw-balance")?.textContent.includes("800.00"));
+    await page.locator('[data-cw-action="edit"]').click();
+    assert.equal(await page.locator('[data-field="min"]').inputValue(), "150"); assert.equal(await page.locator('[data-field="hour"]').inputValue(), "11");
+    await page.locator('[data-field="linkedRuleId"]').scrollIntoViewIfNeeded();
+    await page.screenshot({ path: path.join(require("node:os").tmpdir(), "ephone-transfer-links-v117.png") });
+    await page.locator('[data-cw-action="cancel-edit"]').click();
+    await page.evaluate(() => window.ephoneTimeMachine.jumpTo(new Date(2026, 0, 19, 10).getTime(), "frozen"));
+    assert.equal(await page.evaluate(async () => (await window.db.characterWallets.get("chat:giver")).balance), 800, "recipient's old earlier hour cannot pay");
+    await page.evaluate(() => window.ephoneTimeMachine.jumpTo(new Date(2026, 0, 19, 12).getTime(), "frozen"));
+    assert.equal(await page.evaluate(async () => (await window.db.characterWallets.get("chat:giver")).balance), 650);
+    assert.equal(await page.evaluate(async () => (await window.db.userWallet.get("main")).balance), 430);
+    await page.reload({ waitUntil: "domcontentloaded" }); await page.waitForFunction(() => window.ephoneAppReady);
+    await page.evaluate(() => window.EPhoneCharacterWallet.open()); await page.locator("#cw-person").selectOption("chat:child");
+    await page.waitForFunction(() => document.querySelector(".cw-balance")?.textContent.includes("430.00"));
+    assert.equal(await page.locator('[data-cw-action="undo-duplicate"]').count(), 0);
+    const finalRows = await page.evaluate(() => window.db.characterTransactions.filter((r) => r.transferId).toArray());
+    assert.equal(finalRows.filter((r) => r.status === "posted").length, 6);
     assert.deepEqual(requests, []); assert.deepEqual(errors, []);
-    console.log("PASS: mobile plan recipient selection/save/reload, real virtual-time jump pays both sides, character and bound-space wallet/bills agree, repeated settlement no duplicate, no API calls or page errors");
+    console.log("PASS: mobile paired plan migration/edit/save/reload, old duplicate review and single reversal, shared schedule and amount, real virtual-time jumps, bound-space wallet/bills, no duplicate or API calls/errors");
   } finally { await browser.close(); await new Promise((resolve) => server.close(resolve)); }
 })().catch((error) => { console.error(error); process.exitCode = 1; });

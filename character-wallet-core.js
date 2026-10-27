@@ -38,8 +38,10 @@
     const min = amount(raw.min ?? raw.amount, false), max = amount(raw.max ?? raw.amount ?? raw.min, false);
     const day = Number(raw.day ?? 1), hour = Number(raw.hour ?? 9);
     if (max < min || !Number.isInteger(day) || day < (raw.cadence === "weekly" ? 0 : 1) || day > (raw.cadence === "weekly" ? 6 : 31) || !Number.isInteger(hour) || hour < 0 || hour > 23) throw new Error("收支日期、时刻或金额范围无效。");
+    const independentTransfer = raw.independentTransfer === true || raw.linkedRuleId === "__independent__";
     return { id: text(raw.id, 100) || "rule-" + i, label: text(raw.label) || "日常收支", category: text(raw.category, 30) || "other", direction: raw.direction,
       cadence: raw.cadence, day, hour, min: min / 100, max: max / 100, enabled: raw.enabled !== false,
+      linkedRuleId: independentTransfer ? "" : text(raw.linkedRuleId, 100), independentTransfer,
       counterpartyKey: text(raw.counterpartyKey || (raw.direction === "expense" ? raw.recipientKey : raw.payerKey), 200),
       counterpartyName: text(raw.counterpartyName || (raw.direction === "expense" ? raw.recipientName : raw.payerName), 100) };
   }
@@ -91,6 +93,79 @@
   function purpose(r) {
     if (/生活费|零花钱|赡养|补贴/.test(r.label)) return "allowance";
     return r.category || "other";
+  }
+  // An internal payment has one schedule and one amount, even when both
+  // people have a plan. Explicit links survive later edits to that schedule.
+  function transferPlans(wallets, people, binding) {
+    const defs = [], pairs = new Map(), ambiguous = new Set();
+    for (const wallet of wallets.filter((w) => w.configured)) for (const r of wallet.rules || []) {
+      const other = counterparty(r, wallet.key, people, binding);
+      const def = { key: wallet.key, r, other, token: JSON.stringify([wallet.key, r.id]) };
+      if (other && !other.error) {
+        def.from = r.direction === "expense" ? wallet.key : other.key;
+        def.to = r.direction === "income" ? wallet.key : other.key;
+      }
+      defs.push(def);
+    }
+    const eligible = (d) => d.from && !d.r.independentTransfer && d.r.linkedRuleId !== "__independent__";
+    const opposite = (a, b) => a.from === b.from && a.to === b.to && a.r.direction !== b.r.direction;
+    const link = (a, b) => { pairs.set(a.token, b); pairs.set(b.token, a); };
+    // Do not silently choose between two explicit claims on the same plan.
+    const claims = new Map();
+    for (const a of defs.filter(eligible)) {
+      if (!a.r.linkedRuleId) continue;
+      const b = defs.find((b) => eligible(b) && opposite(a, b) && b.r.id === a.r.linkedRuleId);
+      if (!b || b.r.linkedRuleId && b.r.linkedRuleId !== a.r.id) { ambiguous.add(a.token); continue; }
+      const pair = [a.token, b.token].sort().join("\n");
+      for (const d of [a, b]) { if (!claims.has(d.token)) claims.set(d.token, new Set()); claims.get(d.token).add(pair); }
+    }
+    for (const a of defs.filter(eligible)) {
+      if (!a.r.linkedRuleId || pairs.has(a.token)) continue;
+      const b = defs.find((b) => eligible(b) && opposite(a, b) && b.r.id === a.r.linkedRuleId);
+      if (b && claims.get(a.token)?.size === 1 && claims.get(b.token)?.size === 1 && (!b.r.linkedRuleId || b.r.linkedRuleId === a.r.id)) link(a, b);
+      else { ambiguous.add(a.token); if (b) ambiguous.add(b.token); }
+    }
+    // First match exact old plans; then match a unique purpose/cycle. A
+    // different hour or independently generated amount is not a second bill.
+    const unmatched = () => defs.filter((d) => eligible(d) && !d.r.linkedRuleId && !pairs.has(d.token) && !ambiguous.has(d.token));
+    for (const exact of [true, false]) {
+      const groups = new Map();
+      for (const d of unmatched()) {
+        const signature = JSON.stringify([d.from, d.to, d.r.cadence, purpose(d.r), ...(exact ? [d.r.day, d.r.hour, d.r.min, d.r.max] : [])]);
+        if (!groups.has(signature)) groups.set(signature, { income: [], expense: [] });
+        groups.get(signature)[d.r.direction].push(d);
+      }
+      for (const bucket of groups.values()) if (bucket.income.length === 1 && bucket.expense.length === 1) link(bucket.income[0], bucket.expense[0]);
+    }
+    for (const a of unmatched()) if (defs.some((b) => eligible(b) && opposite(a, b) && a.r.cadence === b.r.cadence && purpose(a.r) === purpose(b.r))) ambiguous.add(a.token);
+    return { defs, pairs, ambiguous };
+  }
+  function syncTransferPlans(wallets, resolved, editedKey) {
+    const changed = new Set(), done = new Set();
+    for (const a of resolved.defs) {
+      const b = resolved.pairs.get(a.token); if (!b || done.has(a.token) || editedKey && a.key !== editedKey && b.key !== editedKey) continue;
+      done.add(a.token); done.add(b.token);
+      // Existing mismatched definitions use the payer. An intentional edit
+      // from either side updates the shared payment, without moving funds.
+      const source = editedKey ? a.key === editedKey ? a : b : a.r.direction === "expense" ? a : b;
+      for (const [own, other] of [[a, b], [b, a]]) {
+        const next = { ...own.r, linkedRuleId: other.r.id, independentTransfer: false, counterpartyKey: other.key,
+          cadence: source.r.cadence, day: source.r.day, hour: source.r.hour, min: source.r.min, max: source.r.max, enabled: source.r.enabled };
+        if (JSON.stringify(next) === JSON.stringify(own.r)) continue;
+        const wallet = wallets.find((w) => w.key === own.key);
+        wallet.rules = wallet.rules.map((r) => r.id === own.r.id ? next : r); changed.add(own.key);
+      }
+    }
+    return changed;
+  }
+  function paymentPeriod(r, at) {
+    if (r.cadence === "monthly") return dayKey(at).slice(0, 7);
+    if (r.cadence === "weekly") { const date = new Date(at); date.setDate(date.getDate() - (date.getDay() + 6) % 7); return dayKey(date); }
+    return dayKey(at);
+  }
+  function ownScheduledRow(d, row) {
+    return row.source === "scheduled" && row.key === d.key && row.direction === d.r.direction && row.scheduleRuleId === d.r.id &&
+      row.id === scheduledId(d.key, d.r, row.vts);
   }
   class Service {
     constructor(db, identity = root.ephonePlayerIdentity) {
@@ -193,6 +268,22 @@
         const target = preserveBalance ? current.balance : clean.balance, delta = amount(target) - amount(current.balance);
         const next = { ...current, ...clean, key, balance: current.bound ? current.storedBalance : current.balance, storedBalance: undefined, bound: undefined, configured: true,
           settledThrough: Math.max(current.settledThrough || vts, vts), revision: current.revision + 1 };
+        const binding = await this.spaceProfiles.get("player"), wallets = (await this.characterWallets.toArray()).filter((w) => w.key !== key);
+        wallets.push(next);
+        // A removed/retargeted plan releases the other endpoint; it must not
+        // remain attached to a different payment with the same local rule id.
+        const detached = new Set();
+        for (const w of wallets.filter((w) => w.key !== key)) w.rules = (w.rules || []).map((r) => {
+          if (!r.linkedRuleId || counterparty(r, w.key, people, binding)?.key !== key) return r;
+          const partner = clean.rules.find((p) => p.id === r.linkedRuleId && !p.independentTransfer &&
+            p.direction !== r.direction && counterparty(p, key, people, binding)?.key === w.key && (!p.linkedRuleId || p.linkedRuleId === r.id));
+          if (partner) return r;
+          detached.add(w.key); return { ...r, linkedRuleId: "" };
+        });
+        const resolved = transferPlans(wallets, people, binding);
+        for (const r of clean.rules) if (r.linkedRuleId && !resolved.pairs.has(JSON.stringify([key, r.id]))) throw new Error("关联的对方计划已变化或被另一笔占用，请重新选择。");
+        const changed = syncTransferPlans(wallets, resolved, key);
+        for (const w of wallets) if (w.key !== key && (changed.has(w.key) || detached.has(w.key))) await this.characterWallets.put({ ...w, revision: (w.revision || 0) + 1 });
         await this.characterWallets.put(next);
         if (delta) await this.change(key, Math.abs(delta) / 100, delta > 0 ? "income" : "expense", {
           id: `setup:${key}:${next.revision}`, vts, category: "adjustment", description: current.configured ? "手动调整角色资产" : "设定角色初始资产", adjustment: true, source: "setup" });
@@ -204,10 +295,11 @@
       if (!Number.isInteger(maxDays) || maxDays < 1 || !Number.isInteger(maxEntries) || maxEntries < 1) throw new Error("结算批次参数无效。");
       return this.db.transaction(preview ? "r" : "rw", ...this.tables(), this.chats, this.npcs, async () => {
         const people = await this.people(), valid = new Set(people.map((p) => p.key)), names = new Map(people.map((p) => [p.key, p.name]));
-        const wallets = await this.characterWallets.toArray(), result = [], binding = await this.spaceProfiles.get("player"), states = new Map();
+        const wallets = (await this.characterWallets.toArray()).filter((w) => valid.has(w.key)), result = [], binding = await this.spaceProfiles.get("player"), states = new Map();
+        const migrated = syncTransferPlans(wallets, transferPlans(wallets, people, binding));
         const main = await this.userWallet.get("main") || { id: "main", balance: 0 };
         let mainBalance = amount(main.balance), count = 0;
-        for (const w of wallets) states.set(w.key, { wallet: w, cash: amount(w.balance || 0), changed: false });
+        for (const w of wallets) states.set(w.key, { wallet: w, cash: amount(w.balance || 0), changed: migrated.has(w.key) });
         const stateOf = (key) => {
           if (!states.has(key)) states.set(key, { wallet: { key, balance: 0, otherAssets: 0, configured: false, revision: 0, rules: [] }, cash: 0, changed: false });
           return states.get(key);
@@ -222,28 +314,21 @@
         const earliest = Math.min(vts, ...eligible.map((w) => w.settledThrough));
         const end = new Date(earliest); end.setHours(0, 0, 0, 0); end.setDate(end.getDate() + maxDays);
         const horizon = Math.min(vts, end.getTime() - 1);
-        // Pair mirrored payer/recipient plans once, using definitions rather
-        // than only this batch (their settlement cursors may differ).
-        const defs = [], pairs = new Map(), buckets = new Map();
-        for (const wallet of wallets.filter((w) => valid.has(w.key) && w.configured)) for (const r of wallet.rules || []) {
-          if (!r.enabled) continue;
-          const other = counterparty(r, wallet.key, people, binding), def = { key: wallet.key, r, other, token: JSON.stringify([wallet.key, r.id]) };
-          defs.push(def);
-          if (!other || other.error) continue;
-          def.from = r.direction === "expense" ? wallet.key : other.key;
-          def.to = r.direction === "income" ? wallet.key : other.key;
-          const signature = JSON.stringify([def.from, def.to, r.cadence, r.day, r.hour, r.min, r.max, purpose(r)]);
-          if (!buckets.has(signature)) buckets.set(signature, { income: [], expense: [] });
-          buckets.get(signature)[r.direction].push(def);
-        }
-        for (const bucket of buckets.values()) for (let i = 0; i < Math.min(bucket.income.length, bucket.expense.length); i++) {
-          pairs.set(bucket.income[i].token, bucket.expense[i]); pairs.set(bucket.expense[i].token, bucket.income[i]);
-        }
+        const { defs, pairs, ambiguous } = transferPlans(wallets, people, binding);
+        const previousRows = new Map(), previousPeriods = new Map();
+        const paidInPeriod = async (def, at) => {
+          if (!previousPeriods.has(def.token)) {
+            if (!previousRows.has(def.key)) previousRows.set(def.key, await this.characterTransactions.where("key").equals(def.key).toArray());
+            previousPeriods.set(def.token, new Set(previousRows.get(def.key).filter((row) => ownScheduledRow(def, row)).map((row) => paymentPeriod(def.r, row.vts))));
+          }
+          return previousPeriods.get(def.token).has(paymentPeriod(def.r, at));
+        };
         const events = [];
         for (const wallet of eligible) {
           const date = new Date(wallet.settledThrough); date.setHours(0, 0, 0, 0);
           while (date.getTime() <= horizon) {
-            for (const def of defs.filter((d) => d.key === wallet.key && due(d.r, date))) {
+            for (const def of defs.filter((d) => d.key === wallet.key && due(d.r, date) &&
+                !(d.r.direction === "income" && ambiguous.has(d.token)))) {
               const at = new Date(date); at.setHours(def.r.hour, 0, 0, 0);
               if (at.getTime() > wallet.settledThrough && at.getTime() <= horizon) events.push({ ...def, at: at.getTime() });
             }
@@ -265,6 +350,9 @@
           const mirror = pairs.get(e.token), primary = e.r.direction === "income" && mirror ? mirror : e;
           const id = scheduledId(primary.key, primary.r, e.at);
           if (seen.has(id) || await this.characterTransactions.get(id)) continue;
+          // A mirror may already have settled under the old independent id
+          // (and a different hour/day). Linking never pays that cycle again.
+          if (mirror && (await paidInPeriod(primary, e.at) || await paidInPeriod(mirror, e.at))) continue;
           if (count >= maxEntries) { through = Math.min(through, e.at - 1); break; }
           seen.add(id); count++;
           const cash = amount(varied(primary.r, id)), timestamp = Date.now(), r = primary.r;
@@ -298,7 +386,7 @@
           balance: binding?.key === state.wallet.key ? state.wallet.balance : state.cash / 100,
           ...(state.cursor != null ? { settledThrough: state.cursor } : {}), revision: (state.wallet.revision || 0) + (state.changed ? 1 : 0) });
         if (!preview && amount(main.balance) !== mainBalance) await this.userWallet.put({ ...main, balance: mainBalance / 100 });
-        return { entries: result, pending: eligible.some((w) => Math.max(w.settledThrough, through) < vts), balance: mainBalance / 100,
+        return { entries: result, ambiguousPlans: [...ambiguous], pending: eligible.some((w) => Math.max(w.settledThrough, through) < vts), balance: mainBalance / 100,
           projected: Object.fromEntries([...states.values()].filter((s) => s.changed || s.cursor != null).map((s) => [s.wallet.key, cashOf(s.wallet.key) / 100])) };
       });
     }
@@ -306,6 +394,26 @@
       const aliases = (await this.spaceProfiles.get("person-identity-aliases"))?.aliases || {};
       const keys = [...new Set([key, ...Object.keys(aliases).filter((old) => this.identity.canonicalKey?.(old, aliases) === key)])];
       return (await Promise.all(keys.map((k) => this.characterTransactions.where("key").equals(k).toArray()))).flat();
+    }
+    async duplicateTransfers(key) {
+      const wallets = await this.characterWallets.toArray(), people = await this.people(), binding = await this.spaceProfiles.get("player");
+      const { defs, pairs } = transferPlans(wallets, people, binding), rows = await this.characterTransactions.toArray(), candidates = [];
+      const active = (r) => r.status === "posted" && !r.financialReversed && !r.ledgerHidden && r.amount > 0, byId = new Map(rows.map((r) => [r.id, r]));
+      const complete = (r) => {
+        const other = byId.get(r.counterpartEntryId);
+        return r.transferId && other && active(other) && other.counterpartEntryId === r.id && other.transferId === r.transferId &&
+          other.key === r.counterpartyKey && other.counterpartyKey === r.key && other.amount === r.amount && other.direction !== r.direction;
+      };
+      for (const payer of defs.filter((d) => d.r.direction === "expense")) {
+        const recipient = pairs.get(payer.token); if (!recipient || key !== payer.key && key !== recipient.key) continue;
+        const originals = rows.filter((r) => active(r) && ownScheduledRow(payer, r) && r.counterpartyKey === recipient.key && complete(r));
+        for (const entry of rows.filter((r) => active(r) && ownScheduledRow(recipient, r) && r.counterpartyKey === payer.key && complete(r))) {
+          const kept = originals.find((r) => r.transferId !== entry.transferId && paymentPeriod(payer.r, r.vts) === paymentPeriod(payer.r, entry.vts));
+          if (kept) candidates.push({ entry, kept, from: people.find((p) => p.key === payer.key)?.name || payer.key,
+            to: people.find((p) => p.key === recipient.key)?.name || recipient.key });
+        }
+      }
+      return candidates;
     }
     async ledger(key, limit = 80) {
       const own = await this.ownLedger(key);
@@ -418,7 +526,7 @@
     else result.push({ role: "user", content: reminder });
     return result;
   }
-  const api = { Service, normalize, profilePrompt, dayKey, varied, counterparty, dailyBills, withBalanceReminder };
+  const api = { Service, normalize, profilePrompt, dayKey, varied, counterparty, dailyBills, withBalanceReminder, transferPlans };
   if (typeof module !== "undefined" && module.exports) module.exports = api;
   root.ephoneCharacterWalletCore = api;
 })(typeof window !== "undefined" ? window : globalThis);
