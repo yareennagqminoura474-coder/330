@@ -127,6 +127,36 @@ const { chromium } = require("playwright-core");
       const expected = new Date(opening.vts);
       const compact = `2026-03-05 ${String(expected.getHours()).padStart(2, "0")}:${String(expected.getMinutes()).padStart(2, "0")}`;
       assert.ok(calls.at(-1).messages[0].content.includes(compact), "next main request receives final scene's actual clock");
+      // A message about tonight is a future appointment, not a phase jump.
+      // Reproduce the user's ASCII single-quoted SMS in both group modes.
+      const appointmentStart = new Date(2026, 2, 5, 17, 50).getTime(), pickup = new Date(2026, 2, 5, 18, 30).getTime();
+      await page.evaluate((time) => window.ephoneTimeMachine.jumpTo(time, "frozen"), appointmentStart);
+      const prior = await page.evaluate(async (id) => (await window.db.chats.get(id)).history.length, id);
+      response = [{ type: "narration", content: "他坐在桌边，拿起手机。" },
+        { type: "narration", content: "消息内容：'晚上你爸请吃饭，他跟我说了。我六点半过来接你。'" },
+        { type: "narration", content: "手指悬在屏幕上方停了两秒。他已经知道晚上要吃饭了——说明她爸已经联系过他了。最后发过去一句。" },
+        { type: "text", name: "林", content: "好，六点半在大楼门口等你。" },
+        { type: "narration", content: "发完之后把手机扣在桌面上，拿起早上点的冰美式喝了一大口。" },
+        { type: "text", name: "林", content: "难喝。" }];
+      const originalText = response[1].content, smsCalls = calls.length;
+      await page.locator(button).click(); await page.waitForFunction(() => !window.isPersonaSpaceBusy(), null, { timeout: 120000 });
+      assert.equal(calls.length, smsCalls + 1, "appointment handling requires only the original reply API request");
+      const appointment = await page.evaluate(async ({ id, prior }) => (await window.db.chats.get(id)).history.slice(prior), { id, prior });
+      assert.ok(appointment.some((row) => row.content === originalText), "quoted SMS stays complete in history");
+      assert.ok(appointment.every((row) => row.vts >= appointmentStart && row.vts < appointmentStart + 10 * 60000), "stored SMS and replies must not jump to 19:00");
+      const quoted = appointment.find((row) => row.content === originalText);
+      const quotedWrapper = page.locator(`#chat-messages .message-wrapper[data-timestamp="${quoted.timestamp}"]`);
+      assert.equal(await quotedWrapper.locator(".narration-timestamp").innerText(), "17:50");
+      const appointmentEnd = appointment.at(-1).vts;
+      assert.equal(await page.evaluate(() => window.ephoneTimeMachine.nowMs("another-chat")), appointmentEnd);
+      response = [{ type: "text", name: "林", content: "我把文件收起来。" },
+        { type: "narration", content: "时钟已经指向晚上六点半，他走到大楼门口，接他的车正好停了下来。" },
+        { type: "text", name: "林", content: "刚好六点半，我上车了。" }];
+      await page.locator(button).click(); await page.waitForFunction(() => !window.isPersonaSpaceBusy(), null, { timeout: 120000 });
+      assert.equal(calls.length, smsCalls + 2);
+      const arrived = await page.evaluate(async (id) => (await window.db.chats.get(id)).history.findLast((row) => row.content?.startsWith("时钟已经指向晚上六点半")), id);
+      assert.equal(arrived.vts, pickup, "the actual arrival at 18:30 is honored exactly");
+      assert.equal(await page.evaluate(() => window.ephoneTimeMachine.nowMs("another-chat")), pickup);
     }
     assert.deepEqual(errors, []);
     console.log("long scene mobile browser tests passed (watch 320 + normal 384 dialogue messages, complete DOM/storage and post-200 scene changes, local fake API only)");

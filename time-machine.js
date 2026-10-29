@@ -420,7 +420,7 @@
     if (config.mode === MODES.CUSTOM) {
       const flowRule =
         config.flow === FLOWS.FROZEN
-          ? "- 当前采用“按剧情推进”：本轮从上面的最新开场时刻起算，每轮重新起算，不能套用上一轮的绝对时间。时间按场景实际经过的时长推进，不按消息条数、字数或固定间隔机械跳时；长轮次中交谈、完成活动、转场要持续自然推进，不能整轮都停在开场时间。下一轮未手动跳转时，系统会从最新场景时间小幅自动推进开场，不得沿用上一轮开头。开场动作和台词先发生在开场时刻。\n- 在实际发生时间流逝的自然 narration 对象中（必要时也可在台词对象中）加 scene_elapsed_minutes（数字，表示距上一场景真实经过的分钟数，可为小数），正数同时提供 scene_time_reason（简短说明实际耗时的活动）、scene_phase:\"elapsed\"。后续台词和操作沿用累计后的时间。省略字段不代表时间冻结；系统会从明确耗时、已完成的活动和实际交谈节奏兜底估算，因此请尽量给出合理的场景耗时。参考：普通吃完一顿饭约10—25分钟、洗漱约3—10分钟、换衣约1—5分钟、通勤按距离，不要固定照抄这些数值。不必每条填写，轮内推进不要创建额外报时的对象；不要再用 scene_time 填绝对时刻。\n- 连贯对答、拿杯子、开门、坐下等瞬时动作，不应突然过去几分钟或几十分钟，可用 scene_phase:\"instant\"、scene_elapsed_minutes:0。吃饭、换衣、洗漱、等待、通勤等，要根据实际完成程度、距离和场景节奏判断，不能把动作一出现就算整个过程做完，也不能把不同人同时做的事重复累加。\n- 计划、要求、约定、回忆和未来时刻不会让当前时间立刻变化；计划用 scene_phase:\"planned\"、scene_elapsed_minutes:0。明确‘过了十分钟’就只经过十分钟；‘再等十分钟’只是约定，真正等完或用户说‘时间到了’再按约定推进。跨午夜时相对日期及星期跟随累计时间变化。\n- 每轮仅第一条可见消息输出开场的年月日、时分、星期和地点旁白；后面的正文只写真实动作、环境和台词，不要为了轮内跳时额外插入报时 narration，后续时间只更新消息角标。"
+          ? "- 当前采用“按剧情推进”：本轮从上面的最新开场时刻起算，每轮重新起算，不能套用上一轮的绝对时间。时间按场景实际经过的时长推进，不按消息条数、字数或固定间隔机械跳时；长轮次中交谈、完成活动、转场要持续自然推进，不能整轮都停在开场时间。下一轮未手动跳转时，系统会从最新场景时间小幅自动推进开场，不得沿用上一轮开头。开场动作和台词先发生在开场时刻。\n- 在实际发生时间流逝的自然 narration 对象中（必要时也可在台词对象中）加 scene_elapsed_minutes（数字，表示距上一场景真实经过的分钟数，可为小数），正数同时提供 scene_time_reason（简短说明实际耗时的活动）、scene_phase:\"elapsed\"。后续台词和操作沿用累计后的时间。省略字段不代表时间冻结；系统会从明确耗时、已完成的活动和实际交谈节奏兜底估算，因此请尽量给出合理的场景耗时。参考：普通吃完一顿饭约10—25分钟、洗漱约3—10分钟、换衣约1—5分钟、通勤按距离，不要固定照抄这些数值。不必每条填写，轮内推进不要创建额外报时的对象；不要再用 scene_time 填绝对时刻。\n- 连贯对答、拿杯子、开门、坐下等瞬时动作，不应突然过去几分钟或几十分钟，可用 scene_phase:\"instant\"、scene_elapsed_minutes:0。吃饭、换衣、洗漱、等待、通勤等，要根据实际完成程度、距离和场景节奏判断，不能把动作一出现就算整个过程做完，也不能把不同人同时做的事重复累加。\n- 计划、要求、约定、回忆和未来时刻不会让当前时间立刻变化。短信、留言、引用台词里的时间只是内容，例如“六点半来接你”不表示已经到六点半；收到邀约、读消息、回复约定时仍使用当前时刻，不能看到“晚上”就跳到19点。尚未履行的约定要与当前时间保持先后关系，真正等待结束、抵达约定时间或实际转场才推进；计划用 scene_phase:\"planned\"、scene_elapsed_minutes:0。明确‘过了十分钟’就只经过十分钟；‘再等十分钟’只是约定，真正等完或用户说‘时间到了’再按约定推进。跨午夜时相对日期及星期跟随累计时间变化。\n- 每轮仅第一条可见消息输出开场的年月日、时分、星期和地点旁白；后面的正文只写真实动作、环境和台词，不要为了轮内跳时额外插入报时 narration，后续时间只更新消息角标。"
           : "- 当前采用“保持流动”：虚拟时间会按现实经过的时长持续流动。";
       const sceneTransitionRule = config.flow === FLOWS.FROZEN
         ? "- 不要为了结束一轮回复而强行用晚安收场，不必把晚饭、洗漱、就寝全部塞进一轮。19点多仍应按人物作息和当前活动自然展开晚间互动；没有明确早睡安排，不要匆忙把所有人写去睡觉。确实转入就寝或次日时，要按活动和转场累计完整耗时并标注 scene_elapsed_minutes，不能只加几分钟却已经深夜；人物认知、台词及后续剧情都跟随累计时刻。就寝遵循已有作息、约定及病情等实际情况，不硬性规定22点；单说晚安不等于已经睡觉，午睡不等于夜间就寝，睡着不等于已经过了一夜。\n" : "";
@@ -610,7 +610,7 @@
     const reason = typeof item.scene_time_reason === "string" ? item.scene_time_reason.trim() : "";
     const nonCurrent = /(?:明天|后天|下周|下个月|昨天|前天|上次|曾经|回忆起)/.test(body);
     const intention = /(?:打算|计划|将要|等会|待会|稍后再|准备去|准备要|准备再)/.test(body.split(/[。！？!?；;，,\n]/)[0]);
-    const future = phase === "planned" || nonCurrent || intention || /(?:准备|还要|再等)/.test(body) &&
+    const future = phase === "planned" || nonCurrent || intention || Boolean(body.trim()) && actualSceneClauses(body).length === 0 || /(?:准备|还要|再等)/.test(body) &&
       !/(?:过了|过去|经过|耗时|花了|等了|聊了|交谈了|说完|吃完|结束|完成|到达|抵达|回到)/.test(body);
     const simpleMovement = /(?:拿起|放下|开门|关门|抬头|低头|点头|摇头|转头|坐下|站起|递过|接过)/.test(body) &&
       !/(?:分钟|小时|刻钟|交谈|聊天|谈话|交流|讨论|收拾|用餐|吃饭|早餐|午餐|晚餐|洗漱|通勤|行车|路上|等了|等待|过了|经过|结束|完成|之后)/.test(body + " " + reason);
@@ -620,11 +620,33 @@
     return { phase, reason, future, instant, relative, supported };
   }
 
-  function actualSceneClauses(text) {
+  function sceneNarrationProse(text) {
+    const source = String(text);
+    // Messages often quote speech with ASCII apostrophes. All paired quote
+    // styles are reported content, not events taking place on the scene clock.
+    // Preserve only an actual clock's quoted display, e.g. 时间显示为‘18:30’.
+    return source.replace(/“[^”]*”|「[^」]*」|『[^』]*』|‘[^’]*’|"(?:\\.|[^"\\])*"|(?<![A-Za-z0-9])'(?:\\.|[A-Za-z]'(?=[A-Za-z])|[^'\\])*'(?![A-Za-z0-9])/g, (quoted, offset) => {
+      const value = quoted.slice(1, -1).trim(), prefix = source.slice(0, offset);
+      const clockDisplay = /(?:时钟|钟表|钟面|挂钟|时针|时间)[^。！？!?；;，,\n]{0,12}(?:显示(?:为)?|指向|停在|跳到|变成|是|为)[：:\s]*$/.test(prefix);
+      return clockDisplay && /^(?:(?:凌晨|清晨|早晨|早上|上午|中午|下午|傍晚|晚上|晚间|夜里|深夜|午夜|子夜)\s*)?[\d零〇一二两三四五六七八九十]{1,3}(?:[:：][0-5]?\d|[点时](?:\s*(?:半|一刻|三刻|[\d零〇一二两三四五六七八九十]{1,3}分?))?)(?:整)?$/.test(value) ? value : "";
+    });
+  }
+
+  function actualSceneClauses(text, keepPunctuation = false) {
     // A character mentioning a deadline is not a scene transition. Filter per
     // clause so a later plan cannot hide an already narrated sunset.
-    return String(text).replace(/[“「『‘"][\s\S]*?[”」』’"]/g, "")
-      .split(/[。！？!?；;，,\n]/)
+    let reported = false;
+    const parts = sceneNarrationProse(text).split(/([。！？!?；;，,\n])/);
+    return parts.filter((_, index) => index % 2 === 0)
+      .map((clause, index) => keepPunctuation ? clause + (parts[index * 2 + 1] || "") : clause)
+      .map((clause) => {
+        const marker = /(?:消息|短信|微信|邮件|留言|通知|便条|纸条|来信|回信)(?:的)?(?:内容(?:是|为)?|写(?:的)?(?:是|着)|里写着)?\s*[：:]|(?:消息|短信|微信|邮件|留言|通知|便条|纸条|来信|回信)(?:里)?写着/.exec(clause);
+        if (marker) { reported = true; return clause.slice(0, marker.index); }
+        if (reported && /^\s*(?:随后|接着|然后|与此同时|另一边|这时|此时|过了[\d零〇一二两三四五六七八九十半]|[\d零〇一二两三四五六七八九十半]+(?:个)?(?:分钟|小时|刻钟)后|(?:他|她|两人|众人)(?:抬头|低头|起身|站起|拿起|放下|走出|走到|看(?:了)?眼表|看(?:了)?一眼表))/.test(clause)) reported = false;
+        return reported ? "" : clause;
+      })
+      .filter((clause) => clause.trim())
+      .filter((clause) => !/(?:知道|得知|听说|答应|同意|确认|约在|约了|约好|相约|商量|讨论|谈起|提到|关于|有关|邀约|邀请)[^。！？!?；;，,\n]{0,30}(?:凌晨|清晨|早晨|早上|上午|中午|下午|傍晚|晚上|晚间|夜里|深夜|午夜|今晚|明早|夜幕|晚饭|晚餐)|(?:凌晨|清晨|早晨|早上|上午|中午|下午|傍晚|晚上|晚间|夜里|深夜|午夜|今晚|明早|晚饭|晚餐)[^。！？!?；;，,\n]{0,28}(?:的(?:消息|短信|通知|邀约|安排|计划|日程|约定)|邀请函)/.test(clause))
       .filter((clause) => !/(?:准备|打算|计划|约好|约定|安排在|还要|再等|明天|后天|昨天|前天|上次|曾经|回忆|将要|等会|待会|如果|假如|要是|等到|还没|还未|没有|尚未|没能|未能|并未|并非|不是|未到|没到|吗|么|有没有|是不是|是否|没(?=吃完|用完|洗完|洗漱完|换好|收拾好|抵达|到达)|吃完.{0,8}(?:后再|才能|才可以))/.test(clause))
       .filter((clause) => !/(?:想起|想象|梦见|梦到|希望|盼着|期待|预计|假设|将会|即将|快要|就要|正要|一到|等到|试图|记得|别忘|该(?:去)?(?:睡|上床)|想(?:要)?(?:睡|在|今晚|晚上|明早|凌晨)|(?:等|待)[^，。]{0,12}(?:后再|再去|才能)|(?:第二天|次日|翌日|隔天|清晨|早晨|早上|上午|中午|下午|傍晚|晚上|凌晨|今晚|明早)[^，。]{0,14}(?:要|得|会|应该|必须))/.test(clause))
       .filter((clause) => !/(?:不想|不愿|不肯|无法|难以|想(?:要)?(?:去|早点|早些|先)?(?:睡|上床)|(?:要|得|会|可以|该)(?:去)?(?:睡觉|睡下|上床|入睡)|(?:吃完|写完|做完|完成|看完|打完)[^，。]{0,16}(?:后再|之后再|以后再|才能|才可以|再去)|(?:仍旧|依旧|仍然|仍在|还在|一直|早已)[^，。]{0,8}(?:睡|熟睡)|(?:陪着|看着|守着|望着|照顾|抱着)[^，。]{0,16}(?:睡着|熟睡|睡觉))/.test(clause))
@@ -814,7 +836,7 @@
     // Newly generated scene narrations store their time AFTER the described
     // passage. Do not add that same elapsed duration again next round.
     if (latest.ephoneSceneTimeResolved && latest.role !== "user" && !latest.sentAsCharacter) return null;
-    const text = messageText(latest);
+    const text = actualSceneClauses(messageText(latest), true).join("");
     const negated = /(?:还没|还未|没有|没|未|不到|还不到)\s*(?:到)?\s*(?:时间|时候)|时间(?:还没|未|没|没有)到|时间到了[吗么？?]/.test(text);
     const reached = !negated && /时间到了|到时间了|时间到(?:了)?[！!。\s）)]|时间到$|时候到了|到时候了|到点了|等完了|等待结束|计时结束|闹钟响了|倒计时结束/.test(text);
     const ownDurations = durations(text);
