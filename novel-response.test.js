@@ -1,0 +1,57 @@
+"use strict";
+const assert = require("node:assert/strict"), core = require("./novel-response.js");
+const novel = { title: "第1章 <约定>", content: '他说："别忘了{明天}的约定。"\n下一段正文，\n保留所有细节和 \\路径。', summary: "他们约好明天见面。" };
+function matches(raw, expected = novel, fallback = "Fallback") {
+  const result = core.parse(raw, fallback);
+  assert.equal(result.title, expected.title || fallback); assert.equal(result.content, expected.content);
+  assert.equal(result.summary, expected.summary || ""); return result;
+}
+assert.equal(matches(JSON.stringify(novel)).format, "json");
+matches({ data: { chapter: novel } });
+matches("```json\n" + JSON.stringify(novel) + "\n```");
+matches("下面是完整章节：\n" + JSON.stringify(novel) + "\n以上是本次创作。");
+matches(JSON.stringify(JSON.stringify(novel)));
+assert.equal(core.parse(JSON.stringify("这是被JSON编码的完整普通正文。" )).content, "这是被JSON编码的完整普通正文。");
+matches(JSON.stringify({ result: { chapter_title: novel.title, chapter_content: novel.content, chapter_summary: novel.summary } }));
+matches(JSON.stringify({ title: "", content: "", response: novel }));
+matches(JSON.stringify({ 标题: novel.title, 正文: novel.content, 摘要: novel.summary }));
+matches("<novel_title>" + novel.title + "</novel_title><novel_content>" + novel.content + "</novel_content><novel_summary>" + novel.summary + "</novel_summary>");
+matches("<think>只应是隐藏推理，不应当成小说。</think>\n" + JSON.stringify(novel));
+const multiline = '{"title":"第一章","content":"他说："放心吧"，然后继续往前走。\n另起一段。","summary":"散步。"}';
+const recovered = matches(multiline, { title: "第一章", content: '他说："放心吧"，然后继续往前走。\n另起一段。', summary: "散步。" });
+assert.equal(recovered.format, "recovered-json"); assert.equal(recovered.partial, false);
+matches("{title:'第一章',content:'Don\'t stop，内容不会在句中\'截断\'。',summary:'继续。'}", { title: "第一章", content: "Don't stop，内容不会在句中'截断'。", summary: "继续。" });
+const partial = core.parse('{"title":"半章","content":"已经收到的正文\n下一段尚未说完', "x");
+assert.equal(partial.content, "已经收到的正文\n下一段尚未说完"); assert.equal(partial.partial, true); assert.ok(partial.warnings.length);
+const partialTag = core.parse("<novel_title>半章</novel_title><novel_content>收到的内容没有结尾", "x");
+assert.equal(partialTag.content, "收到的内容没有结尾"); assert.equal(partialTag.partial, true);
+const missingClose = core.parse("<novel_content>正文完整<novel_summary>摘要</novel_summary>");
+assert.equal(missingClose.content, "正文完整"); assert.equal(missingClose.summary, "摘要");
+const fullText = "第一章 约定\n\n他说：\"正文不会因为不符合JSON就消失\"。\n{这不是JSON对象}，小说继续。";
+assert.equal(core.parse(fullText).content, fullText);
+assert.equal(core.parse("```text\n完整普通小说。\n```").content, "完整普通小说。", "plain text fence wrapper removed");
+assert.equal(core.parse("  完整普通小说。\n\n").content, "  完整普通小说。\n\n", "plain prose whitespace is not trimmed");
+assert.equal(core.parse('```xml\n<novel_content style="plain">实际收到的半章\n```').content, "实际收到的半章", "unfinished tagged output excludes its transport fence");
+const parts = core.parse('```json\n{"title":"开始","content":"第一部分"}\n```\n```json\n{"content":"第二部分","summary":"结束"}\n```');
+assert.equal(parts.content, "第一部分\n\n第二部分"); assert.equal(parts.summary, "结束");
+const array = core.parse(JSON.stringify([{ title: "开篇", content: "旁白" }, { type: "text", content: "台词" }]));
+assert.equal(array.content, "旁白\n\n台词");
+const blocks = core.parse(JSON.stringify({ title: "分段", content: [{ type: "thinking", content: "不得显示的详细思考" }, { type: "text", text: "实际正文一" }, { type: "text", text: "实际正文二" }] }));
+assert.equal(blocks.content, "实际正文一\n\n实际正文二");
+assert.equal(blocks.title, "分段");
+const tail = core.parse('{"title":"开篇","content":"完整首段"}\n{"content":"实际收到的后续半段');
+assert.equal(tail.content, "完整首段\n\n实际收到的后续半段"); assert.equal(tail.partial, true);
+const metaThenNovel = core.parse('{"status":"ok"}\n' + JSON.stringify(novel));
+assert.equal(metaThenNovel.content, novel.content, "metadata root cannot swallow next valid chapter");
+const long = ('很长的完整小说，包含"引号"、{大括号}、[数字]和\\错误转义q。\n').repeat(9000);
+matches(JSON.stringify({ ...novel, content: long }), { ...novel, content: long });
+assert.equal(core.parse('<novel_content>' + long + '</novel_content>').content, long);
+const longMalformed = '{"content":"' + long + '","summary":"完整保留。"}';
+assert.equal(core.parse(longMalformed).content, long, "long malformed prose is recovered without caps or quote truncation");
+for (const raw of ["", "  ", "{}", '{"title":"只有标题","summary":"没有正文"}', '{"content":null}', '{"content":5}', '{"broken":', '{"content":"loading"}', "正在生成……", "loading", "<think>一直思考而无正文", "<novel_title>只有标题</novel_title>", '```js\nconst x="not a novel";\n```']) {
+  assert.throws(() => core.parse(raw), (e) => e.code === "NOVEL_CONTENT_MISSING", raw);
+}
+assert.equal(core.parse("这是一段没有完整JSON结构的中断回复").content, "这是一段没有完整JSON结构的中断回复", "arbitrary plain prose must not be blocked by fixture-specific words");
+assert.equal(core.parse('{"content":"  正文前后空格保留  "}').content, "  正文前后空格保留  ");
+assert.equal({}.polluted, undefined);
+console.log("PASS: complete/fenced/wrapped/multiple JSON, tagged/plain novels, malformed quotes and newlines, full long bodies, received unfinished prose and non-body rejection without API/eval");

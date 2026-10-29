@@ -26,10 +26,13 @@ for (const m of s.matchAll(/= _ephoneApiFor\("reply"\)/g)) {
   assert.ok(primary.delete(fn), "only main chat reply paths use primary: " + fn);
 }
 assert.equal(primary.size, 0);
-const novels = [...s.matchAll(/= _ephoneApiFor\("novel"\)/g)];
+const novels = [...s.matchAll(/_ephoneApiFor\("novel"\)/g)];
 assert.equal(novels.length, 1, "novel creation, continuation and reroll share one explicit routing point");
 assert.equal([...s.slice(0, novels[0].index).matchAll(/^  (?:async )?function (_0x[0-9a-f]+)/gm)].at(-1)?.[1], "_0x10ebb8");
-assert.equal((s.match(/= _ephoneApiFor\("auxiliary"/g) || []).length, 37);
+assert.equal((s.match(/_ephoneApiFor\("auxiliary"/g) || []).length, 38);
+const novelFunction = s.slice(s.indexOf("async function _0x10ebb8("), s.indexOf("function _0x5c29da("));
+assert.match(novelFunction, /generationApi/, "Green River must route from the persisted per-work choice");
+assert.match(novelFunction, /_ephoneApiFor\("auxiliary"\)/, "Green River auxiliary selection uses the same strict no-fallback router");
 assert.match(s.slice(s.indexOf("generateMessages: async"), s.indexOf("generate: async (prompt, signal)")), /_ephoneApiFor\("auxiliary"\)/, "NY tagged analysis must use auxiliary routing too");
 assert.doesNotMatch(s, /__ephone_continue__|_ephoneRecoveryPrompt|_0xephoneContinue/);
 assert.doesNotMatch(s.slice(s.indexOf("async function _0x1cf16a"), s.indexOf("async function _0x4a6dc1")), /secondaryProxyUrl:|secondaryApiKey:|secondaryModel:/);

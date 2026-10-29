@@ -18624,3 +18624,10 @@ body.frame-mode-active .cphone-dock-container {
 #reply-round-nav button:focus-visible { outline: 2px solid var(--accent-color, #007aff); }
 #phone-screen.dark-mode #reply-round-nav { background: #28282b; }
 .reply-round-target { outline: 2px solid #007aff44; outline-offset: 2px; border-radius: 10px; }
+#gr-generation-status:not([hidden]), #gr-generation-result-bar:not([hidden]) { display: flex; flex: none; align-items: center; justify-content: space-between; gap: 10px; padding: 7px 15px; border-top: 1px solid #e5e5e5; background: #fafaf9; color: #666; font-size: 12px; line-height: 1.5; }
+#gr-generation-status span, #gr-generation-result-bar span { min-width: 0; overflow-wrap: anywhere; }
+#gr-generation-status button, #gr-generation-result-bar button { flex: none; font-size: 12px; }
+#phone-screen.dark-mode #gr-generation-status, #phone-screen.dark-mode #gr-generation-result-bar { background: #252525; color: #ccc; border-color: #444; }
+#gr-last-response-modal textarea { white-space: pre-wrap; overflow-wrap: anywhere; font: inherit; font-size: 13px; line-height: 1.7; user-select: text; }
+#gr-reader-screen .gr-control-panel { position: static; flex: none; }
+#gr-reader-screen .gr-reader-content { flex: 1; min-height: 0; padding-bottom: 24px; }

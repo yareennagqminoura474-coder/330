@@ -29,7 +29,7 @@
     const personKey = (source, type = "chat") => canonical(identity.personKey?.(source, type) || source.ephonePersonKey || type + ":" + source.id);
     const memberKey = (profile) => canonical(identity.memberKey?.(profile.member, chats, npcs) ||
       (profile.npc ? personKey(profile.npc, "npc") : profile.source ? personKey(profile.source) : profile.member.ephonePersonKey || "member:" + profile.member.id));
-    const roster = new Map(), selectedChats = [], groupNotes = [], warnings = [], selectedIds = [...new Set(list(options.selectedIds).map(String))];
+    const roster = new Map(), originalUserProfiles = new Map(), selectedChats = [], groupNotes = [], warnings = [], selectedIds = [...new Set(list(options.selectedIds).map(String))];
     const addAlias = (from, to) => { if (from && from !== to) aliases[from] = to; };
     function addPerson({ key, source, npc, member, persona, basePersona, origin, group, override }) {
       let person = roster.get(key);
@@ -46,7 +46,9 @@
       const originalName = source?.settings?.myNickname, originalPersona = source?.settings?.myPersona;
       if (originalName || originalPersona || /\{\{user\}\}/.test(base)) {
         const value = JSON.stringify([originalName, originalPersona]);
-        person.originalUsers.set(value, `该档案的原聊天对象（{{user}}）：${originalName || "原用户"}\n原聊天对象人设：${originalPersona || "（未设置；不能自动对应为本章的某位人物）"}`);
+        const persona = text(originalPersona);
+        if (persona && !originalUserProfiles.has(persona)) originalUserProfiles.set(persona, "U" + (originalUserProfiles.size + 1));
+        person.originalUsers.set(value, { name: originalName || "原用户", profile: originalUserProfiles.get(persona) });
       }
       if (source && !npc) addAlias("chat:" + source.id, key);
       if (npc) addAlias("npc:" + npc.id, key);
@@ -64,8 +66,12 @@
       if (!chat) { warnings.push("所选人物或群聊已不存在：" + id); continue; }
       selectedChats.push(chat);
       if (!isGroup(chat)) { addPerson({ key: personKey(chat), source: chat, origin: `角色档案“${chat.name}”` }); continue; }
-      const context = groupContext.buildContext?.({ chat, chats: records, npcs, formatTime: options.formatTime });
-      const profiles = context?.profiles || list(chat.members).map((member) => {
+      // The shared resolver is sufficient here; buildContext also prepares all
+      // memory/history text that this module does not use or select.
+      const resolved = typeof groupContext.memberProfile === "function"
+        ? list(chat.members).map((member) => groupContext.memberProfile(member, records, npcs))
+        : groupContext.buildContext?.({ chat, chats: records, npcs, formatTime: options.formatTime })?.profiles;
+      const profiles = resolved || list(chat.members).map((member) => {
         const linked = identity.memberSource?.(member, chats, npcs), npc = linked?.type === "npc" ? linked.record : null;
         const source = npc || linked?.record || records[String(member.id)];
         const sourcePersona = text(npc?.persona) || text(source?.settings?.aiPersona);
@@ -85,10 +91,22 @@
       section += person.bases.size ? [...person.bases].map(([persona, origin], index) => `${index ? "同一人物的补充档案" : "基础人设"}（${origin}）：\n${persona}`).join("\n") : "基础人设：（未设置，不自行补成既定事实）";
       for (const override of person.overrides.values()) section += `\n“${override.groupName}”中的专用设定（仅对应场景优先）：\n${override.persona}`;
       if (person.overrides.size > 1) section += "\n多个群的专用设定不能相互套用；未明确本章对应场景时先沿用基础档案。";
-      for (const value of person.originalUsers.values()) section += "\n" + value;
+      for (const value of person.originalUsers.values()) section += `\n该档案的原聊天对象（{{user}}）：${value.name}\n原聊天对象人设：${value.profile ? "引用原聊天对象档案【" + value.profile + "】的完整文本" : "（未设置；不能自动对应为本章的某位人物）"}`;
       parts.push(section);
     }
-    if (options.player?.name && options.player.valid !== false) parts.push(`本空间中充当用户的绑定角色：${options.player.name}（${options.player.key || "未注明编号"}）。此绑定说明谁代演用户，不会令其他档案中的{{user}}自动变成该角色，也不会改写作品中明确指定的用户身份。\n绑定角色档案：${text(options.player.persona) || "（未另设）"}`);
+    if (originalUserProfiles.size) {
+      parts.push("# 原聊天对象完整人设（相同文本只列一次；文字复用不合并人物身份）\n" + [...originalUserProfiles].map(([persona, id]) => {
+        const source = cast.find((person) => person.bases.has(persona));
+        return `## 原聊天对象档案【${id}】\n` + (source
+          ? `完整相同文本见上方本名“${source.name}”（人物编号：${source.key}）的基础/补充档案。此处只复用人设文字，原聊天对象身份仍按每位角色自己档案的标注理解，不自动认定是同一人。`
+          : persona);
+      }).join("\n\n"));
+    }
+    if (options.player?.name && options.player.valid !== false) {
+      const persona = text(options.player.persona), source = roster.get(canonical(options.player.key));
+      const profile = source?.bases.has(persona) ? `见上方本名“${source.name}”（人物编号：${source.key}）的完整档案；绑定不额外创建另一个同名人物。` : persona || "（未另设）";
+      parts.push(`本空间中充当用户的绑定角色：${options.player.name}（${options.player.key || "未注明编号"}）。此绑定说明谁代演用户，不会令其他档案中的{{user}}自动变成该角色，也不会改写作品中明确指定的用户身份。\n绑定角色档案：${profile}`);
+    }
     const allowed = new Map(cast.map((person) => [person.key, person]));
     // The default user identity participates in the story's relationship map,
     // but binding alone does not select that person's chats or private memories.

@@ -10,7 +10,7 @@ const { chromium } = require("playwright-core");
   });
   await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
   const origin = `http://127.0.0.1:${server.address().port}`, browser = await chromium.launch({ executablePath: "C:/Program Files/Google/Chrome/Application/chrome.exe", headless: true });
-  const calls = [], errors = [], dialogs = [], held = []; let failPrimary = false, invalidPrimary = "", lengthReason = false, holdPrimary = false, serial = 0;
+  const calls = [], errors = [], dialogs = [], held = []; let failPrimary = false, invalidPrimary = "", responseFormat = "json", lengthReason = false, holdPrimary = false, serial = 0;
   const chapter = (n) => ({ title: "第" + n + "章 <约定>", content: "完整小说正文" + n + "：\n" + "日常散步和整理旧书的完整细节。".repeat(80) + '\n<约定>照旧。<img src=x onerror="window.__greenRiverInjected=true">' + "CHAPTER_END_" + n, summary: "本章总结" + n + '：</textarea><img src=x onerror="window.__greenRiverInjected=true">' });
   try {
     const page = await browser.newPage({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true, serviceWorkers: "block" });
@@ -18,14 +18,27 @@ const { chromium } = require("playwright-core");
     await page.route("**/*", async (route) => {
       const request = route.request(), url = request.url(); if (url.startsWith(origin)) return route.continue();
       if (url.includes("unpkg.com/dexie")) return route.fulfill({ contentType: "application/javascript", body: fs.readFileSync(path.join(path.dirname(require.resolve("dexie")), "dexie.min.js"), "utf8") });
-      const native = url.startsWith("https://generativelanguage.googleapis.com/"), primary = native || url.startsWith("https://gr-primary.invalid/");
-      if (!primary && !url.startsWith("https://gr-auxiliary.invalid/")) return route.abort();
-      const body = request.postDataJSON(), prompt = JSON.stringify(body); calls.push({ primary, native, url, body, prompt });
-      if (native) { assert.ok(url.includes("novel-native-model")); assert.equal(new URL(url).searchParams.get("key"), "fake-native-primary"); }
+      const native = url.startsWith("https://generativelanguage.googleapis.com/"), primary = native ? new URL(url).searchParams.get("key") === "fake-native-primary" : url.startsWith("https://gr-primary.invalid/");
+      if (!native && !primary && !url.startsWith("https://gr-auxiliary.invalid/")) return route.abort();
+      const body = request.postDataJSON(), prompt = JSON.stringify(body), novel = prompt.includes("写作任务");
+      const call = { primary, native, novel, url, body, prompt }; calls.push(call);
+      if (native) { assert.ok(url.includes(primary ? "novel-native-model" : "novel-native-aux-model")); assert.equal(new URL(url).searchParams.get("key"), primary ? "fake-native-primary" : "fake-native-secondary"); }
       else { assert.equal(body.model, primary ? "novel-primary-model" : "auxiliary-model"); assert.equal(request.headers().authorization, primary ? "Bearer fake-primary" : "Bearer fake-auxiliary"); }
-      if (primary && failPrimary) return route.fulfill({ status: 503, body: "isolated novel provider failure" });
-      if (primary && holdPrimary) { held.push({ route, native }); return; }
-      const raw = primary && invalidPrimary === "malformed" ? "这是一段没有完整JSON结构的中断回复" : JSON.stringify(primary ? invalidPrimary === "missing" ? { title: "缺少正文", summary: "不应覆盖旧章" } : chapter(++serial) : { result: "auxiliary remains independent" });
+      if (novel && failPrimary) return route.fulfill({ status: 503, body: "isolated novel provider failure" });
+      if (novel && holdPrimary) { held.push({ route, native }); return; }
+      let raw;
+      if (!novel) raw = JSON.stringify({ result: "auxiliary remains independent" });
+      else if (invalidPrimary === "malformed") raw = '{"title":"结构无效，无可恢复的正文", "summary":';
+      else if (invalidPrimary === "missing") raw = JSON.stringify({ title: "缺少正文", summary: "不应覆盖旧章" });
+      else {
+        const result = chapter(++serial); call.expected = result;
+        if (responseFormat === "plain") raw = result.content;
+        else if (responseFormat === "tags") raw = '<novel_title>' + result.title + '</novel_title>\n<novel_content>' + result.content + '</novel_content>\n<novel_summary>' + result.summary + '</novel_summary>';
+        else if (responseFormat === "loose-json") raw = '{"title":' + JSON.stringify(result.title) + ',"content":"' + result.content + '","summary":' + JSON.stringify(result.summary) + '}';
+        else if (responseFormat === "partial-tags") raw = '<novel_title>' + result.title + '</novel_title>\n<novel_content>' + result.content;
+        else raw = JSON.stringify(result);
+      }
+      call.raw = raw;
       const response = native ? { candidates: [{ content: { parts: [{ text: raw }] }, finishReason: lengthReason ? "MAX_TOKENS" : "STOP" }] } : { choices: [{ message: { content: raw }, finish_reason: lengthReason ? "length" : "stop" }] };
       return route.fulfill({ contentType: "application/json", body: JSON.stringify(response) });
     });
@@ -41,6 +54,12 @@ const { chromium } = require("playwright-core");
     const generate = async (direction) => { const before = JSON.stringify((await stories())[0].chapters), n = dialogs.length; await page.locator("#gr-direction-input").fill(direction); await page.locator("#gr-generate-btn").click(); await finish(before, true, n); };
     const reroll = async (expected = true) => { const before = JSON.stringify((await stories())[0].chapters), n = dialogs.length; await page.locator("#gr-reroll-btn").click(); await page.locator("#custom-modal-overlay.visible #custom-modal-confirm").click(); await finish(before, expected, n); };
     const config = async (patch) => { await page.evaluate(async (patch) => window.db.apiConfig.update("main", patch), patch); await ready(); await openBook(); };
+    const chooseApi = async (value) => {
+      const before = calls.length;
+      await page.locator('#gr-reader-screen [title="设定"]').click(); await page.waitForSelector("#gr-settings-modal.visible");
+      await page.locator("#gr-generation-api").selectOption(value); await page.locator("#gr-save-story-btn").click(); await page.waitForSelector("#gr-reader-screen.active");
+      assert.equal((await stories())[0].settings.generationApi, value); assert.equal(calls.length, before, "choosing an API must not send a generation request");
+    };
     await page.goto(origin, { waitUntil: "domcontentloaded" }); await page.waitForFunction(() => window.ephoneAppReady); await page.locator("#update-notice-dismiss-btn").click();
     await page.evaluate(async () => {
       const config = await window.db.apiConfig.get("main") || { id: "main" };
@@ -65,6 +84,7 @@ const { chromium } = require("playwright-core");
     });
     await ready(); await page.evaluate(() => window.openGreenRiverScreen());
     await page.locator('#green-river-screen [title="新建作品"]').click(); await page.waitForSelector("#gr-settings-modal.visible");
+    assert.equal(await page.locator("#gr-generation-api").inputValue(), "primary", "new and legacy works default to the previously selected primary API");
     await page.locator("#gr-story-title").fill("旧书店的一天"); await page.locator('#gr-char-list input[value="gr-group"]').check(); await page.locator("#gr-macro-world-view").fill("现代日常故事，人物保持真实关系。");
     await page.locator("#gr-save-story-btn").click(); await page.waitForSelector("#gr-reader-screen.active"); assert.equal(calls.length, 0, "creating and reviewing story settings does not call a provider");
     await generate("三人在旧书店重逢。"); assert.equal(calls.length, 1); assert.equal(calls.at(-1).primary, true);
@@ -92,6 +112,12 @@ const { chromium } = require("playwright-core");
       invalidPrimary = invalid; const beforeInvalid = calls.length; await reroll(false); invalidPrimary = "";
       assert.equal(calls.length, beforeInvalid + 1, "invalid output uses one main request without automatic retry"); assert.equal(calls.at(-1).primary, true);
       assert.deepEqual((await stories())[0].chapters, preserved, "malformed or missing novel body cannot replace the old chapter");
+      const savedReturn = (await stories())[0].lastGeneration;
+      assert.equal(savedReturn.status, "error"); assert.equal(savedReturn.raw, calls.at(-1).raw, "an unsuccessful parse retains the complete paid provider output locally");
+      if (invalid === "malformed") await page.screenshot({ path: path.join(require("node:os").tmpdir(), "ephone-green-river-return-mobile.png") });
+      const beforeView = calls.length; await page.locator("#gr-last-response-btn").click(); await page.waitForSelector("#gr-last-response-modal.visible");
+      assert.equal(await page.locator("#gr-last-response-content").inputValue(), calls.at(-1).raw);
+      await page.locator("#gr-last-response-close").click(); assert.equal(calls.length, beforeView, "reviewing the saved output makes no API request");
     }
     await config({ apiKey: "" }); const beforeMissingMain = calls.length; await reroll(false);
     assert.equal(calls.length, beforeMissingMain, "missing primary credentials do not spend on auxiliary API"); assert.deepEqual((await stories())[0].chapters, preserved, "missing main configuration must not remove the last chapter");
@@ -100,7 +126,34 @@ const { chromium } = require("playwright-core");
     await page.evaluate(async () => { const story = (await window.db.grStories.toArray())[0]; await window.db.grStories.update(story.id, { settings: { ...story.settings, referenceSpaceDatabase: "another-persona-space" } }); });
     const beforeForeignSpace = calls.length; await reroll(false); assert.equal(calls.length, beforeForeignSpace, "foreign-space references must stop before any request"); assert.deepEqual((await stories())[0].chapters, preserved); assert.match(dialogs.at(-1), /另一个空间/);
     await page.evaluate(async () => { const story = (await window.db.grStories.toArray())[0]; await window.db.grStories.update(story.id, { settings: { ...story.settings, referenceSpaceDatabase: window.db.spaceProfiles.db.name } }); });
-    await config({ proxyUrl: "https://generativelanguage.googleapis.com/v1beta/models", apiKey: "fake-native-primary", model: "novel-native-model", secondaryApiKey: "fake-auxiliary", secondaryModel: "auxiliary-model" });
+    for (const format of ["tags", "loose-json", "plain", "partial-tags"]) {
+      responseFormat = format; const beforeRecovery = calls.length; await generate("检查完整正文格式兼容：" + format);
+      assert.equal(calls.length, beforeRecovery + 1, "format recovery is entirely local and must not call a second API");
+      const latest = (await stories())[0], expected = calls.at(-1).expected;
+      assert.equal(latest.chapters.at(-1).content, expected.content, "recover all prose from " + format);
+      assert.equal(latest.lastGeneration.raw, calls.at(-1).raw, "retain the exact provider return for " + format);
+      assert.equal(latest.lastGeneration.status, "saved");
+      if (format === "partial-tags") assert.equal(latest.lastGeneration.partial, true, "a missing closing tag is marked partial rather than pretending the chapter completed");
+    }
+    responseFormat = "json";
+    await chooseApi("secondary"); await ready(); await openBook();
+    await page.locator('#gr-reader-screen [title="设定"]').click(); await page.waitForSelector("#gr-settings-modal.visible");
+    assert.equal(await page.locator("#gr-generation-api").inputValue(), "secondary", "the per-work selection survives reload and reopening settings");
+    await page.locator("#gr-cancel-settings-btn").click();
+    await config({ apiKey: "", secondaryApiKey: "fake-auxiliary", secondaryModel: "auxiliary-model" });
+    const beforeSecondary = calls.length; await generate("这个作品明确使用副API写正文。");
+    assert.equal(calls.length, beforeSecondary + 1); assert.equal(calls.at(-1).primary, false); assert.equal(calls.at(-1).novel, true);
+    assert.equal((await stories())[0].lastGeneration.api, "secondary");
+    const secondaryPreserved = (await stories())[0].chapters;
+    await config({ apiKey: "fake-primary", secondaryApiKey: "" });
+    const beforeMissingSecondary = calls.length; await reroll(false);
+    assert.equal(calls.length, beforeMissingSecondary, "a missing selected auxiliary API must not fall back to an available primary API");
+    assert.deepEqual((await stories())[0].chapters, secondaryPreserved); assert.match(dialogs.at(-1), /副 API/);
+    await config({ secondaryProxyUrl: "https://generativelanguage.googleapis.com/v1beta/models", secondaryApiKey: "fake-native-secondary", secondaryModel: "novel-native-aux-model" });
+    const beforeNativeSecondary = calls.length; await generate("原生Gemini副API写作。");
+    assert.equal(calls.length, beforeNativeSecondary + 1); assert.equal(calls.at(-1).native, true); assert.equal(calls.at(-1).primary, false);
+    await chooseApi("primary");
+    await config({ proxyUrl: "https://generativelanguage.googleapis.com/v1beta/models", apiKey: "fake-native-primary", model: "novel-native-model", secondaryProxyUrl: "https://gr-auxiliary.invalid/v1", secondaryApiKey: "fake-auxiliary", secondaryModel: "auxiliary-model" });
     lengthReason = true; const beforeNative = calls.length; await generate("原生Gemini继续这个故事。"); lengthReason = false;
     assert.equal(calls.length, beforeNative + 1); assert.equal(calls.at(-1).native, true); assert.equal(calls.at(-1).primary, true);
     assert.equal((await stories())[0].chapters.at(-1).content, chapter(serial).content, "a provider length flag alone cannot discard valid complete returned content");
@@ -121,7 +174,17 @@ const { chromium } = require("playwright-core");
     await settle();
     assert.equal((await page.evaluate((id) => window.db.grStories.get(id), otherId)).chapters.length, 0); assert.equal(calls.length, beforeHeld + 1);
     assert.equal(await page.locator("#gr-book-name-display").textContent(), "导航测试另一作品", "background completion does not switch the visible work");
+    holdPrimary = true; const beforeStop = calls.length;
+    await page.locator("#gr-direction-input").fill("等待时可以由用户停止，不付费重试。"); await page.locator("#gr-generate-btn").click();
+    const stopDeadline = Date.now() + 10000; while (!held.length && Date.now() < stopDeadline) await new Promise((resolve) => setTimeout(resolve, 20));
+    assert.equal(held.length, 1); assert.equal(calls.length, beforeStop + 1);
+    assert.equal(await page.locator("#gr-stop-generation-btn").isVisible(), true, "a slow pending request exposes a stop action");
+    assert.ok((await page.locator("#gr-generation-status-text").textContent()).trim());
+    await page.locator("#gr-stop-generation-btn").click(); await settle();
+    assert.equal((await page.evaluate((id) => window.db.grStories.get(id), otherId)).chapters.length, 0, "stopping cannot create a fake chapter");
+    assert.equal(calls.length, beforeStop + 1, "stopping does not retry or switch provider");
+    for (const { route } of held.splice(0)) await route.abort().catch(() => {}); holdPrimary = false;
     assert.deepEqual(errors, []);
-    console.log("PASS: Green River creation/continuation/reroll use one primary compatible/native request; complete group/NPC/bound-player profiles, relations, history, numeric explicit identity/worldbook and prior chapter retained; literal markup safe; failed/malformed/missing-primary rerolls preserve chapters; duplicate pending tap and work navigation isolated; cross-space refs rejected; auxiliary remains independent");
+    console.log("PASS: Green River saved primary/auxiliary choices and compatible/native routing, complete character/relationship/history context, local JSON/tag/plaintext recovery and exact retained output, safe literal prose, failure preservation, no fallback or retries, pending stop/duplicate-tap/navigation isolation");
   } finally { await browser.close(); await new Promise((resolve) => server.close(resolve)); }
 })().catch((error) => { console.error(error); process.exitCode = 1; });

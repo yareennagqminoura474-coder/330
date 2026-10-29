@@ -40,7 +40,8 @@ assert.match(result.text, /群内场景是在古风书院/);
 assert.match(result.text, /本群额外设定：林澈正在养伤/);
 assert.match(result.text, /只存在于群聊的成年人同窗/);
 assert.match(result.text, /原聊天对象（\{\{user\}\}）：师父/);
-assert.match(result.text, /原聊天对象人设：林珣/);
+assert.match(result.text, /原聊天对象人设：引用原聊天对象档案【U1】的完整文本/);
+assert.match(result.text, /原聊天对象档案【U1】\n林珣/);
 assert.match(result.text, /林澈是杨帆的师弟；杨帆是林澈的师兄/);
 assert.match(result.text, /林珣是杨帆的师父；杨帆是林珣的弟子/);
 assert.match(result.text, /明确关系的实际原文/);
@@ -76,4 +77,40 @@ const numericPrivate = { id: 7, name: "王老师", settings: { aiPersona: "王�
 const sharedNumericId = core.build({ ...options, selectedIds: ["7", "g"], chats: [...chats, numericPrivate], relations: [{ a: "chat:7", b: "chat:b", aToB: "学生", bToA: "老师" }] });
 assert.match(sharedNumericId.text, /林澈是王老师的学生；王老师是林澈的老师/);
 assert.doesNotMatch(sharedNumericId.text, /林澈是林珣的学生/, "numeric NPC IDs must not overwrite a different private archive's key");
-console.log("PASS: selected novel casts use full canonical personas, scoped group overrides, original user identity, directed saved relations, owner/time-preserving memory, complete selected history, NPC and group-only members, strict selection boundaries, aliases and immutable source records");
+
+// Large groups often share the same full original-user persona. Reusing its
+// exact text must not merge that per-character identity or drop the bindings.
+const commonUser = "SHARED_ORIGINAL_USER_PERSONA_".repeat(120);
+const manyRoles = Array.from({ length: 15 }, (_, index) => ({ id: "many-" + index, name: "角色" + index,
+  settings: { aiPersona: "CANONICAL_ROLE_" + index + "：" + "独立而完整的人设。".repeat(25), myNickname: "各自原用户" + index, myPersona: commonUser }, history: [], longTermMemory: [] }));
+const largeGroup = { id: "many-group", name: "大群", isGroup: true, settings: {}, members: manyRoles.map((role) => ({ id: role.id, originalName: role.name, persona: role.settings.aiPersona, ephonePersonaOverride: false })), history: [], longTermMemory: [] };
+let resolvedMembers = 0;
+const leanResolver = { memberProfile: (...args) => { resolvedMembers++; return groupContext.memberProfile(...args); },
+  describeMessage: groupContext.describeMessage, buildContext: () => { throw new Error("unused full context must not be built"); } };
+const manyOptions = { selectedIds: [largeGroup.id], chats: [...manyRoles, largeGroup], npcs: [], relations: [], identity, groupContext: leanResolver,
+  player: { key: "chat:" + manyRoles[0].id, name: manyRoles[0].name, persona: manyRoles[0].settings.aiPersona }, historyLimit: 0 };
+const manyBefore = JSON.stringify(manyOptions), many = core.build(manyOptions);
+assert.equal(resolvedMembers, 15, "reuse only the shared canonical member resolver, not its unused history/memory builder");
+assert.equal(many.people.length, 15, "sharing persona text must not merge characters or original user identities");
+assert.equal(many.text.split(commonUser).length - 1, 1, "all 15 full original user personas are retained by one shared text definition");
+assert.equal(many.text.split(manyRoles[0].settings.aiPersona).length - 1, 1, "the bound player's full persona is not repeated after its existing canonical cast archive");
+assert.match(many.text, /本空间中充当用户的绑定角色：角色0/);
+assert.match(many.text, /绑定角色档案：见上方本名“角色0”/);
+for (const role of manyRoles) {
+  assert.ok(many.text.includes(role.settings.aiPersona));
+  assert.ok(many.text.includes("原聊天对象（{{user}}）：" + role.settings.myNickname + "\n原聊天对象人设：引用原聊天对象档案【U1】的完整文本"));
+}
+assert.equal(JSON.stringify(manyOptions), manyBefore, "deduplicating prompt text leaves source archives untouched");
+const firstUser = "SAME_NICKNAME_FIRST_USER_FULL_PROFILE", secondUser = "SAME_NICKNAME_SECOND_USER_FULL_PROFILE";
+const separateUsers = manyRoles.slice(0, 2).map((role, index) => ({ ...role, settings: { ...role.settings, myNickname: "同名原用户", myPersona: index ? secondUser : firstUser } }));
+const separate = core.build({ selectedIds: separateUsers.map((role) => role.id), chats: separateUsers, identity, historyLimit: 0 });
+assert.equal(separate.people.length, 2);
+assert.equal(separate.text.split(firstUser).length - 1, 1);
+assert.equal(separate.text.split(secondUser).length - 1, 1, "same nicknames with different full personas never share a definition");
+assert.match(separate.text, /本名：角色0[\s\S]*原聊天对象人设：引用原聊天对象档案【U1】/);
+assert.match(separate.text, /本名：角色1[\s\S]*原聊天对象人设：引用原聊天对象档案【U2】/);
+const overlapsCast = core.build({ ...manyOptions, chats: manyOptions.chats.map((chat) => chat.id === manyRoles[1].id ? { ...chat, settings: { ...chat.settings, myPersona: manyRoles[0].settings.aiPersona } } : chat) });
+assert.equal(overlapsCast.text.split(manyRoles[0].settings.aiPersona).length - 1, 1, "an original-user definition may reference identical canonical cast text without equating those identities");
+const independentPlayer = core.build({ ...manyOptions, player: { key: "chat:another-person", name: manyRoles[0].name, persona: "DIFFERENT_BOUND_PERSONA" } });
+assert.match(independentPlayer.text, /DIFFERENT_BOUND_PERSONA/, "the binding is not deduplicated by display name alone");
+console.log("PASS: full canonical personas, scoped group overrides, original user identity, directed saved relations, owner/time-preserving memory, complete selected history, NPC and group-only members, selection boundaries, aliases, immutable sources and lossless shared-persona prompt deduplication");

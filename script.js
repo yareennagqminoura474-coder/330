@@ -54785,6 +54785,24 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
       _0x3d1862());
   }
   let _0x5576d5 = { activeStoryId: null, isGenerating: ![] };
+  document.getElementById("gr-stop-generation-btn")?.addEventListener("click", () => _0x5576d5.controller?.abort());
+  document.getElementById("gr-last-response-close")?.addEventListener("click", () => document.getElementById("gr-last-response-modal").classList.remove("visible"));
+  document.getElementById("gr-last-response-btn")?.addEventListener("click", async () => {
+    const storyId = _0x5576d5.activeStoryId, story = await _0x24f906.grStories.get(storyId);
+    if (_0x5576d5.activeStoryId !== storyId || !story?.lastGeneration) return;
+    const last = story.lastGeneration;
+    document.getElementById("gr-last-response-content").value = last.raw || "";
+    document.getElementById("gr-last-response-info").textContent = (last.api === "secondary" ? "副 API" : "主 API") + " · " + (last.model || "") + "。内容保存在本机，查看不会重新请求。" + (last.error ? "\n上次未保存为章节：" + last.error : "");
+    document.getElementById("gr-last-response-modal").classList.add("visible");
+  });
+  function _ephoneNovelResult(story) {
+    const bar = document.getElementById("gr-generation-result-bar"), last = story?.lastGeneration;
+    if (!bar) return;
+    bar.hidden = !last;
+    if (last) document.getElementById("gr-generation-note").textContent = last.status === "saved"
+      ? last.partial ? "返回可能未完，已保留实际正文，可继续续写。" : last.warnings?.length ? "已恢复正文并保存，可查看原始返回。" : "本次正文已保存。"
+      : "返回内容已保留，可查看或复制。";
+  }
   const _0x5cc2fe = [
     { name: _0x3ce505(0x1280), style: _0x3ce505(0x1420), maxOutput: 0x258 },
     { name: "正剧剧情", style: _0x3ce505(0xdef), maxOutput: 0x320 },
@@ -55003,6 +55021,7 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
       ](_0x3fbba3(0x2fb)));
   }
   async function _0x4b44e8(_0x352e0a = {}, _0x1219a8 = null) {
+    document.getElementById("gr-generation-api").value = _0x352e0a.generationApi === "secondary" ? "secondary" : "primary";
     const _0x112bcc = _0x3ce505,
       _0x4f44b4 = document[_0x112bcc(0x1023)]("gr-author-select");
     _0x4f44b4["innerHTML"] = "";
@@ -55147,6 +55166,7 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
       contextLimit: _0x3874fb,
       macroWorldView: _0x90d6c5,
       referenceSpaceDatabase: window.db.spaceProfiles.db.name,
+      generationApi: document.getElementById("gr-generation-api").value === "secondary" ? "secondary" : "primary",
     };
     if (_0x5576d5["activeStoryId"])
       await _0x24f906["grStories"]["update"](_0x5576d5[_0x21b2af(0xf42)], {
@@ -55183,6 +55203,7 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
     const _0x32ce26 =
       await _0x24f906[_0x46aac4(0xdca)][_0x46aac4(0x7eb)](_0x154236);
     if (!_0x32ce26) return;
+    _ephoneNovelResult(_0x32ce26);
     const _0x5d3484 = _0x32ce26[_0x46aac4(0x1bbd)][_0x46aac4(0xa5d)];
     if (_0x5d3484 > 0x0 && _0x29d7a8 >= _0x5d3484) _0x29d7a8 = _0x5d3484 - 0x1;
     if (_0x29d7a8 < 0x0) _0x29d7a8 = 0x0;
@@ -55307,6 +55328,12 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
       label.textContent = _0x5576d5.isGenerating ? "创作中…" : "续写";
     }
     if (reroll) reroll.disabled = _0x5576d5.isGenerating;
+    const status = document.getElementById("gr-generation-status");
+    if (status) {
+      status.hidden = !_0x5576d5.isGenerating;
+      if (_0x5576d5.isGenerating) document.getElementById("gr-generation-status-text").textContent =
+        (_0x5576d5.api === "secondary" ? "副 API" : "主 API") + " · " + (_0x5576d5.phase || "正在准备资料") + " · 已等待 " + Math.floor((Date.now() - (_0x5576d5.startedAt || Date.now())) / 1000) + " 秒";
+    }
   }
   function _0x308e0e(_0x23d846) {
     const _0x2ca660 = _0x3ce505,
@@ -55370,17 +55397,29 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
   async function _0x10ebb8(rewrite = false) {
     if (_0x5576d5.isGenerating) return;
     _0x5576d5.isGenerating = true;
+    const controller = new AbortController();
+    _0x5576d5.controller = controller;
+    _0x5576d5.startedAt = Date.now();
+    _0x5576d5.phase = "正在准备资料";
     const storyId = _0x5576d5.activeStoryId, stories = _0x24f906.grStories,
       personaDb = window.db.spaceProfiles.db,
       direction = document.getElementById("gr-direction-input")?.value.trim() || "",
       button = document.getElementById("gr-generate-btn"), label = document.getElementById("gr-gen-text");
+    let received = null, api = "primary", responseModel = "";
+    const timer = setInterval(_ephoneSyncNovelControls, 1000);
     if (button) button.disabled = true;
     if (label) label.textContent = "创作中…";
     _ephoneSyncNovelControls();
     try {
-      const { proxyUrl, apiKey, model } = _ephoneApiFor("novel");
       const story = await stories.get(storyId);
       if (!story) throw new Error("作品已被删除，请返回书架。");
+      api = story.settings?.generationApi === "secondary" ? "secondary" : "primary";
+      _0x5576d5.api = api;
+      let connection;
+      if (api === "secondary") connection = _ephoneApiFor("auxiliary");
+      else connection = _ephoneApiFor("novel");
+      const { proxyUrl, apiKey, model } = connection;
+      responseModel = model;
       const author = await _0x24f906.grAuthors.get(story.authorId);
       if (!author) throw new Error("所选作者已不存在，请在作品设定重新选择文风。");
       const context = await _ephoneNovelSources(story, personaDb), originalChapters = story.chapters || [],
@@ -55397,49 +55436,72 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
         "\n\n" + context.text + "\n\n# 已完成各章进度\n" + (progress || "这是作品开篇，尚无已完成章节。") +
         "\n\n# 上一章完整正文（承接结尾，不重复抄写）\n" + (previous?.content || "（开篇，无上一章）") +
         "\n\n# 本次剧情方向\n" + (direction || "按当前人物动机和未完成情节自然展开。") +
-        '\n\n# 输出格式\n只返回一个完整JSON对象，不加Markdown外壳：{"title":"本章标题","content":"完整小说正文，保留换行","summary":"本章确定发生的关键事实、关系变化、未完成事项及结尾场景，供后续章节承接"}。正文不可省略，不输出详细思维链。';
+        '\n\n# 输出格式\n分别使用以下标签输出，不使用JSON字符串，也不需要对正文引号或换行转义：\n<novel_title>本章标题</novel_title>\n<novel_content>完整小说正文，保留自然换行</novel_content>\n<novel_summary>本章确定发生的关键事实、关系变化、未完成事项及结尾场景，供后续章节承接</novel_summary>\n正文不可省略，不输出详细思维链。';
+      controller.signal.throwIfAborted();
+      _0x5576d5.phase = "等待模型返回正文";
+      _ephoneSyncNovelControls();
       let response;
       if (proxyUrl.includes("generativelanguage.googleapis.com")) {
         const request = _0x20e281(model, apiKey, prompt, [{ role: "user", content: "请写出这一章完整正文。" }]);
-        response = await fetch(request.url, request.data);
+        response = await fetch(request.url, { ...request.data, signal: controller.signal });
       } else {
         response = await _ephoneApiFetch(_ephoneBuildApiEndpoint(proxyUrl, "chat/completions"), {
-          method: "POST", headers: { "Content-Type": "application/json", Authorization: "Bearer " + apiKey },
+          method: "POST", signal: controller.signal, headers: { "Content-Type": "application/json", Authorization: "Bearer " + apiKey },
           body: JSON.stringify({ model, messages: [{ role: "system", content: prompt }, { role: "user", content: "请写出这一章完整正文。" }], temperature: 0.9 })
         });
       }
       if (!response.ok) throw new Error("API 请求失败：" + response.status + " - " + await response.text());
-      const raw = getGeminiResponseText(await response.json()).trim(), first = raw.indexOf("{"), last = raw.lastIndexOf("}");
-      if (first < 0 || last < first) throw new Error("模型没有返回完整的小说JSON，原章节保留；本次不会自动重复请求。");
-      const encoded = raw.slice(first, last + 1);
-      let result;
-      try { result = JSON.parse(encoded); }
-      catch { try { result = JSON.parse(encoded.replace(/\\([^"\\/bfnrtu])/g, "\\\\$1")); }
-        catch { throw new Error("小说JSON未完成或格式无效，原章节保留；可重新生成。"); } }
-      if (!result || Array.isArray(result) || typeof result.content !== "string" || !result.content.trim())
-        throw new Error("模型返回了空正文，原章节保留；本次不会自动重复请求。");
+      const wire = await response.text();
+      let raw = wire;
+      try {
+        const payload = JSON.parse(wire);
+        if (payload?.error) throw new Error("API 返回错误：" + String(payload.error.message || payload.error));
+        raw = getGeminiResponseText(payload);
+        if (!raw && (payload?.title || payload?.novel_title) && (payload?.content || payload?.body)) raw = JSON.stringify(payload);
+        if (typeof payload === "string") raw = payload;
+      } catch (error) { if (!(error instanceof SyntaxError)) throw error; }
+      received = { raw: typeof raw === "string" ? raw : "", status: "received", api, model, rewrite,
+        receivedAt: Date.now(), elapsedMs: Date.now() - _0x5576d5.startedAt };
+      // Keep the paid result before trying to interpret its chapter wrapper.
+      if (await stories.get(storyId)) await stories.update(storyId, { lastGeneration: received });
+      controller.signal.throwIfAborted();
+      _0x5576d5.phase = "正在整理并保存正文";
+      _ephoneSyncNovelControls();
+      const result = window.EPhoneNovelResponse.parse(received.raw, "第" + (chapters.length + 1) + "章");
       const chapter = { title: typeof result.title === "string" && result.title.trim() ? result.title : "第" + (chapters.length + 1) + "章",
-        content: result.content, summary: typeof result.summary === "string" ? result.summary : "", prevSummary: previous?.summary || "这是故事的开始。", timestamp: Date.now() };
+        content: result.content, summary: typeof result.summary === "string" ? result.summary : "", prevSummary: previous?.summary || "这是故事的开始。", timestamp: Date.now(),
+        ...(result.partial ? { generationPartial: true } : {}) };
       if (window.db.spaceProfiles.db !== personaDb) throw new Error("人物空间已切换，本次结果未写入作品，请回到原空间重试。");
       await stories.db.transaction("rw", stories, async () => {
+        controller.signal.throwIfAborted();
         const fresh = await stories.get(storyId);
         if (!fresh || JSON.stringify(fresh.chapters || []) !== JSON.stringify(originalChapters) || JSON.stringify(fresh.settings) !== JSON.stringify(story.settings) || fresh.authorId !== story.authorId)
           throw new Error("生成期间作品内容或设定已变化，本次未覆盖已有章节。");
         fresh.chapters = [...chapters, chapter];
         fresh.settings = { ...fresh.settings, referenceSpaceDatabase: personaDb.name };
         fresh.lastUpdated = Date.now();
+        fresh.lastGeneration = { ...received, status: "saved", warnings: result.warnings || [], partial: !!result.partial, format: result.format };
         await stories.put(fresh);
       });
       if (_0x5576d5.activeStoryId === storyId && document.getElementById("gr-reader-screen")?.classList.contains("active")) {
         await _0x5dec3b(storyId, chapters.length);
         const input = document.getElementById("gr-direction-input"); if (input?.value.trim() === direction) input.value = "";
       }
-    } catch (error) { console.error("绿江生成失败：", error); alert("小说生成未完成：" + error.message); }
+    } catch (error) {
+      const stopped = error.name === "AbortError" || controller.signal.aborted;
+      if (received && await stories.get(storyId)) await stories.update(storyId, { lastGeneration: { ...received, status: "error", error: stopped ? "已停止生成" : error.message } }).catch(() => {});
+      if (!stopped) { console.error("绿江生成失败：", error); alert("小说生成未完成：" + error.message + (received ? "\n返回内容已保留，可点「查看上次返回」，不需要再次调用 API。" : "")); }
+    }
     finally {
+      clearInterval(timer);
       _0x5576d5.isGenerating = false;
+      _0x5576d5.controller = null;
       for (const target of [button, document.getElementById("gr-generate-btn")]) if (target) target.disabled = false;
       for (const target of [label, document.getElementById("gr-gen-text")]) if (target) target.textContent = "续写";
       _ephoneSyncNovelControls();
+      const currentId = _0x5576d5.activeStoryId;
+      const current = await stories.get(currentId).catch(() => null);
+      if (_0x5576d5.activeStoryId === currentId) _ephoneNovelResult(current);
     }
   }
 
