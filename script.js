@@ -18252,6 +18252,7 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
           ),
         }));
       _0x235416.push({ role: "user", content: "请按以上人设、人物关系及当前时间，从最后一条消息继续推进剧情；不要复述已有消息。" });
+      const _ephoneNySpectatorSystem = _0x404106 + (await window.EPhoneNY?.prompt(_0x326f3d) || "");
       _ephoneSpectatorController.signal.throwIfAborted();
       const _ephoneSpectatorComplete = await window.ephoneChatResponse.complete(async () => {
         const _ephoneContextRequest = window.ephoneRequestContext?.start(_0x24f906, _0x326f3d.id, _0x45d813, 1) || { finish: async (raw) => raw };
@@ -18259,7 +18260,7 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
         let _0x4799c0 = _0x4dfdb5[_0xd07074(0x1507)](_0xd07074(0x328)),
           _0x13b518;
         if (_0x4799c0) {
-          let _0x29aa1f = _0x20e281(_0x45d813, _0x570fe9, _0x404106, _ephoneRequestMessages);
+          let _0x29aa1f = _0x20e281(_0x45d813, _0x570fe9, _ephoneNySpectatorSystem, _ephoneRequestMessages);
           _0x13b518 = await fetch(_0x29aa1f[_0xd07074(0x863)], {
             ..._0x29aa1f.data, signal: _ephoneSpectatorController.signal, ephoneContextRequest: _ephoneContextRequest,
           });
@@ -18277,7 +18278,7 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
             body: JSON[_0xd07074(0x1baf)]({
               model: _0x45d813,
               messages: [
-                { role: _0xd07074(0xd77), content: _0x404106 },
+                { role: _0xd07074(0xd77), content: _ephoneNySpectatorSystem },
                 ..._ephoneRequestMessages,
               ],
               temperature: _0x5ea3c1[_0xd07074(0x9b1)][_0xd07074(0x8ae)] || 0.9,
@@ -18476,6 +18477,7 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
       }
       _ephoneSyncRerollButtons(_0x326f3d);
       _ephoneRestoreChatScrolling();
+      if (_ephoneSpectatorTimeCommitted && !_ephoneSpectatorController.signal.aborted) window.EPhoneNY?.afterReply(_0x326f3d.id).catch((e) => console.warn("NY 分析未运行：", e.message));
     }
   }
   function _0xephoneSetGenerating(_0xActive) {
@@ -20939,11 +20941,12 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
             "【继续当前对话】请根据以上完整聊天记录，自然接续互动并推动后续。最后一条 assistant 是已经发送的角色消息，不是尚未完成的生成前缀；不要续写或复述它本身。",
         });
       }
+      const _ephoneNyReplySystem = _0x539674 + (await window.EPhoneNY?.prompt(_0x5b16cb) || "");
       const _ephoneCompleteReply = await window.ephoneChatResponse.complete(async () => {
         const _ephoneContextRequest = window.ephoneRequestContext?.start(_0x24f906, _0x5b16cb.id, _0x1d2298, 1) || { finish: async (raw) => raw };
         const _ephoneRequestMessages = window.ephoneCharacterWalletCore?.withBalanceReminder(_0x4e7a2c, _ephoneReplyFinance.reminder) || _0x4e7a2c;
         let _0x401894 = _0x275228 === GEMINI_API_URL,
-          _0x25b2a9 = _0x20e281(_0x1d2298, _0xdbefc3, _0x539674, _ephoneRequestMessages),
+          _0x25b2a9 = _0x20e281(_0x1d2298, _0xdbefc3, _ephoneNyReplySystem, _ephoneRequestMessages),
           _0x114828;
         try {
           if (_0x25b2a9?.data) { _0x25b2a9.data.signal = _0xephoneController.signal; _0x25b2a9.data.ephoneContextRequest = _ephoneContextRequest; }
@@ -20962,7 +20965,7 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
                 body: JSON["stringify"]({
                   model: _0x1d2298,
                   messages: [
-                    { role: "system", content: _0x539674 },
+                    { role: "system", content: _ephoneNyReplySystem },
                     ..._ephoneRequestMessages,
                   ],
                   temperature:
@@ -23643,6 +23646,7 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
         _0x4bb316(),
         _0x17004b && _0x2586fa(_0x973a29),
         _0x257b23());
+      if (_0xephoneTimeCommitted && !_0xephoneController.signal.aborted) window.EPhoneNY?.afterReply(_0x5b16cb.id).catch((e) => console.warn("NY 分析未运行：", e.message));
     }
   }
   async function _0x2be47e(_0x39e07c) {
@@ -57076,7 +57080,17 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
       // serialize; broad busy stays reserved for switching/deleting space data.
       (window.isEPhoneMutationBusy = () => Boolean(_ephoneMessageKindBusy || _ephoneSpectatorMoneyBusy || _ephoneWalletPending || window.ephonePlayerIdentity?.isBusy?.() || window.EPhoneCharacterWallet?.isMutating?.())),
       (window.isEPhoneTimeChangeBusy = () => Boolean(_0xephoneGenerationController || _0xephoneSpectatorGenerating || window.isEPhoneMutationBusy())),
-      (window.isPersonaSpaceBusy = () => Boolean(window.isEPhoneTimeChangeBusy() || window.ephoneImageApi?.isBusy() || window.EPhoneLifeMarket?.isBusy() || window.EPhoneCharacterWallet?.isBusy() || window.EPhoneCharacterSocial?.isBusy() || window.EPhoneCharacterDaily?.isBusy() || window.EPhoneLifeSimulation?.isBusy())),
+      (window.isPersonaSpaceBusy = () => Boolean(window.isEPhoneTimeChangeBusy() || window.ephoneImageApi?.isBusy() || window.EPhoneLifeMarket?.isBusy() || window.EPhoneCharacterWallet?.isBusy() || window.EPhoneCharacterSocial?.isBusy() || window.EPhoneCharacterDaily?.isBusy() || window.EPhoneLifeSimulation?.isBusy() || window.EPhoneNY?.isBusy())),
+      (window.EPhoneNyAdapter = {
+        currentChatId: () => _0x5ea3c1.activeChatId,
+        refreshArchive: (update) => {
+          if (!update) return;
+          const chat = _0x5ea3c1.chats[update.chatId];
+          if (chat && Array.isArray(update.linked)) chat.settings = { ...chat.settings, linkedWorldBookIds: update.linked };
+          const i = _0x5ea3c1.worldBooks.findIndex((b) => b.id === update.book.id);
+          if (i >= 0) _0x5ea3c1.worldBooks[i] = update.book; else _0x5ea3c1.worldBooks.push(update.book);
+        },
+      }),
       (window.EPhoneMarketAdapter = {
         now: (chatId) => window.ephoneTimeMachine?.nowMs(chatId || _0x5ea3c1.activeChatId) || Date.now(),
         formatTime: (value) => window.ephoneTimeMachine?.formatDateTime(value, { withWeekday: true }) || new Date(value).toLocaleString("zh-CN"),
@@ -57092,6 +57106,21 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
           if (binding?.valid) { context.boundPlayer = binding; context.player = binding.name; }
           if (spaceId !== (window.EPHONE_SPACE_ID || "default")) throw new Error("空间已切换，请重新打开商城。");
           return { context, walletBalance: Number(wallet?.balance || 0), vts: window.EPhoneMarketAdapter.now() };
+        },
+        generateMessages: async (messages, signal, gen = {}) => {
+          const { proxyUrl, apiKey, model } = _ephoneApiFor("auxiliary");
+          signal?.throwIfAborted();
+          const system = messages.filter((m) => m.role === "system").map((m) => m.content).join("\n\n");
+          const rest = messages.filter((m) => m.role !== "system");
+          const native = String(proxyUrl).includes("generativelanguage.googleapis.com");
+          const gemini = native ? _0x20e281(model, apiKey, system, rest) : null;
+          const params = {}; for (const k of ["temperature", "top_p", "presence_penalty", "frequency_penalty"]) if (Number.isFinite(gen[k])) params[k] = gen[k];
+          const response = native ? await fetch(gemini.url, { ...gemini.data, signal }) : await _ephoneApiFetch(_ephoneBuildApiEndpoint(proxyUrl, "chat/completions"), {
+            method: "POST", signal, headers: { "Content-Type": "application/json", Authorization: "Bearer " + apiKey },
+            body: JSON.stringify({ model, messages, temperature: 0.8, ...params, stream: false }),
+          });
+          if (!response.ok) throw new Error(`副 API 请求失败：${response.status} - ${(await response.text()).slice(0, 300)}`);
+          signal?.throwIfAborted(); return getGeminiResponseText(await response.json());
         },
         generate: async (prompt, signal) => {
           const { proxyUrl, apiKey, model } = _ephoneApiFor("auxiliary");

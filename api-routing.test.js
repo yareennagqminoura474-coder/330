@@ -22,7 +22,8 @@ for (const m of s.matchAll(/= _ephoneApiFor\("reply"\)/g)) {
   const fn = [...s.slice(0, m.index).matchAll(/^  (?:async )?function (_0x[0-9a-f]+)/gm)].at(-1)?.[1];
   assert.ok(primary.delete(fn), "only main chat reply paths use primary: " + fn);
 }
-assert.equal(primary.size, 0); assert.equal((s.match(/= _ephoneApiFor\("auxiliary"/g) || []).length, 37);
+assert.equal(primary.size, 0); assert.equal((s.match(/= _ephoneApiFor\("auxiliary"/g) || []).length, 38);
+assert.match(s.slice(s.indexOf("generateMessages: async"), s.indexOf("generate: async (prompt, signal)")), /_ephoneApiFor\("auxiliary"\)/, "NY tagged analysis must use auxiliary routing too");
 assert.doesNotMatch(s, /__ephone_continue__|_ephoneRecoveryPrompt|_0xephoneContinue/);
 assert.doesNotMatch(s.slice(s.indexOf("async function _0x1cf16a"), s.indexOf("async function _0x4a6dc1")), /secondaryProxyUrl:|secondaryApiKey:|secondaryModel:/);
 console.log("PASS: strict reply/auxiliary routing, no missing-secondary fallback, preset value snapshots, legacy call-site audit, independent primary preset switching");

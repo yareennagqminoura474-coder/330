@@ -1,0 +1,12 @@
+#ny-engine-screen { background: #f4f5f8; color: #242b3a; }
+#ny-engine-screen .header { flex: none; }
+#ny-engine-screen .header button { background: transparent; border: 0; color: #007aff; font: inherit; padding: 10px; }
+.ny-scroll { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; touch-action: pan-y; padding: 14px 16px 40px; }
+.ny-scroll section, .ny-scroll details { padding: 16px; margin: 12px 0; background: #fff; border-radius: 14px; }
+.ny-scroll label { display: block; font-size: 13px; margin: 10px 0; }
+.ny-scroll select, .ny-scroll textarea, .ny-scroll input[type=number] { box-sizing: border-box; width: 100%; padding: 10px; margin: 6px 0; border: 1px solid #d9dfe7; border-radius: 8px; font: inherit; background: #fff; color: #242b3a; }
+.ny-scroll textarea { resize: vertical; }
+.ny-scroll p, #ny-notice { font-size: 12px; line-height: 1.7; overflow-wrap: anywhere; }
+.ny-scroll button { border: 0; border-radius: 9px; background: #e7f0ff; color: #1763b6; padding: 10px 12px; margin: 4px; font: inherit; font-size: 13px; }
+.ny-scroll button:disabled { opacity: .5; }
+.ny-actions { display: flex; flex-wrap: wrap; gap: 6px; }
