@@ -138,7 +138,7 @@ const runtimeKeys = ["result", "lastCount", "lastRound", "lastError", "lastRunFl
     assert.equal((await state("ny-defaults-b")).tasks.sigon.lastCount, 29);
     await assertReportsIsolated();
 
-    // Every active and disabled entry exposes its complete original text.
+    // Every active and inactive entry exposes its complete original text and adaptation.
     const previews = await page.evaluate(() => ({
       expected: [], actual: [...document.querySelectorAll(".ny-prompt-details [data-ny-content]")].map((entry) => entry.textContent),
       elements: document.querySelectorAll(".ny-prompt-details script, .ny-prompt-details img").length
@@ -147,10 +147,14 @@ const runtimeKeys = ["result", "lastCount", "lastRound", "lastError", "lastRunFl
     assert.equal(previews.actual.length, previews.expected.length, "every source prompt receives a complete-content preview");
     previews.expected.forEach((text, index) => assert.ok(previews.actual[index] === text, "prompt preview " + index + " must preserve complete source text, whitespace and literal markup"));
     assert.equal(previews.elements, 0, "source HTML is previewed as text");
-    const disabledPreview = page.locator(".ny-prompt-row").filter({ has: page.locator("input[data-ny-prompt]:disabled") }).first().locator(".ny-prompt-details");
-    await disabledPreview.evaluate((entry) => { for (let node = entry; node; node = node.parentElement) if (node.tagName === "DETAILS") node.open = true; });
-    await disabledPreview.locator("[data-ny-content]").scrollIntoViewIfNeeded();
-    assert.equal(await disabledPreview.locator("[data-ny-content]").isVisible(), true, "disabled entries still expose their full content");
+    assert.equal(await page.locator("input[data-ny-prompt]:disabled").count(), 0, "native feature adaptations remain selectable");
+    const adaptedPreview = page.locator(".ny-prompt-row").filter({ hasText: "转换为聊天中的互动界面卡片" }).first().locator(".ny-prompt-details");
+    await adaptedPreview.evaluate((entry) => { for (let node = entry; node; node = node.parentElement) if (node.tagName === "DETAILS") node.open = true; });
+    await adaptedPreview.locator("[data-ny-content]").scrollIntoViewIfNeeded();
+    assert.equal(await adaptedPreview.locator("[data-ny-content]").isVisible(), true, "adapted panel entries expose their full original content");
+    const activeCount = await page.locator("input[data-ny-prompt]:checked").count();
+    assert.ok(activeCount > 0);
+    assert.ok(activeCount < previews.expected.length, "import preserves the author's active/inactive selections");
     assert.ok(previews.expected.some((text) => text.includes("<script>")), "the real source fixture includes literal script markup");
     const escapedFixture = "\nFULL_PREVIEW_START<script>window.__nyPreviewExecuted=true</script><img src=x onerror=window.__nyPreviewExecuted=true>\nFULL_PREVIEW_END";
     await page.evaluate(async ({ id, text }) => {
@@ -249,9 +253,51 @@ const runtimeKeys = ["result", "lastCount", "lastRound", "lastError", "lastRunFl
     await page.evaluate(() => window.EPhoneNY.open("ny-defaults-b"));
     const screenshot = path.join(process.env.TEMP || __dirname, "ephone-ny-defaults-mobile.png");
     await page.screenshot({ path: screenshot });
+
+    // Existing installations upgrade before their very first prompt, without
+    // importing sources again or undoing the user's unrelated disabled styles.
+    const migrationPackId = "ny:pack:legacy-native-adapter-fixture";
+    await page.evaluate(async ({ migrationPackId }) => {
+      const source = {
+        prompts: [
+          { identifier: "migration-panel", name: "自由创建前端", content: "LEGACY_COMPLETE_PANEL_SOURCE" },
+          { identifier: "migration-style", name: "角色说话风格", content: "DELIBERATELY_DISABLED_STYLE" },
+          { identifier: "migration-options", name: "四个选项", content: "DELIBERATELY_DISABLED_OPTIONS" },
+          { identifier: "migration-time", name: "时间框", content: "LEGACY_TIME_SOURCE <Time>date</Time>" }
+        ],
+        prompt_order: [{ order: ["migration-panel", "migration-style", "migration-options", "migration-time"].map((identifier) => ({ identifier, enabled: true })) }]
+      };
+      const pack = window.EPhoneNyCore.parsePreset(source, "Legacy-Claude-Native-Fixture.json");
+      delete pack.adapterVersion;
+      const panel = pack.prompts.find((p) => p.id === "migration-panel");
+      panel.nativeEnabled = false; panel.reason = "legacy unsupported frontend";
+      pack.disabled = [{ id: panel.id, name: panel.name, reason: panel.reason, sourceEnabled: true }];
+      await window.db.spaceProfiles.put({ ...pack, id: migrationPackId, kind: "ny-pack" });
+      const defaults = await window.db.spaceProfiles.get("ny:defaults");
+      defaults.packId = migrationPackId;
+      defaults.promptOverrides = { "migration-panel": false, "migration-style": false, "migration-options": false };
+      await window.db.spaceProfiles.put(defaults);
+    }, { migrationPackId });
+    const beforeMigrationCalls = calls.length;
+    await page.reload({ waitUntil: "domcontentloaded" });
+    await page.waitForFunction(() => window.ephoneAppReady && window.EPhoneNY);
+    const firstMigratedPrompt = await prompt("ny-defaults-new");
+    assert.match(firstMigratedPrompt, /LEGACY_COMPLETE_PANEL_SOURCE[\s\S]*ny_extra\.panel_html/, "the first reply after upgrade activates the previously forced-blocked author option");
+    assert.match(firstMigratedPrompt, /本空间当前所选时钟[\s\S]*scene_elapsed_minutes/);
+    assert.doesNotMatch(firstMigratedPrompt, /DELIBERATELY_DISABLED_STYLE|DELIBERATELY_DISABLED_OPTIONS|LEGACY_TIME_SOURCE/);
+    const migration = await page.evaluate(async (id) => ({ pack: await window.db.spaceProfiles.get(id), defaults: await window.db.spaceProfiles.get("ny:defaults") }), migrationPackId);
+    assert.equal(migration.pack.adapterVersion, 2);
+    assert.equal(migration.pack.prompts.find((p) => p.id === "migration-panel").nativeEnabled, true);
+    assert.equal(migration.pack.prompts.find((p) => p.id === "migration-panel").sourceEnabled, true);
+    assert.equal(migration.pack.prompts.find((p) => p.id === "migration-panel").content, "LEGACY_COMPLETE_PANEL_SOURCE");
+    assert.equal(Object.hasOwn(migration.defaults.promptOverrides, "migration-panel"), false);
+    assert.equal(migration.defaults.promptOverrides["migration-style"], false);
+    assert.equal(migration.defaults.promptOverrides["migration-options"], false);
+    assert.equal(calls.length, beforeMigrationCalls, "legacy migration and prompt preparation make no provider requests");
+    assert.deepEqual((await state("ny-defaults-a")).tasks.sigon.result.tags.summary, "LEGACY_PRIVATE_A", "legacy adaptation cannot overwrite a private analysis report");
     assert.deepEqual(errors, []);
     console.log("SCREENSHOT " + screenshot);
-    console.log("PASS: real bundle migration to shared defaults, complete escaped active/disabled prompt previews, config-only storage, legacy/custom/new-chat isolation, shared and per-chat form saves, follow-defaults report preservation, selected-chat analysis and report edits preserving inheritance, no provider traffic on settings/review, reload persistence");
+    console.log("PASS: real bundle migration to shared defaults, complete escaped active/inactive prompt previews, selectable native adaptations and preserved author selections, config-only storage, legacy/custom/new-chat isolation, shared and per-chat form saves, follow-defaults report preservation, selected-chat analysis and report edits preserving inheritance, no provider traffic on settings/review, reload persistence, first-prompt legacy adapter migration retaining deliberate user overrides and private reports");
   } finally {
     await browser.close();
     await new Promise((resolve) => server.close(resolve));

@@ -92,15 +92,49 @@
     return out;
   }
   function presentationReason(prompt) {
-    const name = str(prompt.name), content = str(prompt.content), id = str(prompt.identifier);
-    if (/\{\{\s*xbgetvar::/i.test(content)) return "";
-    if (/自由创建前端|前端.*渲染/i.test(name) || /只输出[^\n]{0,80}(?:html网页|HTML网页)/i.test(content)) return "完整网页输出与聊天消息格式冲突";
-    if (/时间框|时间栏|time\s*frame/i.test(name) || /<Time>/.test(content)) return "独立时间框与聊天消息格式冲突";
-    if (/四个选项|4个选项|四个.*选项/.test(name) || /<small>[\s\S]*[1１]️⃣/.test(content)) return "需要原插件的选项渲染";
-    if (/双语|英\s*&\s*汉|日\s*&\s*汉/.test(name)) return "双语附加输出与聊天消息格式冲突";
-    if (/总结|前情提要/.test(name)) return "附加总结由独立任务提供";
-    if (/cot|思维链|动态防标记|超强越狱|越狱/i.test(name) || /^ny_gemini_/.test(id) || /<thinking>/.test(content)) return "原插件的推理输出或适配节点不适用";
     return "";
+  }
+  function adaptation(prompt) {
+    const name = str(prompt.name), content = str(prompt.content);
+    if (/\{\{\s*xbgetvar::/i.test(content)) return { kind: "analysis", note: "读取对应引擎的分析报告" };
+    if (/^Tips?\s*[:：]/i.test(name)) return { kind: "text", note: "作者的配置说明，保留原文参考；不会触发额外总结" };
+    if (/自由创建前端|前端.*渲染|情景剧场|动态状态栏|实时论坛/.test(name) || /只输出[^\n]{0,80}(?:html网页|HTML网页)/i.test(content)) return { kind: "panel", note: "转换为聊天中的互动界面卡片" };
+    if (/时间框|时间栏|time\s*frame/i.test(name) || /<Time>/.test(content)) return { kind: "time", note: "沿用小手机24小时制的首条时间地点旁白，跟随空间时钟；轮内只更新时间角标" };
+    if (/四个选项|4个选项|四个.*选项/.test(name)) return { kind: "options", note: "转换为可填入输入框的四个剧情选项" };
+    if (/双语|英\s*&\s*汉|日\s*&\s*汉/.test(name)) return { kind: "translation", language: /日|Japanese/.test(name + content) ? "日文" : "英文", note: "中文正文配可展开的外文版本" };
+    if (/总结|前情提要/.test(name)) return { kind: "summary", note: "回复结束后使用副 API 总结，单独保存并供后续参考" };
+    if (/cot|思维链/i.test(name) || /<thinking>/.test(content)) return { kind: "quality", note: "保留人设、剧情衔接与防重复检查，直接输出结果" };
+    if (/动态防标记/.test(name)) return { kind: "marker", note: "使用小手机消息协议替代酒馆的正文标记" };
+    return { kind: "text", note: "按原条目内容参与回复" };
+  }
+  function upgradePack(pack) {
+    return { ...pack, adapterVersion: 2, disabled: [], prompts: (pack.prompts || []).map((p) => ({ ...p, nativeEnabled: true, reason: "", adaptation: adaptation(p) })) };
+  }
+  function selectedPrompts(pack, state) {
+    const overrides = state?.promptOverrides || {};
+    return (pack?.prompts || []).filter((p) => p.content && (own(overrides, p.id) ? overrides[p.id] === true : p.sourceEnabled));
+  }
+  function features(pack, state) {
+    const result = { summaries: [] }; if (!state?.enabled) return result;
+    for (const p of selectedPrompts(pack, state)) {
+      const a = adaptation(p);
+      if (a.kind === "summary") result.summaries.push(p);
+      else if (a.kind === "translation") result.translation = a.language;
+      else result[a.kind] = true;
+    }
+    return result;
+  }
+  function adaptedText(prompt) {
+    const a = adaptation(prompt), raw = prompt.content;
+    if (a.kind === "summary") return "[附加总结]本条的总结任务在本轮结束后交给副 API；主回复只写剧情，不重复输出总结。";
+    if (a.kind === "quality") return "[剧情质量检查]先自行核对人设、人物关系、当前时间、行为动机、上下文衔接和重复表达，保持新内容与前文连贯。直接输出完整剧情结果，不输出详细思维链或 thinking 标签。";
+    if (a.kind === "marker") return "[正文标记适配]直接输出小手机规定的 JSON 消息数组，不额外输出 reply 标记。";
+    if (a.kind === "time") return "[时间框适配]沿用小手机的24小时制，每轮仅第一条可见消息用 narration 输出“YYYY年M月D日，HH点mm分，星期几，地点：当前地点”，数值来自本空间当前所选时钟。星期由日期确定，不使用原条目的12小时制、Time/XML外壳或第二套独立时间。手动跳转后的本轮从指定时刻开始，未跳转的下一轮从上一轮结束时刻自然推进。保留原条目中时间、地点、天气与剧情逻辑连贯的要求；天气如有必要可融入环境描写。轮内按实际完成活动的耗时用 scene_elapsed_minutes、scene_time_reason、scene_phase 推进，未来约定不当成已经到达；后续时间与地点切换只更新消息角标和实际场景描写，不重复时间框，不凭消息条数机械跳时。";
+    if (a.kind === "text" || a.kind === "analysis") return raw;
+    const protocol = a.kind === "options" ? '在最后一个 narration 对象的 ny_extra.options 中输出四个不同的简短行动方案（字符串数组），不要使用 small/XML 包裹；由小手机生成选择按钮。'
+      : a.kind === "translation" ? `正文 content 保持中文，在最后一个 narration 对象的 ny_extra.translation 中提供对应的${a.language}版本，格式 {"language":"${a.language}","content":"完整外文版本"}，由小手机折叠展示；不要把两种语言混进同一台词。`
+      : '正文和台词仍按小手机 JSON 消息数组输出；把独立 HTML 界面放进最后一个 narration 对象的 ny_extra.panel_html 字符串中，标题放进 ny_extra.title。界面会在隔离卡片中运行，使用内联CSS和脚本，不依赖CDN、远程字体和图片；可用 STscript(`/send 文本`) 将用户选择填入原输入框，或调用 parent.postMessage({type:"ephone-ny-draft",text:"文本"},"*")。不请求外部网络、API 或支付操作。';
+    return "[原条目功能要求]\n" + raw + "\n[小手机原生实现，替代上文的 HTML/XML 外壳和整页输出要求]\n" + protocol + '\nny_extra 只是已有 JSON 消息对象的附加字段，正文消息必须完整保留，不额外调用 API。不要为附加字段创建空白消息；末尾没有旁白时可以附在最后一条完整台词上。';
   }
   function parsePreset(data, filename) {
     if (typeof data === "string") data = JSON.parse(data.replace(/^\uFEFF/, ""));
@@ -137,9 +171,9 @@
     const family = /gemini/i.test(joinedNames) ? "gemini" : /claude/i.test(joinedNames) ? "claude" : "ny";
     const name = str(filename).replace(/\.json$/i, "") || "NY 预设";
     const disabled = prompts.filter((p) => p.reason).map((p) => ({ id: p.id, name: p.name, reason: p.reason, sourceEnabled: p.sourceEnabled }));
-    return { version: 1, name, filename: str(filename), family, prompts, tasks, warnings, disabled,
+    return upgradePack({ version: 1, name, filename: str(filename), family, prompts, tasks, warnings, disabled,
       source: { promptCount: data.prompts.length, orderCount: selected?.order?.length || 0, characterId: selected?.character_id ?? null,
-        embeddedTaskCount, regexCount: Array.isArray(data.extensions?.regex_scripts) ? data.extensions.regex_scripts.length : 0 } };
+        embeddedTaskCount, regexCount: Array.isArray(data.extensions?.regex_scripts) ? data.extensions.regex_scripts.length : 0 } });
   }
   function defaults(pack) {
     const state = { enabled: false, promptOverrides: dict(), tasks: dict() };
@@ -328,14 +362,14 @@
       const variableTokens = [...prompt.content.matchAll(/\{\{\s*xbgetvar::([^{}]+?)\s*\}\}/gi)].map((m) => m[1]);
       if (variableTokens.length) {
         if (!variableTokens.some((v) => variable(v, state).trim())) continue;
-        const resolved = resolve(prompt.content, state, context);
+        const resolved = resolve(adaptedText(prompt), state, context);
         if (resolved.trim() && !injected.has(resolved)) { output.push(resolved); injected.add(resolved); }
       } else if ((own(overrides, prompt.id) ? overrides[prompt.id] === true : prompt.sourceEnabled)) {
-        const resolved = resolve(prompt.content, state, context);
+        const resolved = resolve(adaptedText(prompt), state, context);
         if (resolved.trim()) output.push(resolved);
       }
     }
     return output.join("\n\n");
   }
-  return Object.freeze({ parsePreset, defaults, taskPrompt, applyResult, promptText });
+  return Object.freeze({ parsePreset, defaults, taskPrompt, applyResult, promptText, upgradePack, features, adaptation });
 });

@@ -18303,6 +18303,7 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
       const _0x112a1d = _ephoneSpectatorComplete.raw;
       _ephoneSpectatorController.signal.throwIfAborted();
       lastRawAiResponse = _0x112a1d;
+      await window.EPhoneNYFeatures?.capture(_ephoneSpectatorController, _ephoneSpectatorComplete.raw, _0x326f3d.id);
       const _0x56fb86 = window.ephoneTimeMachine?.ensureReplyHeader
         ? window.ephoneTimeMachine.ensureReplyHeader(_ephoneSpectatorComplete.items, {
             quietTimeline: true,
@@ -18452,6 +18453,7 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
           await new Promise((resolve) => setTimeout(resolve, Math.random() * 0x4b0 + 0x320));
         }
       }
+      _ephoneSpectatorController.nyPlaybackComplete = true;
       _ephoneRememberReplyBatch(_0x326f3d, "spectator");
       (await _0x24f906[_0xd07074(0x1255)]["put"](_0x326f3d), _0x4bb316());
     } catch (_0x4ee649) {
@@ -18472,6 +18474,7 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
       _ephoneSyncReplyControls();
       _0xff8a5b(_0x4203ee, ![]);
       if (_ephoneSpectatorTimeCommitted) {
+        window.EPhoneNYFeatures?.finish(_0x326f3d, _ephoneSpectatorController);
         _ephoneRememberReplyBatch(_0x326f3d, "spectator");
         await _0x24f906.chats.put(_0x326f3d);
       }
@@ -21030,6 +21033,7 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
         (_0x5b16cb[_0x25f1e5(0x8e6)] = _0x5b16cb[_0x25f1e5(0x8e6)][
           _0x25f1e5(0x1916)
         ]((_0x15fb5f) => !_0x15fb5f[_0x25f1e5(0x1563)])));
+      await window.EPhoneNYFeatures?.capture(_0xephoneController, _ephoneCompleteReply.raw, _0x5b16cb.id);
       const _0x899a3d = window.ephoneTimeMachine?.ensureReplyHeader
         ? window.ephoneTimeMachine.ensureReplyHeader(_ephoneCompleteReply.items, {
             quietTimeline: true,
@@ -23575,6 +23579,7 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
           _0x1b9d0b = Math.max(_0x1b9d0b, Number(_0x5b16cb.history.at(-1)?.timestamp || 0) + 1);
         }
       }
+      _0xephoneController.nyPlaybackComplete = true;
       _0x7b38f8 &&
         _0x5a302c[_0x25f1e5(0xac8)] &&
         ((_0x5a302c[_0x25f1e5(0x1757)] = ![]),
@@ -23634,6 +23639,7 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
         (_0x5a302c["isAwaitingResponse"] = ![]));
     } finally {
       if (_0xephoneTimeCommitted) {
+        window.EPhoneNYFeatures?.finish(_0x5b16cb, _0xephoneController);
         _ephoneRememberReplyBatch(_0x5b16cb, "standard");
         try { await _0x24f906.chats.put(_0x5b16cb); }
         catch (error) { console.error("保存已输出的回复失败：", error); }
@@ -57080,9 +57086,10 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
       // serialize; broad busy stays reserved for switching/deleting space data.
       (window.isEPhoneMutationBusy = () => Boolean(_ephoneMessageKindBusy || _ephoneSpectatorMoneyBusy || _ephoneWalletPending || window.ephonePlayerIdentity?.isBusy?.() || window.EPhoneCharacterWallet?.isMutating?.())),
       (window.isEPhoneTimeChangeBusy = () => Boolean(_0xephoneGenerationController || _0xephoneSpectatorGenerating || window.isEPhoneMutationBusy())),
-      (window.isPersonaSpaceBusy = () => Boolean(window.isEPhoneTimeChangeBusy() || window.ephoneImageApi?.isBusy() || window.EPhoneLifeMarket?.isBusy() || window.EPhoneCharacterWallet?.isBusy() || window.EPhoneCharacterSocial?.isBusy() || window.EPhoneCharacterDaily?.isBusy() || window.EPhoneLifeSimulation?.isBusy() || window.EPhoneNY?.isBusy())),
+      (window.isPersonaSpaceBusy = () => Boolean(window.isEPhoneTimeChangeBusy() || window.ephoneImageApi?.isBusy() || window.EPhoneLifeMarket?.isBusy() || window.EPhoneCharacterWallet?.isBusy() || window.EPhoneCharacterSocial?.isBusy() || window.EPhoneCharacterDaily?.isBusy() || window.EPhoneLifeSimulation?.isBusy() || window.EPhoneNY?.isBusy() || window.EPhoneNYFeatures?.isBusy())),
       (window.EPhoneNyAdapter = {
         currentChatId: () => _0x5ea3c1.activeChatId,
+        currentChat: () => _0x5ea3c1.chats[_0x5ea3c1.activeChatId],
         refreshArchive: (update) => {
           if (!update) return;
           const chat = _0x5ea3c1.chats[update.chatId];

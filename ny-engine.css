@@ -15,3 +15,19 @@
 .ny-prompt-details summary { cursor: pointer; color: #1763b6; font-size: 13px; }
 .ny-prompt-details pre { white-space: pre-wrap; overflow-wrap: anywhere; word-break: break-word; font-family: inherit; font-size: 13px; line-height: 1.7; max-height: 52vh; overflow-y: auto; touch-action: pan-y; user-select: text; }
 .ny-prompt-details code { white-space: inherit; font: inherit; color: inherit; }
+
+/* Extras belong to their source reply, so editing/deleting that reply removes
+   the associated UI without overlaying the chat or changing message widths. */
+#chat-messages .message-wrapper:has(> .ny-reply-features) { flex-wrap: wrap; }
+#chat-messages .ny-reply-features { flex: 0 0 100%; width: 100%; min-width: 0; box-sizing: border-box; margin: 10px 0 4px; padding: 12px; border: 1px solid var(--border-color, #e5e9ef); border-radius: 12px; background: var(--bg-primary, #fff); color: var(--text-primary, #242b3a); font-style: normal; text-align: left; font-size: 13px; line-height: 1.6; }
+.ny-reply-features strong, .ny-reply-features small { display: block; }
+.ny-reply-features small { margin-top: 6px; color: var(--text-secondary, #777); font-size: 11px; }
+.ny-reply-features button { display: block; width: 100%; padding: 9px 12px; margin: 6px 0; border: 0; border-radius: 8px; background: #e7f0ff; color: #1763b6; font: inherit; text-align: left; overflow-wrap: anywhere; cursor: pointer; }
+.ny-reply-features button:focus-visible, .ny-reply-features summary:focus-visible { outline: 2px solid #007aff; outline-offset: 2px; }
+.ny-reply-features details { margin-top: 8px; }
+.ny-reply-features summary { color: #1763b6; cursor: pointer; }
+.ny-reply-features details > div { margin-top: 8px; white-space: pre-wrap; overflow-wrap: anywhere; user-select: text; }
+.ny-reply-features iframe { display: block; width: 100%; height: 400px; max-height: 65vh; border: 0; margin-top: 8px; background: #fff; border-radius: 8px; }
+#phone-screen.dark-mode .ny-reply-features { background: #20242a; color: #eee; border-color: #3a4048; }
+#phone-screen.dark-mode .ny-reply-features button { background: #213850; color: #a6ceff; }
+#phone-screen.dark-mode .ny-reply-features summary { color: #a6ceff; }

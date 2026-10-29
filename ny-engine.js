@@ -2,14 +2,33 @@
   "use strict";
   const core = window.EPhoneNyCore, kinds = ["sigon", "sogon", "archive"], labels = { sigon: "Sigon · 偏好与文风", sogon: "Sogon · 人设与关系", archive: "档案馆 · 背景世界书" };
   const clone = (v) => structuredClone(v), esc = (v) => String(v ?? "").replace(/[&<>"']/g, (c) => c === "&" ? "&amp;" : c === "<" ? "&lt;" : c === ">" ? "&gt;" : c.charCodeAt(0) === 34 ? "&quot;" : "&#39;");
-  const runs = new Map(); let screen, selectedChat = "", selectedKind = "sigon", selectedScope = "space", notice = "", viewToken = 0;
+  const runs = new Map(), upgradedDatabases = new WeakSet(); let screen, selectedChat = "", selectedKind = "sigon", selectedScope = "space", notice = "", viewToken = 0;
   const database = () => window.db.spaceProfiles.db;
   const archiveId = (db, chatId) => "ny-archive:" + encodeURIComponent(db.name) + ":" + chatId;
   const hash = (value) => { let h = 2166136261; for (const c of String(value)) h = Math.imul(h ^ c.charCodeAt(0), 16777619) >>> 0; return h.toString(16); };
   const validHistory = (chat) => (chat.history || []).filter((m) => !m.isHidden && m.type !== "thought_chain");
   const stamp = (row) => hash(JSON.stringify([row.role, row.type, row.content, row.senderName, row.vts]));
   const matches = (result, chat) => !result?.basis || result.basis.every((b) => (chat.history || []).some((r) => String(r.timestamp) === b.id && stamp(r) === b.hash));
-  const packs = (db) => db.spaceProfiles.filter((r) => r.kind === "ny-pack").toArray();
+  async function packs(db) {
+    const available = await db.spaceProfiles.filter((r) => r.kind === "ny-pack").toArray();
+    const old = available.filter((p) => p.adapterVersion !== 2);
+    if (!old.length) { upgradedDatabases.add(db); return available; }
+    const formerlyBlocked = new Map(old.map((p) => [p.id, new Set(p.prompts.filter((r) => r.nativeEnabled === false).map((r) => r.id))]));
+    await db.transaction("rw", db.spaceProfiles, async () => {
+      for (const pack of old) {
+        const current = await db.spaceProfiles.get(pack.id);
+        if (current && current.adapterVersion !== 2) await db.spaceProfiles.put(core.upgradePack(current));
+      }
+      for (const row of await db.spaceProfiles.filter((r) => r.id === "ny:defaults" || r.id.startsWith("ny:chat:")).toArray()) {
+        let changed = false;
+        const ids = row.packId && row.packId !== "auto" ? formerlyBlocked.get(row.packId) || [] : [...formerlyBlocked.values()].flatMap((set) => [...set]);
+        for (const id of ids) if (row.promptOverrides?.[id] === false) { delete row.promptOverrides[id]; changed = true; }
+        if (changed) { if (row.id === "ny:defaults") row.revision = (row.revision || 0) + 1; await db.spaceProfiles.put(row); }
+      }
+    });
+    upgradedDatabases.add(db);
+    return available.map((p) => p.adapterVersion === 2 ? p : core.upgradePack(p));
+  }
   const runtimeKeys = ["result", "lastCount", "lastRound", "lastRunFloor", "lastError"];
   function settingsOnly(state) {
     const next = { enabled: state?.enabled === true, packId: state?.packId || "auto", promptOverrides: clone(state?.promptOverrides || {}), tasks: {} };
@@ -29,6 +48,9 @@
     return settingsOnly(next);
   }
   async function getState(chatId, db = database()) {
+    // Old checkboxes wrote false for forcibly blocked entries. Upgrade before
+    // reading the effective settings, including the first reply after updating.
+    if (!upgradedDatabases.has(db)) await packs(db);
     const [raw, savedDefaults] = await Promise.all([db.spaceProfiles.get("ny:chat:" + chatId), db.spaceProfiles.get("ny:defaults")]);
     const defaults = savedDefaults || await ensureDefaults(db, chatId);
     const mode = raw?.settingsMode === "custom" || !defaults && raw ? "custom" : "inherit";
@@ -136,6 +158,7 @@
     const effective = clone(state);
     for (const kind of kinds) if (effective.tasks?.[kind]?.result && (!matches(effective.tasks[kind].result, chat) || effective.tasks[kind].result.packId !== pack.id)) effective.tasks[kind].result = null;
     let text = core.promptText(pack, effective, await contextFor(chat, db));
+    text += await window.EPhoneNYFeatures?.summaryContext(chat, { pack, state, features: core.features(pack, state) }, db) || "";
     // The archive is a real editable worldbook, read through this chat-bound
     // path rather than globally binding it to a character or leaking stale
     // contents through the ordinary book renderer after deleting source chat.
@@ -143,7 +166,12 @@
       const book = await window.db.worldBooks.get(archiveId(db, chat.id));
       if (book?.nyChatId === chat.id && book.nyDatabase === db.name) text += "\n# 本聊天的 NY 档案馆世界书\n" + (book.content || []).filter((r) => r.enabled !== false).map((r) => r.comment + "\n" + r.content).join("\n\n");
     }
-    return text ? "\n# 本聊天的 NY 叙事预设与分析资料\n" + text + "\n# 小手机输出约定\n上面的预设只控制人设、文风和剧情，不改变本应用的消息协议。仍须只输出原规定的 JSON 消息数组，每轮第一条是当前虚拟时间地点旁白，台词 text 与动作 narration 分开。不得输出整页 HTML、思维链、重复时间框或额外总结；不得改写账本余额、支付状态、已有关系与当前时间。分析资料中每人的私有心理和经历不等于其他角色已经知情；观看模式继续按所选角色身份和当前场景推进。\n" : "";
+    return text ? "\n# 本聊天的 NY 叙事预设与分析资料\n" + text + "\n# 小手机输出约定\n只输出 JSON 消息数组，每轮第一条是当前虚拟时间地点旁白，台词 text 与动作 narration 分开。已开启的互动界面、选项和双语功能写入末尾已有消息的 ny_extra 字段，优先使用旁白；完整正文不能省略，也不要创建空白消息。总结交给副 API，不要求展示详细思维链。不改写账本余额、支付状态和当前时间。分析资料中每人的私有经历不等于其他角色已经知情。\n" : "";
+  }
+  async function configuration(chatId, db = database()) {
+    await packs(db);
+    const state = await getState(chatId, db), pack = await activePack(state, db);
+    return pack ? { pack, state, features: core.features(pack, state) } : null;
   }
   async function syncArchive(db, chatId, state) {
     const books = window.db.worldBooks, tags = state.tasks?.archive?.result?.tags, id = archiveId(db, chatId), old = await books.get(id);
@@ -202,13 +230,16 @@
     if (screen?.classList.contains("active")) render().catch(() => {});
     return ticket.promise;
   }
-  function stop(kind, chatId) { for (const ticket of runs.values()) if ((!kind || ticket.kind === kind) && (!chatId || ticket.chatId === chatId)) ticket.controller.abort(); }
+  function stop(kind, chatId) {
+    for (const ticket of runs.values()) if ((!kind || ticket.kind === kind) && (!chatId || ticket.chatId === chatId)) ticket.controller.abort();
+    if (!kind) window.EPhoneNYFeatures?.stop(chatId);
+  }
   async function afterReply(chatId) {
     const finishedAt = Date.now();
     const db = database(), state = await getState(chatId, db); if (!state.enabled) return;
     const chat = await db.chats.get(chatId); if (!chat) return;
     const count = validHistory(chat).length, last = validHistory(chat).at(-1)?.timestamp;
-    await Promise.all(kinds.map(async (kind) => {
+    await Promise.all([window.EPhoneNYFeatures?.afterReply(chatId), ...kinds.map(async (kind) => {
       const task = state.tasks?.[kind];
       if (!task?.enabled || !task.auto || task.autoEnabledAt > finishedAt || task.lastRound === last || count - (task.lastCount || 0) < Math.max(1, Number(task.interval) || 20)) return;
       try { await run(kind, chatId); } catch (e) {
@@ -217,7 +248,7 @@
           await db.transaction("rw", db.spaceProfiles, async () => { const fresh = await getState(chatId, db); if (fresh.tasks?.[kind]) { fresh.tasks[kind].lastError = e.message; await db.spaceProfiles.put(fresh); } });
         }
       }
-    }));
+    })]);
   }
   async function saveReport(chatId, kind, tags) {
     const db = database(); if ([...runs.values()].some((r) => r.db === db && r.chatId === chatId && r.kind === kind)) throw new Error("请先停止分析再编辑报告。");
@@ -242,6 +273,9 @@
     });
     screen.querySelector("#ny-scope").onchange = async (e) => {
       selectedScope = e.target.value;
+      // Prevent edits landing on the previous scope while the new settings are
+      // being read. The rebuilt form restores the normal enabled controls.
+      for (const el of screen.querySelectorAll("#ny-body input, #ny-body select, #ny-body textarea, #ny-body button")) el.disabled = true;
       if (selectedScope === "chat" && !selectedChat) { selectedScope = "space"; notice = "先选择聊天，再设置单独方案。"; await render(); return; }
       const db = database(), chatId = selectedChat;
       if (selectedScope === "chat") { const current = await getState(chatId, db); if (current.settingsMode !== "custom") await configure(chatId, settingsOnly(current), db); }
@@ -258,6 +292,13 @@
         await action(async () => { await saveForm(); const result = await run(kind, chatId); notice = result.complete ? `分析完成，使用副 API ${result.requests} 次。` : "已保存有效部分，缺失标签保留旧内容；可再次分析。"; });
       }
       if (e.target.id === "ny-save-report") await action(async () => { const tags = Object.fromEntries([...screen.querySelectorAll("[data-ny-tag]")].map((el) => [el.dataset.nyTag, el.value])); await saveReport(selectedChat, selectedKind, tags); notice = "报告已保存，下一次回复会读取修改后的内容。"; });
+      if (e.target.id === "ny-save-summary") {
+        const db = database(), chatId = selectedChat, content = screen.querySelector("#ny-summary-content")?.value || "";
+        await action(async () => { await window.EPhoneNYFeatures.saveSummary(chatId, content, db); notice = "附加剧情总结已保存，后续回复会读取修改后的内容。"; });
+      }
+      if (e.target.id === "ny-summary-stop") {
+        window.EPhoneNYFeatures?.stop(selectedChat); notice = "已停止附加剧情总结，原有内容保留。"; await render();
+      }
     });
     screen.addEventListener("change", async (e) => {
       if (e.target.id === "ny-kind" && selectedKind !== e.target.value) { selectedKind = e.target.value; await render(); }
@@ -292,6 +333,10 @@
     if (!chats.some((c) => c.id === selectedChat)) selectedChat = chats[0]?.id || "";
     const chatState = await getState(selectedChat, db), state = selectedScope === "space" ? await ensureDefaults(db) || chatState : chatState,
       pack = await activePack(state, db), task = state.tasks?.[selectedKind] || {}, reportTask = chatState.tasks?.[selectedKind] || {}, busy = [...runs.values()].some((r) => r.db === db && r.chatId === selectedChat && r.kind === selectedKind);
+    const summaryConfig = selectedChat ? await configuration(selectedChat, db) : null,
+      featureSummary = selectedChat ? await window.EPhoneNYFeatures?.readSummary(selectedChat, db) : null,
+      summaryBusy = !!selectedChat && !!window.EPhoneNYFeatures?.isBusy(selectedChat),
+      hasSummary = !!summaryConfig?.features.summaries.length;
     if (token !== viewToken || db !== database()) return;
     const choices = (rows, value) => rows.map(([id, name]) => `<option value="${esc(id)}" ${id === value ? "selected" : ""}>${esc(name)}</option>`).join("");
     screen.querySelector("#ny-scope").value = selectedScope;
@@ -300,14 +345,17 @@
     screen.querySelector("#ny-notice").textContent = notice;
     screen.querySelector("#ny-body").innerHTML = !pack ? '<p>导入作者的 Claude / Gemini JSON 或本地合并包。文件只保存在浏览器内，不会上传到 GitHub；无需安装酒馆。</p>' :
       `<section><strong>${esc(pack.name)}</strong><p>已接入三项分析的原提示词模板。自动分析默认关闭；每项可单独运行、停止及编辑结果。报告属于当前空间和当前聊天。</p><label><input id="ny-enabled" type="checkbox" ${state.enabled ? "checked" : ""}>${selectedScope === "space" ? "统一启用 NY 预设" : "本聊天启用 NY 预设"}</label><label>当前聊天使用的方案<select id="ny-mode"><option value="inherit" ${chatState.settingsMode !== "custom" ? "selected" : ""}>跟随空间统一设置</option><option value="custom" ${chatState.settingsMode === "custom" ? "selected" : ""}>本聊天单独设置</option></select></label><button id="ny-follow" type="button" ${chatState.settingsMode === "custom" ? "" : "disabled"}>跟随空间统一设置</button><label>分析功能<select id="ny-kind">${choices(kinds.map((k) => [k, labels[k]]), selectedKind)}</select></label><label><input id="ny-task-enabled" type="checkbox" ${task.enabled ? "checked" : ""}>读取此功能的分析结果</label><label><input id="ny-auto" type="checkbox" ${task.auto ? "checked" : ""}>回复后按间隔自动分析</label><label>间隔（消息条数）<input id="ny-interval" type="number" min="1" value="${esc(task.interval || pack.tasks[selectedKind]?.interval || 20)}"></label><label>分析最近多少条消息<input id="ny-depth" type="number" min="1" max="200" value="${esc(task.prefs?.historyDepth || pack.tasks[selectedKind]?.config?.tpl?.historyDepth || 30)}"></label><label>剧情 / 分析偏好<textarea id="ny-prefs" rows="3">${esc(task.prefs?.userPref?.text || "")}</textarea></label><div class="ny-actions"><button id="ny-save" type="button" ${busy ? "disabled" : ""}>保存设置</button><button id="ny-run" type="button" ${busy || !selectedChat || selectedScope === "space" && chatState.settingsMode === "custom" ? "disabled" : ""}>单次分析</button><button id="ny-stop" type="button" ${busy ? "" : "disabled"}>停止</button></div></section>` +
-      `<section><h3>当前聊天的分析报告 ${busy ? "· 正在生成" : ""}</h3>${reportTask.lastError ? `<p>上次自动分析未完成，原报告保留：${esc(reportTask.lastError)}</p>` : ""}${reportTask.result ? Object.entries(reportTask.result.tags || {}).map(([tag, text]) => `<label>${esc(tag)}<textarea data-ny-tag="${esc(tag)}" rows="5">${esc(text)}</textarea></label>`).join("") + '<button id="ny-save-report" type="button">保存报告修改</button>' : "<p>尚未生成。单次分析会调用副 API；打开此页面不会自动调用。</p>"}</section><details><summary>预设条目开关</summary><p>文风等条目按原预设开关载入；相同类型尽量只开一种。分析结果条目还受对应引擎开关控制，未生成时不会注入空占位符。改完点击「保存设置」。</p>${pack.prompts.filter((p) => p.content).map((p) => {
+      `<section><h3>当前聊天的分析报告 ${busy ? "· 正在生成" : ""}</h3>${reportTask.lastError ? `<p>上次自动分析未完成，原报告保留：${esc(reportTask.lastError)}</p>` : ""}${reportTask.result ? Object.entries(reportTask.result.tags || {}).map(([tag, text]) => `<label>${esc(tag)}<textarea data-ny-tag="${esc(tag)}" rows="5">${esc(text)}</textarea></label>`).join("") + '<button id="ny-save-report" type="button">保存报告修改</button>' : "<p>尚未生成。单次分析会调用副 API；打开此页面不会自动调用。</p>"}</section>` +
+      (hasSummary || featureSummary || summaryBusy ? `<section id="ny-feature-summary"><h3>当前聊天的附加剧情总结${summaryBusy ? " · 正在生成" : ""}</h3><p>开启「当前楼层总结」或「全篇总结」等预设条目后，每轮结束使用副 API 更新，和三项分析报告分别保存。</p>${featureSummary ? `<label>总结内容<textarea id="ny-summary-content" rows="7" ${summaryBusy || !featureSummary.valid ? "readonly" : ""}>${esc(featureSummary.content)}</textarea></label>${featureSummary.valid ? "" : '<p>此总结的预设已切换、功能已关闭或来源消息已改变，当前不会注入回复。原文保留供查看。</p>'}<button id="ny-save-summary" type="button" ${summaryBusy || !featureSummary.valid ? "disabled" : ""}>保存总结修改</button>` : '<p>尚未生成；开启总结条目并完成下一轮回复后更新。</p>'}<button id="ny-summary-stop" type="button" ${summaryBusy ? "" : "disabled"}>停止本次总结</button></section>` : "") +
+      `<details><summary>预设条目开关</summary><p>文风等条目按原预设开关载入；相同类型尽量只开一种。分析结果条目还受对应引擎开关控制，未生成时不会注入空占位符。改完点击「保存设置」。</p>${pack.prompts.filter((p) => p.content).map((p) => {
         const value = Object.prototype.hasOwnProperty.call(state.promptOverrides || {}, p.id) ? state.promptOverrides[p.id] : p.sourceEnabled || /\{\{\s*xbgetvar::/i.test(p.content);
-        return `<article class="ny-prompt-row"><label><input type="checkbox" data-ny-prompt="${esc(p.id)}" ${p.nativeEnabled && value ? "checked" : ""} ${p.nativeEnabled ? "" : "disabled"}>${esc(p.name)}${p.reason ? `<small> · ${esc(p.reason)}</small>` : ""}</label><details class="ny-prompt-details"><summary>查看完整内容</summary><p>${p.nativeEnabled ? "此条可参与回复，是否启用由上方勾选控制。" : "此条暂不参与小手机回复，原因：" + esc(p.reason)}</p><pre><code data-ny-content="${esc(p.id)}">${esc(p.content)}</code></pre></details></article>`;
-      }).join("")}</details><details><summary>适配说明与未运行项目</summary><p>自由 HTML 前端、额外时间框、双语正文和思维链展示不参与小手机回复，避免破坏消息格式。Gemini 的酒馆传输补丁和任意脚本不会执行。原有记忆总结、时间机器、钱包与生图设置保持各自职责。</p>${(pack.warnings || []).map((w) => `<p>${esc(w)}</p>`).join("")}</details>`;
+        return `<article class="ny-prompt-row"><label><input type="checkbox" data-ny-prompt="${esc(p.id)}" ${p.nativeEnabled && value ? "checked" : ""} ${p.nativeEnabled ? "" : "disabled"}>${esc(p.name)}${p.reason ? `<small> · ${esc(p.reason)}</small>` : ""}</label><details class="ny-prompt-details"><summary>查看完整内容</summary><p>${esc(p.adaptation?.note || "按原条目参与回复")}。是否启用由上方勾选控制。</p><pre><code data-ny-content="${esc(p.id)}">${esc(p.content)}</code></pre></details></article>`;
+      }).join("")}</details><details><summary>原生适配方式</summary><p>界面在隔离卡片里显示，选项可填入聊天输入框，双语版本可展开阅读；时间框使用统一时钟。总结条目开启后，每轮结束会额外调用副 API，保存为聊天专属总结。思考类条目用于检查人设、衔接与重复，不展示详细思维链。</p>${(pack.warnings || []).map((w) => `<p>${esc(w)}</p>`).join("")}</details>`;
   }
   async function open(chatId) { create(); selectedScope = "space"; if (chatId) selectedChat = chatId; else if (!selectedChat) selectedChat = window.EPhoneNyAdapter?.currentChatId() || ""; window.showScreen("ny-engine-screen"); await render(); }
-  window.EPhoneNY = { open, importPreset, selectPack, configure, configureDefaults, useDefaults, getDefaults: () => ensureDefaults(), getState, run, stop, prompt, afterReply, saveReport,
-    getArchiveBook: (chatId) => window.db.worldBooks.get(archiveId(database(), chatId)), isBusy: () => runs.size > 0 };
+  window.EPhoneNY = { open, importPreset, selectPack, configure, configureDefaults, useDefaults, configuration, getDefaults: () => ensureDefaults(), getState, run, stop, prompt, afterReply, saveReport,
+    getArchiveBook: (chatId) => window.db.worldBooks.get(archiveId(database(), chatId)), isBusy: () => runs.size > 0,
+    refreshView: async () => { if (screen?.classList.contains("active")) await render(); } };
   document.addEventListener("DOMContentLoaded", () => {
     document.getElementById("me-ny-button")?.addEventListener("click", () => open());
     document.getElementById("chat-ny-button")?.addEventListener("click", () => open(window.EPhoneNyAdapter?.currentChatId()));
