@@ -4094,7 +4094,7 @@ function _0x161a() {
     "https://i.postimg.cc/g0s1V0PX/IMG-4402.gif",
     "📋\x20直接粘贴歌词文本",
     "编辑“",
-    "</textarea>\x0a\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20<div\x20class=\x22gr-summary-footer\x22>\x0a\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20*\x20AI续写时将读取此框内容作为唯一记忆依据。\x0a\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20</div>\x0a\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20</div>\x0a\x20\x20\x20\x20\x20\x20\x20\x20",
+    "</textarea>\x0a\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20<div\x20class=\x22gr-summary-footer\x22>\x0a\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20*\x20续写会参考此处摘要，并结合人物设定、关系和前文章节。\x0a\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20</div>\x0a\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20</div>\x0a\x20\x20\x20\x20\x20\x20\x20\x20",
     "”。\x0a\x20\x20\x20\x20-\x20\x20\x20你【绝对不能】生成\x20commenter\x20字段为\x20“",
     "isPlaying",
     "Tutorial",
@@ -54800,6 +54800,10 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
   async function _0x2d3415() {
     (await _0x1caad9(), _0x275208("green-river-screen"), _0x205c38());
   }
+  function _ephoneNovelEscape(value) {
+    return String(value ?? "").replace(/[&<>"']/g, (c) =>
+      c === "&" ? "&amp;" : c === "<" ? "&lt;" : c === ">" ? "&gt;" : c === '"' ? "&quot;" : "&#39;");
+  }
   async function _0x205c38() {
     const _0x2ca511 = _0x3ce505,
       _0x4c579b = document[_0x2ca511(0x1023)](_0x2ca511(0x52f));
@@ -54832,7 +54836,7 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
         _0x58fa1d = document[_0x1ee615(0x139f)]("div");
       _0x58fa1d[_0x1ee615(0xf4)] = _0x1ee615(0xf19);
       const _0x536f15 = _0x53c03a[_0x1ee615(0x1bbd)]["reduce"](
-          (_0x3380c4, _0x1a633d) => _0x3380c4 + _0x1a633d["content"]["length"],
+          (_0x3380c4, _0x1a633d) => _0x3380c4 + String(_0x1a633d["content"] || "")["length"],
           0x0,
         ),
         _0x176920 = _0x34900a[_0x1ee615(0x18e0)](_0x53c03a["id"]),
@@ -54841,9 +54845,9 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
         _0x19d3f2 = _0x176920 ? _0x1ee615(0xed1) : _0x1ee615(0xccf);
       ((_0x58fa1d["innerHTML"] =
         _0x1ee615(0x830) +
-        _0x53c03a[_0x1ee615(0xe6d)] +
+        _ephoneNovelEscape(_0x53c03a[_0x1ee615(0xe6d)]) +
         _0x1ee615(0xc9f) +
-        _0x95453 +
+        _ephoneNovelEscape(_0x95453) +
         _0x1ee615(0x55d) +
         _0x53c03a[_0x1ee615(0x1bbd)][_0x1ee615(0xa5d)] +
         "\x20章</span>\x0a\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20<span>" +
@@ -55033,7 +55037,7 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
       _0x15b2f0[_0x474d90(0xf4)] = _0x474d90(0x65a);
       const _0x227a15 =
         _0x352e0a[_0x474d90(0x14e2)] &&
-        _0x352e0a[_0x474d90(0x14e2)][_0x474d90(0x1507)](_0x5e1c25["id"]);
+        _0x352e0a.charIds.map(String).includes(String(_0x5e1c25.id));
       ((_0x15b2f0[_0x474d90(0x1bf6)] =
         _0x474d90(0xbae) +
         _0x5e1c25["id"] +
@@ -55062,7 +55066,7 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
       _0x1075ac["className"] = _0x1cecce(0x65a);
       const _0x15f37b =
         _0x352e0a[_0x1cecce(0x1cc)] &&
-        _0x352e0a[_0x1cecce(0x1cc)][_0x1cecce(0x1507)](_0x75b55a["id"]);
+        _0x352e0a.bookIds.map(String).includes(String(_0x75b55a.id));
       ((_0x1075ac[_0x1cecce(0x1bf6)] =
         "<input\x20type=\x22checkbox\x22\x20value=\x22" +
         _0x75b55a["id"] +
@@ -55081,7 +55085,7 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
         _0x4c2910[_0x1cecce(0x3fe)](_0x1075ac));
     });
     const _0x5165e5 = document[_0x112bcc(0x1023)](_0x112bcc(0x1454));
-    _0x5165e5[_0x112bcc(0x1bf6)] = _0x112bcc(0x982);
+    _0x5165e5.innerHTML = '<option value="">使用当前空间绑定的角色</option>';
     const _0x1847d6 = await _0x24f906[_0x112bcc(0x19f4)][_0x112bcc(0x16dd)]();
     (_0x1847d6["forEach"]((_0x2f7245) => {
       const _0x2ff8ab = _0x112bcc,
@@ -55090,14 +55094,14 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
         (_0x1227fc[_0x2ff8ab(0x71a)] =
           _0x2f7245[_0x2ff8ab(0x13cb)][_0x2ff8ab(0x2d0)](0x0, 0x14) +
           _0x2ff8ab(0x72f)));
-      if (_0x352e0a["userPersonaId"] === _0x2f7245["id"])
+      if (String(_0x352e0a.userPersonaId) === String(_0x2f7245.id))
         _0x1227fc["selected"] = !![];
       _0x5165e5[_0x2ff8ab(0x3fe)](_0x1227fc);
     }),
       (document[_0x112bcc(0x1023)]("gr-output-length")[_0x112bcc(0x16b0)] =
         _0x352e0a[_0x112bcc(0x1b10)] || 0x1f4),
       (document[_0x112bcc(0x1023)](_0x112bcc(0x13cd))["value"] =
-        _0x352e0a[_0x112bcc(0xff0)] || 0x14),
+        _0x352e0a.contextLimit ?? 20),
       (document["getElementById"]("gr-macro-world-view")["value"] =
         _0x352e0a[_0x112bcc(0x1b3a)] || ""));
     const _0x4f66ba = document[_0x112bcc(0x1023)](_0x112bcc(0x10fd)),
@@ -55113,6 +55117,7 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
         )));
   }
   async function _0x198ee4() {
+    if (_0x5576d5.isGenerating) return alert("绿江正在创作，请等本次完成后再修改作品设定。");
     const _0x21b2af = _0x3ce505,
       _0xdefe69 = document[_0x21b2af(0x1023)]("gr-story-title"),
       _0x432e9c = document[_0x21b2af(0x1023)]("gr-author-select"),
@@ -55130,7 +55135,7 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
       ]((_0x26affc) => _0x26affc[_0x21b2af(0x16b0)]),
       _0x274e29 = _0x4759f3["value"],
       _0x570cf7 = parseInt(_0x21cd14["value"]) || 0x1f4,
-      _0x3874fb = parseInt(_0x192d76[_0x21b2af(0x16b0)]) || 0x14,
+      _0x3874fb = Number.isFinite(Number(_0x192d76.value)) ? Math.max(0, Math.floor(Number(_0x192d76.value))) : 20,
       _0x90d6c5 = _0x1566e0[_0x21b2af(0x16b0)][_0x21b2af(0x1833)]();
     if (!_0x300a7c) return alert(_0x21b2af(0x13e5));
     if (_0x1e524f[_0x21b2af(0xa5d)] === 0x0) return alert(_0x21b2af(0x1a0));
@@ -55141,6 +55146,7 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
       outputLength: _0x570cf7,
       contextLimit: _0x3874fb,
       macroWorldView: _0x90d6c5,
+      referenceSpaceDatabase: window.db.spaceProfiles.db.name,
     };
     if (_0x5576d5["activeStoryId"])
       await _0x24f906["grStories"]["update"](_0x5576d5[_0x21b2af(0xf42)], {
@@ -55208,11 +55214,11 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
       _0x2ebb8a;
     _0x1a9795[_0x46aac4(0xf4c)] &&
       (_0x3a1dd1[_0x46aac4(0x1bf6)] +=
-        _0x46aac4(0x6b1) + _0x1a9795["prevSummary"] + _0x46aac4(0x148f));
-    ((_0x3a1dd1[_0x46aac4(0x1bf6)] += _0x46aac4(0xd1b) + _0x2ebb8a + "</div>"),
+        _0x46aac4(0x6b1) + _ephoneNovelEscape(_0x1a9795["prevSummary"]) + _0x46aac4(0x148f));
+    ((_0x3a1dd1[_0x46aac4(0x1bf6)] += _0x46aac4(0xd1b) + _ephoneNovelEscape(_0x2ebb8a) + "</div>"),
       (_0x3a1dd1[_0x46aac4(0x1bf6)] +=
         "<div\x20class=\x22gr-chapter-text\x22>" +
-        _0x1a9795[_0x46aac4(0xfd7)]["replace"](/\n/g, _0x46aac4(0x70f)) +
+        _ephoneNovelEscape(_0x1a9795[_0x46aac4(0xfd7)]) +
         "</div>"));
     const _0x2b442c =
       _0x46aac4(0x1be8) +
@@ -55220,7 +55226,7 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
       _0x46aac4(0xc27) +
       _0x29d7a8 +
       _0x46aac4(0x1beb) +
-      (_0x1a9795[_0x46aac4(0x104a)] || "") +
+      _ephoneNovelEscape(_0x1a9795[_0x46aac4(0x104a)] || "") +
       _0x46aac4(0xda9);
     ((_0x3a1dd1[_0x46aac4(0x1bf6)] += _0x2b442c),
       (_0x3a1dd1[_0x46aac4(0x1bf6)] +=
@@ -55290,6 +55296,17 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
       _0x2e92aa = _0x4635ab[_0x183fc2(0x186d)](!![]);
     (_0x4635ab[_0x183fc2(0x1110)][_0x183fc2(0x676)](_0x2e92aa, _0x4635ab),
       (_0x2e92aa[_0x183fc2(0x5d3)] = () => _0x10ebb8(![])));
+    _ephoneSyncNovelControls();
+  }
+  function _ephoneSyncNovelControls() {
+    const button = document.getElementById("gr-generate-btn"), reroll = document.getElementById("gr-reroll-btn");
+    if (button) {
+      button.disabled = _0x5576d5.isGenerating;
+      let label = button.querySelector("#gr-gen-text");
+      if (!label) { label = document.createElement("span"); label.id = "gr-gen-text"; button.prepend(label); }
+      label.textContent = _0x5576d5.isGenerating ? "创作中…" : "续写";
+    }
+    if (reroll) reroll.disabled = _0x5576d5.isGenerating;
   }
   function _0x308e0e(_0x23d846) {
     const _0x2ca660 = _0x3ce505,
@@ -55323,267 +55340,109 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
       await _0x24f906[_0x6c32a3(0xdca)][_0x6c32a3(0x114d)](_0xed8e07),
       console["log"](_0x6c32a3(0x1670)));
   }
-  async function _0x10ebb8(_0x5bdacc = ![]) {
-    const _0x5f2354 = _0x3ce505;
-    if (_0x5576d5["isGenerating"]) return;
-    let _0x60dfb3 = await _0x24f906["grStories"][_0x5f2354(0x7eb)](
-      _0x5576d5[_0x5f2354(0xf42)],
-    );
-    _0x5bdacc &&
-      _0x60dfb3[_0x5f2354(0x1bbd)]["length"] > 0x0 &&
-      (_0x60dfb3[_0x5f2354(0x1bbd)][_0x5f2354(0x748)](),
-      await _0x24f906[_0x5f2354(0xdca)][_0x5f2354(0x114d)](_0x60dfb3),
-      _0x5dec3b(
-        _0x60dfb3["id"],
-        Math["max"](0x0, _0x60dfb3[_0x5f2354(0x1bbd)][_0x5f2354(0xa5d)] - 0x1),
-      ));
-    const _0x32d419 = await _0x24f906[_0x5f2354(0x18ac)]["get"](
-        _0x60dfb3[_0x5f2354(0xb5c)],
-      ),
-      _0x27b71d = document[_0x5f2354(0x1023)](_0x5f2354(0x44a)),
-      _0x4df2c1 = _0x27b71d[_0x5f2354(0x16b0)][_0x5f2354(0x1833)](),
-      _0x4f1fef = document[_0x5f2354(0x1023)](_0x5f2354(0xef8)),
-      _0x322f2f = document[_0x5f2354(0x1023)](_0x5f2354(0xbef));
-    _0x5576d5[_0x5f2354(0x870)] = !![];
-    if (_0x4f1fef) {
-      _0x4f1fef[_0x5f2354(0x1794)] = !![];
-      if (_0x322f2f) _0x322f2f[_0x5f2354(0x71a)] = _0x5f2354(0x81b);
+  async function _ephoneNovelSources(story, personaDb) {
+    const settings = story.settings || {};
+    if (settings.referenceSpaceDatabase && settings.referenceSpaceDatabase !== personaDb.name)
+      throw new Error("这部作品引用的是另一个空间的人物。请回到原空间继续，或在作品设定中重新选择本空间的角色后保存。");
+    const [chats, npcs, relations, binding, aliases] = await Promise.all([
+      personaDb.chats.toArray(), personaDb.npcs.toArray(), personaDb.characterRelations.toArray(),
+      personaDb.spaceProfiles.get("player"), personaDb.spaceProfiles.get("person-identity-aliases")
+    ]);
+    const player = !settings.userPersonaId && binding?.key
+      ? window.ephonePlayerIdentity.choices(chats, npcs).find((p) => p.key === binding.key) : null;
+    const context = window.EPhoneNovelContext.build({ selectedIds: settings.charIds, chats, npcs, relations, player,
+      historyLimit: settings.contextLimit, groupContext: window.ephoneGroupContext, identity: window.ephonePlayerIdentity,
+      formatTime: window.EPhoneMarketAdapter.formatTime, aliases: aliases?.aliases || {} });
+    if (context.warnings.length) throw new Error(context.warnings.join("；") + "。请到作品设定重新勾选，避免使用缺失的人物资料。");
+    if (settings.userPersonaId) {
+      const preset = (await _0x24f906.personaPresets.toArray()).find((row) => String(row.id) === String(settings.userPersonaId));
+      if (!preset) throw new Error("本作品指定的用户身份预设已不存在，请在作品设定重新选择。");
+      context.text += "\n\n# 本作品明确指定的用户身份\n" + (preset.persona || preset.content || "（未填写）") + "\n此身份属于本作品的代入设定，不自动改变其他角色档案中的原聊天对象。";
     }
+    const books = settings.bookIds?.length ? await _0x24f906.worldBooks.toArray() : [];
+    for (const id of settings.bookIds || []) {
+      const book = books.find((row) => String(row.id) === String(id));
+      if (!book) throw new Error("所选世界书已不存在，请在作品设定重新选择。");
+      context.text += "\n\n# 所选世界书：" + book.name + "\n" + (book.content || []).filter((row) => row.enabled !== false).map((row) => row.content || "").join("\n\n");
+    }
+    return context;
+  }
+  async function _0x10ebb8(rewrite = false) {
+    if (_0x5576d5.isGenerating) return;
+    _0x5576d5.isGenerating = true;
+    const storyId = _0x5576d5.activeStoryId, stories = _0x24f906.grStories,
+      personaDb = window.db.spaceProfiles.db,
+      direction = document.getElementById("gr-direction-input")?.value.trim() || "",
+      button = document.getElementById("gr-generate-btn"), label = document.getElementById("gr-gen-text");
+    if (button) button.disabled = true;
+    if (label) label.textContent = "创作中…";
+    _ephoneSyncNovelControls();
     try {
-      const _0x5592a4 =
-          parseInt(_0x60dfb3[_0x5f2354(0x17c5)][_0x5f2354(0x1b10)]) || 0x1f4,
-        _0x38e84b = Math["floor"](_0x5592a4 * 1.5),
-        _0x4ed3b9 = _0x60dfb3[_0x5f2354(0x17c5)][_0x5f2354(0xff0)] || 0x14;
-      let _0x52a87f = "";
-      for (const _0x1d69c3 of _0x60dfb3["settings"][_0x5f2354(0x14e2)]) {
-        if (_0x1d69c3[_0x5f2354(0x73c)](_0x5f2354(0x1ad2))) {
-          const _0x3f7dc7 = parseInt(
-              _0x1d69c3["replace"](_0x5f2354(0x1ad2), ""),
-            ),
-            _0x5fe9ad =
-              await _0x24f906[_0x5f2354(0x94f)][_0x5f2354(0x7eb)](_0x3f7dc7);
-          if (_0x5fe9ad)
-            _0x52a87f +=
-              "-\x20NPC\x20" +
-              _0x5fe9ad[_0x5f2354(0xeda)] +
-              ":\x20" +
-              _0x5fe9ad[_0x5f2354(0x13cb)] +
-              "\x0a";
-        } else {
-          const _0x4db5a7 = _0x5ea3c1[_0x5f2354(0x1255)][_0x1d69c3];
-          if (_0x4db5a7) {
-            const _0x4d6778 = (_0x4db5a7[_0x5f2354(0x1027)] || [])
-                [
-                  "map"
-                ]((_0x19c797) => _0x5f2354(0x43f) + _0x19c797[_0x5f2354(0xfd7)])
-                ["join"]("\x0a"),
-              _0x5910c4 = _0x4db5a7[_0x5f2354(0x8e6)]
-                ["slice"](-_0x4ed3b9)
-                [_0x5f2354(0xbc5)]((_0x2f7290) => {
-                  const _0x532bb7 = _0x5f2354;
-                  if (
-                    _0x2f7290[_0x532bb7(0x4b6)] === _0x532bb7(0xd77) ||
-                    _0x2f7290[_0x532bb7(0x1140)] === _0x532bb7(0x1bda) ||
-                    _0x2f7290[_0x532bb7(0x1140)] === _0x532bb7(0x574) ||
-                    _0x2f7290[_0x532bb7(0x1140)] === _0x532bb7(0xeca)
-                  )
-                    return null;
-                  let _0x2690ab = String(_0x2f7290[_0x532bb7(0xfd7)]);
-                  if (
-                    _0x2690ab[_0x532bb7(0x1507)]("红包") ||
-                    _0x2690ab[_0x532bb7(0x1507)]("手机") ||
-                    _0x2690ab[_0x532bb7(0x1507)]("转账")
-                  )
-                    return null;
-                  return (
-                    _0x532bb7(0x1322) +
-                    _0x2f7290[_0x532bb7(0xcac)] +
-                    ":\x20" +
-                    _0x2690ab[_0x532bb7(0x2d0)](0x0, 0x32)
-                  );
-                })
-                [_0x5f2354(0x1916)](Boolean)
-                [_0x5f2354(0x1895)]("\x0a");
-            _0x52a87f +=
-              _0x5f2354(0x1709) +
-              _0x4db5a7["name"] +
-              _0x5f2354(0x1bc1) +
-              _0x4db5a7[_0x5f2354(0x17c5)][_0x5f2354(0xc6c)] +
-              "\x0a";
-            if (_0x4d6778) _0x52a87f += _0x5f2354(0x17b) + _0x4d6778 + "\x0a";
-            if (_0x5910c4) _0x52a87f += _0x5f2354(0x17d9) + _0x5910c4 + "\x0a";
-            _0x52a87f += "\x0a";
-          }
-        }
-      }
-      let _0x10ae91 = "普通用户";
-      if (_0x60dfb3["settings"][_0x5f2354(0x1760)]) {
-        const _0x5ca214 = await _0x24f906[_0x5f2354(0x19f4)][_0x5f2354(0x7eb)](
-          _0x60dfb3[_0x5f2354(0x17c5)][_0x5f2354(0x1760)],
-        );
-        if (_0x5ca214) _0x10ae91 = _0x5ca214[_0x5f2354(0x13cb)];
-      } else
-        _0x5ea3c1[_0x5f2354(0x1255)][
-          Object[_0x5f2354(0x1469)](_0x5ea3c1[_0x5f2354(0x1255)])[0x0]
-        ] &&
-          (_0x10ae91 =
-            _0x5ea3c1[_0x5f2354(0x1255)][
-              Object[_0x5f2354(0x1469)](_0x5ea3c1[_0x5f2354(0x1255)])[0x0]
-            ]["settings"][_0x5f2354(0x1447)]);
-      let _0x10a486 = "";
-      for (const _0x1d0755 of _0x60dfb3[_0x5f2354(0x17c5)][_0x5f2354(0x1cc)]) {
-        const _0x4e1257 =
-          await _0x24f906[_0x5f2354(0x781)][_0x5f2354(0x7eb)](_0x1d0755);
-        if (_0x4e1257)
-          _0x10a486 +=
-            _0x5f2354(0x181) +
-            _0x4e1257[_0x5f2354(0xeda)] +
-            _0x5f2354(0x11fa) +
-            _0x4e1257["content"]
-              ["filter"]((_0x4dc9eb) => _0x4dc9eb["enabled"])
-              [_0x5f2354(0xbc5)]((_0x45e056) => _0x45e056[_0x5f2354(0xfd7)])
-              [_0x5f2354(0x1895)](";") +
-            "\x0a";
-      }
-      let _0x8abcc8 = _0x5f2354(0x1d6);
-      if (
-        _0x60dfb3[_0x5f2354(0x1bbd)] &&
-        _0x60dfb3[_0x5f2354(0x1bbd)][_0x5f2354(0xa5d)] > 0x0
-      ) {
-        const _0x798bed =
-          _0x60dfb3["chapters"][_0x60dfb3["chapters"][_0x5f2354(0xa5d)] - 0x1];
-        _0x798bed &&
-          _0x798bed[_0x5f2354(0x104a)] &&
-          (_0x8abcc8 = _0x798bed[_0x5f2354(0x104a)]);
-      }
-      let _0x33a0b1 = "";
-      _0x60dfb3[_0x5f2354(0x17c5)][_0x5f2354(0x1b3a)] &&
-        (_0x33a0b1 =
-          _0x5f2354(0x67c) +
-          _0x60dfb3[_0x5f2354(0x17c5)]["macroWorldView"] +
-          _0x5f2354(0x11ac));
-      const _0xbacea9 =
-          _0x5f2354(0x1652) +
-          _0x32d419[_0x5f2354(0xeda)] +
-          _0x5f2354(0x12cc) +
-          _0x32d419[_0x5f2354(0x791)] +
-          _0x5f2354(0x436) +
-          _0x33a0b1 +
-          "\x0a#\x20【最高优先级：字数扩充指令】\x0a你必须输出\x20**" +
-          _0x38e84b +
-          _0x5f2354(0xaca) +
-          (_0x10a486
-            ? _0x5f2354(0x1736) + _0x10a486
-            : "请根据角色设定自行判断。") +
-          _0x5f2354(0xde8) +
-          _0x10ae91 +
-          _0x5f2354(0x10bc) +
-          _0x52a87f +
-          _0x5f2354(0x585) +
-          _0x8abcc8 +
-          _0x5f2354(0x174c) +
-          (_0x4df2c1 || _0x5f2354(0x15aa)) +
-          _0x5f2354(0x1a6b) +
-          _0x32d419[_0x5f2354(0x791)] +
-          _0x5f2354(0x1289) +
-          _0x38e84b +
-          _0x5f2354(0x98b),
-        {
-          proxyUrl: _0x4243b4,
-          apiKey: _0x1cf8c9,
-          model: _0x2ec07b,
-        } = _ephoneApiFor("auxiliary"),
-        _0xcf7902 = [
-          { role: "user", content: _0x5f2354(0xb18) + _0x38e84b + "\x20字！" },
-        ];
-      let _0x333eae;
-      if (_0x4243b4["includes"](_0x5f2354(0x1ad7))) {
-        let _0x435a77 = _0x20e281(_0x2ec07b, _0x1cf8c9, _0xbacea9, _0xcf7902);
-        _0x333eae = await fetch(
-          _0x435a77[_0x5f2354(0x863)],
-          _0x435a77[_0x5f2354(0x739)],
-        );
-      } else
-        _0x333eae = await _ephoneApiFetch(
-          _ephoneBuildApiEndpoint(_0x4243b4, "chat/completions"),
-          {
-          method: _0x5f2354(0x7d0),
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: "Bearer\x20" + _0x1cf8c9,
-          },
-          body: JSON[_0x5f2354(0x1baf)]({
-            model: _0x2ec07b,
-            messages: [
-              { role: _0x5f2354(0xd77), content: _0xbacea9 },
-              ..._0xcf7902,
-            ],
-            temperature: 0.9,
-          }),
+      const { proxyUrl, apiKey, model } = _ephoneApiFor("novel");
+      const story = await stories.get(storyId);
+      if (!story) throw new Error("作品已被删除，请返回书架。");
+      const author = await _0x24f906.grAuthors.get(story.authorId);
+      if (!author) throw new Error("所选作者已不存在，请在作品设定重新选择文风。");
+      const context = await _ephoneNovelSources(story, personaDb), originalChapters = story.chapters || [],
+        chapters = rewrite ? originalChapters.slice(0, -1) : originalChapters,
+        previous = chapters.at(-1), target = Math.max(1, Number(story.settings?.outputLength) || 500);
+      const progress = chapters.map((chapter, i) => "第" + (i + 1) + "章「" + (chapter.title || "无题") + "」：\n" +
+        (chapter.summary || (i === chapters.length - 1 ? "本章摘要缺失，完整正文见下文。" : chapter.content) || "（暂无记录）")).join("\n\n");
+      const prompt = "# 写作任务\n你是小说创作者，使用所选作者「" + author.name + "」的文风：\n" + (author.style || "自然流畅，人物鲜明") +
+        "\n本作品《" + story.title + "》的第" + (chapters.length + 1) + "章，正文目标约" + target + "字。以完整场景、自然对话、人物行动和合理节奏组织内容，不为凑字数重复，也不要只写摘要或开头。\n" +
+        "# 使用资料的约束\n先完整核对人物档案、关系双方的身份/年龄/辈分、说话习惯和已发生事实，再写正文。不把群聊当作一个人物，不互换档案里的‘我’，不凭同群就编造亲属/师徒/恋爱关系。称呼和行为必须与明确关系一致。\n" +
+        "本作品明确的IF线只改写指定设定，未指定的性格和人物关系继续遵守档案；创作者知道私人资料，不等于每个角色都知道。引用聊天和记忆是历史参考，不强行逐条重演。小说为独立作品，不修改真实聊天、关系或账本。\n" +
+        "续写从上一章结尾的场景、时间、人物位置、已知信息、未完成约定继续，不能反复重新介绍或忘记铺垫，也不能把尚未发生的安排当成已完成。重写时被替换的章节不作为已经发生的剧情。\n" +
+        "# 本作品世界观 / IF线\n" + (story.settings?.macroWorldView || "遵守所选人物和世界书；未指定时不要擅自改换时代或人物身份。") +
+        "\n\n" + context.text + "\n\n# 已完成各章进度\n" + (progress || "这是作品开篇，尚无已完成章节。") +
+        "\n\n# 上一章完整正文（承接结尾，不重复抄写）\n" + (previous?.content || "（开篇，无上一章）") +
+        "\n\n# 本次剧情方向\n" + (direction || "按当前人物动机和未完成情节自然展开。") +
+        '\n\n# 输出格式\n只返回一个完整JSON对象，不加Markdown外壳：{"title":"本章标题","content":"完整小说正文，保留换行","summary":"本章确定发生的关键事实、关系变化、未完成事项及结尾场景，供后续章节承接"}。正文不可省略，不输出详细思维链。';
+      let response;
+      if (proxyUrl.includes("generativelanguage.googleapis.com")) {
+        const request = _0x20e281(model, apiKey, prompt, [{ role: "user", content: "请写出这一章完整正文。" }]);
+        response = await fetch(request.url, request.data);
+      } else {
+        response = await _ephoneApiFetch(_ephoneBuildApiEndpoint(proxyUrl, "chat/completions"), {
+          method: "POST", headers: { "Content-Type": "application/json", Authorization: "Bearer " + apiKey },
+          body: JSON.stringify({ model, messages: [{ role: "system", content: prompt }, { role: "user", content: "请写出这一章完整正文。" }], temperature: 0.9 })
         });
-      if (!_0x333eae["ok"]) {
-        const _0x22f42b = await _0x333eae[_0x5f2354(0x352)]();
-        throw new Error(
-          _0x5f2354(0x231) +
-            _0x333eae[_0x5f2354(0x162f)] +
-            _0x5f2354(0xb54) +
-            _0x22f42b,
-        );
       }
-      const _0x801960 = await _0x333eae[_0x5f2354(0x711)](),
-        _0x59ba5c = getGeminiResponseText(_0x801960);
-      let _0x5bb0f0 = _0x59ba5c;
-      const _0x514b50 = _0x59ba5c["match"](/\{[\s\S]*\}/);
-      if (_0x514b50) _0x5bb0f0 = _0x514b50[0x0];
-      else throw new Error("AI未返回有效JSON格式");
-      let _0x568f57;
-      try {
-        _0x568f57 = JSON[_0x5f2354(0x1698)](_0x5bb0f0);
-      } catch (_0x5ba689) {
-        console["warn"](_0x5f2354(0x5f9), _0x5ba689);
-        const _0x574812 = _0x5bb0f0["replace"](
-          /\\([^"\\\/bfnrtu])/g,
-          "\x5c\x5c$1",
-        );
-        try {
-          ((_0x568f57 = JSON[_0x5f2354(0x1698)](_0x574812)),
-            console[_0x5f2354(0x13f0)](_0x5f2354(0x1ae2)));
-        } catch (_0x3546c4) {
-          throw new Error(_0x5f2354(0x83a) + _0x5ba689[_0x5f2354(0xeb4)]);
-        }
+      if (!response.ok) throw new Error("API 请求失败：" + response.status + " - " + await response.text());
+      const raw = getGeminiResponseText(await response.json()).trim(), first = raw.indexOf("{"), last = raw.lastIndexOf("}");
+      if (first < 0 || last < first) throw new Error("模型没有返回完整的小说JSON，原章节保留；本次不会自动重复请求。");
+      const encoded = raw.slice(first, last + 1);
+      let result;
+      try { result = JSON.parse(encoded); }
+      catch { try { result = JSON.parse(encoded.replace(/\\([^"\\/bfnrtu])/g, "\\\\$1")); }
+        catch { throw new Error("小说JSON未完成或格式无效，原章节保留；可重新生成。"); } }
+      if (!result || Array.isArray(result) || typeof result.content !== "string" || !result.content.trim())
+        throw new Error("模型返回了空正文，原章节保留；本次不会自动重复请求。");
+      const chapter = { title: typeof result.title === "string" && result.title.trim() ? result.title : "第" + (chapters.length + 1) + "章",
+        content: result.content, summary: typeof result.summary === "string" ? result.summary : "", prevSummary: previous?.summary || "这是故事的开始。", timestamp: Date.now() };
+      if (window.db.spaceProfiles.db !== personaDb) throw new Error("人物空间已切换，本次结果未写入作品，请回到原空间重试。");
+      await stories.db.transaction("rw", stories, async () => {
+        const fresh = await stories.get(storyId);
+        if (!fresh || JSON.stringify(fresh.chapters || []) !== JSON.stringify(originalChapters) || JSON.stringify(fresh.settings) !== JSON.stringify(story.settings) || fresh.authorId !== story.authorId)
+          throw new Error("生成期间作品内容或设定已变化，本次未覆盖已有章节。");
+        fresh.chapters = [...chapters, chapter];
+        fresh.settings = { ...fresh.settings, referenceSpaceDatabase: personaDb.name };
+        fresh.lastUpdated = Date.now();
+        await stories.put(fresh);
+      });
+      if (_0x5576d5.activeStoryId === storyId && document.getElementById("gr-reader-screen")?.classList.contains("active")) {
+        await _0x5dec3b(storyId, chapters.length);
+        const input = document.getElementById("gr-direction-input"); if (input?.value.trim() === direction) input.value = "";
       }
-      const _0x1f39e4 = {
-        title:
-          _0x568f57[_0x5f2354(0xe6d)] ||
-          "第\x20" + (_0x60dfb3["chapters"]["length"] + 0x1) + "\x20章",
-        content: _0x568f57[_0x5f2354(0xfd7)],
-        summary: _0x568f57[_0x5f2354(0x104a)],
-        prevSummary: _0x8abcc8,
-        timestamp: Date[_0x5f2354(0x902)](),
-      };
-      ((_0x60dfb3 = await _0x24f906["grStories"][_0x5f2354(0x7eb)](
-        _0x5576d5[_0x5f2354(0xf42)],
-      )),
-        _0x60dfb3["chapters"][_0x5f2354(0x3e6)](_0x1f39e4),
-        (_0x60dfb3[_0x5f2354(0x1380)] = Date["now"]()),
-        await _0x24f906[_0x5f2354(0xdca)][_0x5f2354(0x114d)](_0x60dfb3),
-        _0x5dec3b(
-          _0x60dfb3["id"],
-          _0x60dfb3[_0x5f2354(0x1bbd)]["length"] - 0x1,
-        ),
-        (document[_0x5f2354(0x1023)]("gr-direction-input")[_0x5f2354(0x16b0)] =
-          ""));
-    } catch (_0x4cf245) {
-      (console[_0x5f2354(0x110f)](_0x5f2354(0x4f5), _0x4cf245),
-        alert(_0x5f2354(0xccc) + _0x4cf245[_0x5f2354(0xeb4)]));
-    } finally {
-      _0x5576d5["isGenerating"] = ![];
-      if (_0x4f1fef) {
-        _0x4f1fef[_0x5f2354(0x1794)] = ![];
-        if (_0x322f2f) _0x322f2f[_0x5f2354(0x71a)] = "续写";
-      }
+    } catch (error) { console.error("绿江生成失败：", error); alert("小说生成未完成：" + error.message); }
+    finally {
+      _0x5576d5.isGenerating = false;
+      for (const target of [button, document.getElementById("gr-generate-btn")]) if (target) target.disabled = false;
+      for (const target of [label, document.getElementById("gr-gen-text")]) if (target) target.textContent = "续写";
+      _ephoneSyncNovelControls();
     }
   }
+
   function _0x5c29da() {
     const _0x4a5441 = _0x3ce505,
       _0x3387d6 = document[_0x4a5441(0x1023)]("gr-chapter-sidebar"),
@@ -55613,14 +55472,14 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
                 _0x4a935b(0x1486) +
                 (_0x2d3ecc + 0x1) +
                 ".\x20" +
-                (_0x58d0d6["title"] || "无题") +
+                _ephoneNovelEscape(_0x58d0d6["title"] || "无题") +
                 _0x4a935b(0xfe1) +
                 new Date(_0x58d0d6[_0x4a935b(0x18df)])["toLocaleTimeString"]() +
                 "</span>\x0a\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20</div>\x0a\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20<div\x20style=\x22font-size:12px;\x20color:#999;\x20margin-left:10px;\x20margin-top:4px;\x20white-space:nowrap;\x20overflow:hidden;\x20text-overflow:ellipsis;\x22>" +
-                (_0x58d0d6[_0x4a935b(0x104a)] || "")[_0x4a935b(0x2d0)](
+                _ephoneNovelEscape(String(_0x58d0d6[_0x4a935b(0x104a)] || "")[_0x4a935b(0x2d0)](
                   0x0,
                   0x14,
-                ) +
+                )) +
                 _0x4a935b(0x1163)),
                 (_0x35c28b["onclick"] = () => {
                   (_0x5dec3b(_0x30a04d["id"], _0x2d3ecc), _0x1db439());
@@ -57086,7 +56945,7 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
       // serialize; broad busy stays reserved for switching/deleting space data.
       (window.isEPhoneMutationBusy = () => Boolean(_ephoneMessageKindBusy || _ephoneSpectatorMoneyBusy || _ephoneWalletPending || window.ephonePlayerIdentity?.isBusy?.() || window.EPhoneCharacterWallet?.isMutating?.())),
       (window.isEPhoneTimeChangeBusy = () => Boolean(_0xephoneGenerationController || _0xephoneSpectatorGenerating || window.isEPhoneMutationBusy())),
-      (window.isPersonaSpaceBusy = () => Boolean(window.isEPhoneTimeChangeBusy() || window.ephoneImageApi?.isBusy() || window.EPhoneLifeMarket?.isBusy() || window.EPhoneCharacterWallet?.isBusy() || window.EPhoneCharacterSocial?.isBusy() || window.EPhoneCharacterDaily?.isBusy() || window.EPhoneLifeSimulation?.isBusy() || window.EPhoneNY?.isBusy() || window.EPhoneNYFeatures?.isBusy())),
+      (window.isPersonaSpaceBusy = () => Boolean(window.isEPhoneTimeChangeBusy() || _0x5576d5.isGenerating || window.ephoneImageApi?.isBusy() || window.EPhoneLifeMarket?.isBusy() || window.EPhoneCharacterWallet?.isBusy() || window.EPhoneCharacterSocial?.isBusy() || window.EPhoneCharacterDaily?.isBusy() || window.EPhoneLifeSimulation?.isBusy() || window.EPhoneNY?.isBusy() || window.EPhoneNYFeatures?.isBusy())),
       (window.EPhoneNyAdapter = {
         currentChatId: () => _0x5ea3c1.activeChatId,
         currentChat: () => _0x5ea3c1.chats[_0x5ea3c1.activeChatId],

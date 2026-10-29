@@ -3,7 +3,7 @@
   const MISSING_AUXILIARY = "副 API 尚未配置完整。请到设置中的「副 API」载入已保存预设，或填写密钥和模型。本次不会改用主 API。";
   const clean = (v) => typeof v === "string" ? v.trim() : "";
   function select(config, purpose) {
-    if (!["reply", "auxiliary"].includes(purpose)) throw new Error("未知 API 任务类型，已停止请求。");
+    if (!["reply", "novel", "auxiliary"].includes(purpose)) throw new Error("未知 API 任务类型，已停止请求。");
     const secondary = purpose === "auxiliary", result = {
       proxyUrl: clean(config?.[secondary ? "secondaryProxyUrl" : "proxyUrl"]) || "https://api.openai.com",
       apiKey: clean(config?.[secondary ? "secondaryApiKey" : "apiKey"]),

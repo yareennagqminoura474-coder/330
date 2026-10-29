@@ -1,6 +1,9 @@
 const assert = require("node:assert/strict"), fs = require("node:fs"), core = require("./api-routing-core.js");
 const config = { proxyUrl: "https://primary.invalid/v1", apiKey: "fake-primary", model: "reply-model", secondaryProxyUrl: "https://auxiliary.invalid/v1", secondaryApiKey: "fake-secondary", secondaryModel: "aux-model" };
 assert.deepEqual(core.select(config, "reply"), { proxyUrl: config.proxyUrl, apiKey: config.apiKey, model: config.model });
+assert.deepEqual(core.select(config, "novel"), core.select(config, "reply"), "Green River creation intentionally shares the primary connection");
+assert.deepEqual(core.select({ ...config, secondaryApiKey: "", secondaryModel: "" }, "novel"), core.select(config, "reply"), "a missing auxiliary connection must not block novels");
+for (const field of ["apiKey", "model"]) assert.throws(() => core.select({ ...config, [field]: "" }, "novel"), (e) => e.code === "PRIMARY_API_MISSING");
 assert.deepEqual(core.select(config, "auxiliary"), { proxyUrl: config.secondaryProxyUrl, apiKey: config.secondaryApiKey, model: config.secondaryModel });
 for (const field of ["secondaryApiKey", "secondaryModel"]) assert.throws(() => core.select({ ...config, [field]: "" }, "auxiliary"), (e) => e.code === "AUXILIARY_API_MISSING");
 assert.throws(() => core.select(config, "unknown"), /未知/);
@@ -22,8 +25,12 @@ for (const m of s.matchAll(/= _ephoneApiFor\("reply"\)/g)) {
   const fn = [...s.slice(0, m.index).matchAll(/^  (?:async )?function (_0x[0-9a-f]+)/gm)].at(-1)?.[1];
   assert.ok(primary.delete(fn), "only main chat reply paths use primary: " + fn);
 }
-assert.equal(primary.size, 0); assert.equal((s.match(/= _ephoneApiFor\("auxiliary"/g) || []).length, 38);
+assert.equal(primary.size, 0);
+const novels = [...s.matchAll(/= _ephoneApiFor\("novel"\)/g)];
+assert.equal(novels.length, 1, "novel creation, continuation and reroll share one explicit routing point");
+assert.equal([...s.slice(0, novels[0].index).matchAll(/^  (?:async )?function (_0x[0-9a-f]+)/gm)].at(-1)?.[1], "_0x10ebb8");
+assert.equal((s.match(/= _ephoneApiFor\("auxiliary"/g) || []).length, 37);
 assert.match(s.slice(s.indexOf("generateMessages: async"), s.indexOf("generate: async (prompt, signal)")), /_ephoneApiFor\("auxiliary"\)/, "NY tagged analysis must use auxiliary routing too");
 assert.doesNotMatch(s, /__ephone_continue__|_ephoneRecoveryPrompt|_0xephoneContinue/);
 assert.doesNotMatch(s.slice(s.indexOf("async function _0x1cf16a"), s.indexOf("async function _0x4a6dc1")), /secondaryProxyUrl:|secondaryApiKey:|secondaryModel:/);
-console.log("PASS: strict reply/auxiliary routing, no missing-secondary fallback, preset value snapshots, legacy call-site audit, independent primary preset switching");
+console.log("PASS: explicit chat/novel primary and auxiliary routing, no missing-secondary fallback, preset value snapshots, legacy call-site audit, independent primary preset switching");
