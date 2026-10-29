@@ -10,3 +10,8 @@
 .ny-scroll button { border: 0; border-radius: 9px; background: #e7f0ff; color: #1763b6; padding: 10px 12px; margin: 4px; font: inherit; font-size: 13px; }
 .ny-scroll button:disabled { opacity: .5; }
 .ny-actions { display: flex; flex-wrap: wrap; gap: 6px; }
+.ny-scroll .ny-prompt-row { border-bottom: 1px solid #e5e9ef; padding: 8px 0 12px; }
+.ny-scroll .ny-prompt-details { padding: 8px 10px; margin: 4px 0; background: #f5f7fa; }
+.ny-prompt-details summary { cursor: pointer; color: #1763b6; font-size: 13px; }
+.ny-prompt-details pre { white-space: pre-wrap; overflow-wrap: anywhere; word-break: break-word; font-family: inherit; font-size: 13px; line-height: 1.7; max-height: 52vh; overflow-y: auto; touch-action: pan-y; user-select: text; }
+.ny-prompt-details code { white-space: inherit; font: inherit; color: inherit; }

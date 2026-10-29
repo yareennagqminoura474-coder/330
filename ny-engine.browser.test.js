@@ -228,6 +228,8 @@ function sourceSnippets(data, kind) {
 
     // Save settings, start and stop from real buttons while the API is held.
     await page.evaluate(() => window.EPhoneNY.open("ny-a"));
+    await page.locator("#ny-scope").selectOption("chat");
+    await page.waitForFunction(() => document.getElementById("ny-scope")?.value === "chat" && document.getElementById("ny-enabled")?.checked);
     if (await page.locator("#ny-kind").inputValue() !== "sigon") {
       await page.locator("#ny-kind").selectOption("sigon");
       await page.locator('textarea[data-ny-tag="Matrix"]').waitFor();
