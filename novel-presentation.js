@@ -1,8 +1,8 @@
 (function (root, factory) {
-  const api = factory();
+  const api = factory(root);
   if (typeof module === "object" && module.exports) module.exports = api;
   if (root) root.EPhoneNovelPresentation = api;
-})(typeof window === "undefined" ? null : window, function () {
+})(typeof window === "undefined" ? null : window, function (root) {
   "use strict";
   const symbols = { in: "∈", notin: "∉", ni: "∋", subset: "⊂", subseteq: "⊆", supset: "⊃", supseteq: "⊇", cup: "∪", cap: "∩", emptyset: "∅", varnothing: "∅", forall: "∀", exists: "∃", nexists: "∄", le: "≤", leq: "≤", ge: "≥", geq: "≥", ne: "≠", neq: "≠", approx: "≈", equiv: "≡", times: "×", div: "÷", cdot: "·", pm: "±", mp: "∓", infinity: "∞", infty: "∞", to: "→", rightarrow: "→", leftarrow: "←", Rightarrow: "⇒", Leftarrow: "⇐", Leftrightarrow: "⇔", leftrightarrow: "↔", land: "∧", lor: "∨", neg: "¬", angle: "∠", perpendicular: "⊥", perp: "⊥", parallel: "∥", alpha: "α", beta: "β", gamma: "γ", delta: "δ", theta: "θ", lambda: "λ", mu: "μ", pi: "π", sigma: "σ", phi: "φ", omega: "ω", Delta: "Δ", Sigma: "Σ", Omega: "Ω" };
   function displayText(value) {
@@ -15,5 +15,26 @@
       return body.replace(/\\([a-zA-Z]+)/g, (_, name) => symbols[name]).replace(/\\[,;:]/g, " ").replace(/\\!/g, "");
     });
   }
-  return Object.freeze({ displayText });
+  function render(element, value) {
+    if (!element) return;
+    if (value !== undefined) element.textContent = String(value ?? "");
+    if (!root?.renderMathInElement || !root?.katex) return;
+    root.renderMathInElement(element, {
+      delimiters: [
+        { left: "$$", right: "$$", display: true },
+        { left: "\\[", right: "\\]", display: true },
+        { left: "\\(", right: "\\)", display: false },
+        ...["equation", "equation*", "align", "align*", "gather", "gather*", "alignat", "alignat*"].map((name) => ({ left: "\\begin{" + name + "}", right: "\\end{" + name + "}", display: true })),
+        { left: "$", right: "$", display: false }
+      ],
+      ignoredClasses: ["katex"],
+      throwOnError: true, trust: false, strict: "ignore", output: "htmlAndMathml", maxExpand: 1000,
+      preProcess: (math) => {
+        if (/^\s*\d+(?:\.\d+)?\s*(?:和|或|元|美元|USD|CNY|RMB|and|,|，|\s)+$/i.test(math)) throw new root.katex.ParseError("ordinary currency text");
+        return math;
+      },
+      errorCallback: () => {}
+    });
+  }
+  return Object.freeze({ displayText, render });
 });

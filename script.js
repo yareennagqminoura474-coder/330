@@ -55263,7 +55263,7 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
     ((_0x3a1dd1[_0x46aac4(0x1bf6)] += _0x46aac4(0xd1b) + _ephoneNovelEscape(_0x2ebb8a) + "</div>"),
       (_0x3a1dd1[_0x46aac4(0x1bf6)] +=
         "<div\x20class=\x22gr-chapter-text\x22>" +
-        _ephoneNovelEscape(window.EPhoneNovelPresentation.displayText(_0x1a9795[_0x46aac4(0xfd7)])) +
+        _ephoneNovelEscape(_0x1a9795[_0x46aac4(0xfd7)]) +
         "</div>"));
     const _0x2b442c =
       _0x46aac4(0x1be8) +
@@ -55325,6 +55325,7 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
           (_0x18168f[_0x46aac4(0x791)]["display"] = _0x46aac4(0x12c8)),
           (_0x5c8700["onclick"] = _ephoneOpenNovelRewrite)),
       _0x2ba2d0(),
+      window.EPhoneNovelPresentation.render(_0x3a1dd1.querySelector(".gr-chapter-text")),
       _0x275208("gr-reader-screen"),
       (_0x3a1dd1["scrollTop"] = 0x0));
   }
@@ -55371,7 +55372,7 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
     let preview = host.querySelector("#gr-live-preview"); const created = !preview;
     if (!preview) { preview = document.createElement("section"); preview.id = "gr-live-preview"; const title = document.createElement("h3"), body = document.createElement("div"); title.id = "gr-live-preview-title"; body.id = "gr-live-preview-content"; preview.append(title, body); host.append(preview); }
     preview.querySelector("#gr-live-preview-title").textContent = _0x5576d5.isGenerating ? "本次正在生成的正文" : "已停止，收到的内容已保留";
-    preview.querySelector("#gr-live-preview-content").textContent = window.EPhoneNovelPresentation.displayText(content);
+    window.EPhoneNovelPresentation.render(preview.querySelector("#gr-live-preview-content"), content);
     _0x5576d5.receivedCharacters = content.replace(/\s/g, "").length;
     _0x5576d5.previewRenderedRaw = raw;
     _0x5576d5.previewRenderedBusy = _0x5576d5.isGenerating;
