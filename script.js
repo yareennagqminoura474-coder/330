@@ -54810,11 +54810,11 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
     const storyId = _0x5576d5.activeStoryId, story = await _0x24f906.grStories.get(storyId);
     if (_0x5576d5.activeStoryId !== storyId || !story?.lastGeneration) return;
     const last = story.lastGeneration;
-    document.getElementById("gr-last-response-content").value = last.raw || "";
+    document.getElementById("gr-last-response-content").value = (last.raw || "") + (last.unparsedEvents?.length ? "\n\n【未能解析的原始数据片段】\n" + last.unparsedEvents.join("\n\n") : "");
     const seconds = (n) => Number.isFinite(n) ? (n / 1000).toFixed(1) + "秒" : "未记录", stats = last.stats;
     document.getElementById("gr-last-response-info").textContent = (last.api === "secondary" ? "副 API" : "主 API") + " · " + (last.model || "") + "。内容保存在本机，查看不会重新请求。" + (last.error ? "\n上次未保存为章节：" + last.error : "") +
       (last.finishReason ? "\n接口结束原因：" + last.finishReason : "") + (stats ? "\n准备资料：" + seconds(stats.preparationMs) + "；请求到响应头：" + seconds(stats.headersMs) + "；首字等待：" + seconds(stats.firstTextMs) + "；接收正文：" + seconds(stats.receiveMs) + "；总耗时：" + seconds(stats.totalMs) + "。" + (Number.isFinite(stats.charactersPerSecond) ? "平均接收约" + stats.charactersPerSecond.toFixed(1) + "字/秒。" : "") : "") +
-      (stats?.maxTextGapMs != null ? "\n最长未收到新正文的间隔：" + seconds(stats.maxTextGapMs) + "。" : "") + (last.transportError ? "\n接收提示：" + last.transportError : "") + (last.usage && (last.usage.inputTokens != null || last.usage.outputTokens != null) ? "\n接口报告用量：输入 " + (last.usage.inputTokens ?? "未提供") + "，输出 " + (last.usage.outputTokens ?? "未提供") + " tokens" + (last.usage.reasoningTokens != null ? "，其中思考 " + last.usage.reasoningTokens : "") + "。" : "");
+      (stats?.maxTextGapMs != null ? "\n最长未收到新正文的间隔：" + seconds(stats.maxTextGapMs) + "。" : "") + (stats?.bytesReceived != null ? "\n已接收 " + stats.bytesReceived + " 字节、" + stats.eventCount + " 个数据包；其中 " + (stats.malformedEvents || 0) + " 个格式异常。" : "") + (last.transportError ? "\n接收提示：" + last.transportError : "") + (last.usage && (last.usage.inputTokens != null || last.usage.outputTokens != null) ? "\n接口报告用量：输入 " + (last.usage.inputTokens ?? "未提供") + "，输出 " + (last.usage.outputTokens ?? "未提供") + " tokens" + (last.usage.reasoningTokens != null ? "，其中思考 " + last.usage.reasoningTokens : "") + "。" : "");
     document.getElementById("gr-last-response-modal").classList.add("visible");
   });
   function _ephoneNovelResult(story) {
@@ -54822,7 +54822,7 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
     if (!bar) return;
     bar.hidden = !last;
     if (last) document.getElementById("gr-generation-note").textContent = last.status === "saved"
-      ? last.partial ? /MAX_TOKENS|LENGTH/i.test(last.finishReason || "") ? "接口因输出上限提前结束（" + last.finishReason + "），已保留实际正文。" : "返回未确认完整结束，已保留实际正文，可查看结束原因。" : last.warnings?.length ? "已恢复正文并保存，可查看原始返回。" : "本次正文已保存。"
+      ? last.partial ? last.stats?.malformedEvents ? "接收中有异常数据片段，已保留，请查看上次返回。" : /MAX_TOKENS|LENGTH/i.test(last.finishReason || "") ? "接口因输出上限提前结束（" + last.finishReason + "），已保留实际正文。" : "返回未确认完整结束，已保留实际正文，可查看结束原因。" : last.warnings?.length ? "已恢复正文并保存，可查看原始返回。" : "本次正文已保存。"
       : "返回内容已保留，可查看或复制。";
   }
   const _0x5cc2fe = [
@@ -55527,7 +55527,7 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
       clearTimeout(paintTimer); paintTimer = 0;
       _ephoneSyncNovelControls();
       await draftQueue.catch(() => {});
-      received = { raw: output.raw, status: "received", api, model, rewrite, finishReason: output.finishReason, usage: output.usage, transportError: output.error || "",
+      received = { raw: output.raw, status: "received", api, model, rewrite, finishReason: output.finishReason, usage: output.usage, unparsedEvents: output.unparsedEvents, transportError: output.error || "",
         stats: { ...output.stats, preparationMs, headersMs, maxTextGapMs: Math.max(maxTextGapMs, _0x5576d5.lastProseAt ? Date.now() - _0x5576d5.lastProseAt : 0), firstTextMs: output.stats.firstTextMs == null ? null : headersMs + output.stats.firstTextMs,
           totalMs: Date.now() - _0x5576d5.startedAt }, receivedAt: Date.now(), elapsedMs: Date.now() - _0x5576d5.startedAt };
       // Keep the paid result before trying to interpret its chapter wrapper.
@@ -55564,6 +55564,7 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
     } catch (error) {
       const stopped = error.name === "AbortError" || controller.signal.aborted;
       await draftQueue.catch(() => {});
+      if (!received && error.unparsedEvents?.length) received = { raw: error.partialRaw || "", unparsedEvents: error.unparsedEvents, stats: error.stats, api, model: responseModel, receivedAt: Date.now() };
       if (received && await stories.get(storyId)) await stories.update(storyId, { lastGeneration: { ...received, status: "error", error: stopped ? "已停止生成" : error.message } }).catch(() => {});
       if (!stopped) { console.error("绿江生成失败：", error); alert("小说生成未完成：" + error.message + (received ? "\n返回内容已保留，可点「查看上次返回」，不需要再次调用 API。" : "")); }
     }

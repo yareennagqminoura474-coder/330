@@ -57,7 +57,8 @@
   }
   async function read(response, { signal, onProgress, extractText } = {}) {
     const started = Date.now(), usage = { inputTokens: null, outputTokens: null, reasoningTokens: null, cachedInputTokens: null };
-    const stats = { firstTextMs: null, receiveMs: 0, visibleChars: 0, eventCount: 0, bytesReceived: 0, reasoningSeen: false, streamed: false };
+    const stats = { firstTextMs: null, receiveMs: 0, visibleChars: 0, eventCount: 0, bytesReceived: 0, malformedEvents: 0, reasoningSeen: false, streamed: false };
+    const unparsedEvents = [];
     let raw = "", complete = false, ended = false, terminal = false, broken = false, aborted = false, failure = "", finishReason = "";
     const state = { blocks: new Map(), responseParts: new Map() };
     function snapshot() {
@@ -154,7 +155,7 @@
       catch (error) {
         if (!(error instanceof SyntaxError)) throw error;
         if (name === "error") throw new Error("API 流式响应返回错误：" + data);
-        if (/^[\s]*[{\[]/.test(data)) { broken = true; return; }
+        if (/^[\s]*[{\[]/.test(data)) { broken = true; stats.malformedEvents++; unparsedEvents.push(data); return; }
         if (!["ping", "heartbeat"].includes(name)) event(data, name);
       }
     }
@@ -255,16 +256,20 @@
         }
       }
     } catch (error) {
+      const unfinished = mode === "sse"
+        ? (dataLines.length || /(?:^|\n)data:/.test(lineBuffer) ? [...dataLines, lineBuffer].filter(Boolean).join("\n") : "")
+        : /^API 返回错误：/.test(error.message || "") ? "" : wire;
+      if (unfinished) { unparsedEvents.push(unfinished); stats.malformedEvents++; }
       aborted = signal?.aborted || error.name === "AbortError";
       broken = true; failure = aborted ? "生成已停止" : error.message || String(error);
-      if (!raw && !aborted) { error.partialRaw = raw; error.stats = snapshot(); throw error; }
+      if (!raw && !aborted) { error.partialRaw = raw; error.unparsedEvents = unparsedEvents; error.stats = snapshot(); throw error; }
     } finally {
       if (reader) { if (ended || aborted) Promise.resolve(reader.cancel()).catch(() => {}); try { reader.releaseLock(); } catch {} }
     }
     stats.reasoningSeen ||= usage.reasoningTokens > 0;
     emit();
     return { raw, partial: broken || !complete || /^(?:length|max_tokens|max_output_tokens|incomplete|continuation)$/i.test(finishReason),
-      aborted, finishReason, usage, stats: snapshot(), ...(failure ? { error: failure } : {}) };
+      aborted, finishReason, usage, unparsedEvents, stats: snapshot(), ...(failure ? { error: failure } : unparsedEvents.length ? { error: "收到" + unparsedEvents.length + "个格式异常的数据包，原始片段已保留，正文可能不完整。" } : {}) };
   }
   return Object.freeze({ read });
 });

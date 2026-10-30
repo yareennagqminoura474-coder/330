@@ -114,6 +114,12 @@ const delta = (text) => ({ choices: [{ index: 0, delta: { content: text }, finis
   await assert.rejects(() => core.read(response('{"error":{"message":"API unavailable"}}', [3], "application/json")), /API unavailable/);
   const malformedTail = await core.read(response(event(delta(sample)) + 'data: {"choices":[\n\n' + done));
   assert.equal(malformedTail.raw, sample); assert.equal(malformedTail.partial, true);
+  assert.equal(malformedTail.stats.malformedEvents, 1); assert.deepEqual(malformedTail.unparsedEvents, ['{"choices":[']);
+  const midPacket = controlled(), midReading = core.read(midPacket.response);
+  midPacket.push(event(delta(sample))); await new Promise((resolve) => setTimeout(resolve, 0));
+  midPacket.push('data: {"choices":[{"delta":{"content":"后续实际收到的半包'); await new Promise((resolve) => setTimeout(resolve, 0));
+  midPacket.fail(new Error("network error")); const midResult = await midReading;
+  assert.equal(midResult.raw, sample); assert.equal(midResult.partial, true); assert.match(midResult.unparsedEvents.join(""), /后续实际收到的半包/);
   const reasoningOnly = await core.read(response(event({ choices: [{ index: 0, delta: { reasoning_content: secret } }] }) + event({ choices: [], usage: { completion_tokens: 5, completion_tokens_details: { reasoning_tokens: 5 } } }) + done));
   assert.equal(reasoningOnly.raw, ""); assert.ok(reasoningOnly.stats.reasoningSeen); assert.equal(reasoningOnly.stats.firstTextMs, null);
   assert.equal((await core.read(response(event(delta(sample)) + done), { onProgress() { throw new Error("UI observer failure"); } })).raw, sample, "a preview error cannot discard the paid response");
