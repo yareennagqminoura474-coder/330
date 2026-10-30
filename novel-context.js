@@ -149,5 +149,29 @@
     if (warnings.length) parts.push("# 失效的引用\n" + warnings.join("\n") + "\n缺失的档案不能凭空补写为已经读取。");
     return { text: parts.join("\n\n"), people: cast.map((person) => ({ key: person.key, name: person.name, aliases: [...person.aliases] })), warnings };
   }
-  return Object.freeze({ build });
+  function continuity(chapters, people) {
+    const written = list(chapters), seen = new Set(), mentions = [];
+    for (const person of list(people)) {
+      if (!person?.key || seen.has(person.key)) continue;
+      seen.add(person.key);
+      const names = [...new Set([person.name, ...list(person.aliases)].filter((value) => typeof value === "string" && value.trim().length >= 2))];
+      const hits = [];
+      written.forEach((chapter, index) => {
+        const body = text(chapter?.content), summary = text(chapter?.summary);
+        if (names.some((name) => body.includes(name) || summary.includes(name))) hits.push(index + 1);
+      });
+      if (hits.length) mentions.push({ key: person.key, name: person.name, first: hits[0], last: hits.at(-1) });
+    }
+    const index = mentions.length ? mentions.map((person) => `- ${person.name}：首次文字线索在第${person.first}章，最近在第${person.last}章。`).join("\n") : "未检索到所选档案人物的姓名线索；这不等于人物尚未登场或彼此不认识。";
+    return { mentions, text: "# 前文人物检索线索（本机根据已保留章节整理）\n" + index +
+      "\n这只是姓名/别称在正文或摘要中的检索线索，不自动证明人物同场、见过面或知道某件私事；也不能把未命中姓名当作初次登场。请结合下方各章进度、上一章完整正文和已成立的关系判断。\n" +
+      "# 接续与人物生活\n" +
+      (written.length ? "这是已经进行中的故事。读者已经读过此前章节，直接接住上一章结尾的动作、话题、情绪余波、时间和位置；允许短暂过渡，但不要重新开场介绍。熟人再出现或暂时离场后回来，用当前行动与彼此熟悉的反应辨认，不重新列姓名、职业、外貌、性格、关系履历。只有本章真正首次出现且读者理解情境所需的信息才自然带出；叙述介绍过某人，不等于其他角色也认识此人。\n" : "这是作品开篇，但人设或参考事实中已经相识的人仍是熟人，不因为小说刚开篇就改写成初次见面。人物介绍随场景需要带出，不集中铺设档案。\n") +
+      "本章必须沿着已有事实产生新的行动、选择、后果或关系变化。已完成的谈话和事件不重新演一遍；有意照应旧事时，应有新的意义、反应或后果，不能只换同义词重复同一互动。角色的情绪不会到下一章自动归零，承诺、误会、物品状态和未完成的事也不会因换章重置。未发生的安排仍是安排，未解决的问题可以继续存在，不必章章强行升华或和解。\n" +
+      "# 自然写作与避免人设复读\n" +
+      "所选作者的文风继续生效。人设是人物理解事情、取舍和行动的背景，不是每章必须完成的展示清单。性格、爱好、口头习惯或外貌特点只有在当前场景确实相关时才显现；上章已充分表现的点，本章没有新诱因就不再特意强调，不靠反复安排同一种动作证明人物性格。不要换个措辞继续复述同一个特征，也不要为了求新另造违背人设的癖好。\n" +
+      "人物各有眼前的目标、注意力和生活事务，不总围着主角回应，也不要求所有角色每章轮流出场。熟人对话有共享语境和各自说话节奏，可以留白、含蓄、误解、转移话题或不立即回答；由具体处境决定，避免人人轮流完整解释自己的心理。不同人物依据各自已知信息行动，不能为了推进情节突然全知。\n" +
+      "让可观察的细节、实际行动和对话承担表达，减少旁白紧跟着替角色解释、给关系下结论或反复总结同一个感受。详略随场景变化，日常片段也可以安静、琐碎、有未说出口的话；不把每次停顿、靠近或对视都重复写成同一种情绪高潮。以上是写作取向，不在正文输出分析、检查清单或自我评价。" };
+  }
+  return Object.freeze({ build, continuity });
 });

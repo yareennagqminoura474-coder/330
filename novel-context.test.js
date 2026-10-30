@@ -113,4 +113,23 @@ const overlapsCast = core.build({ ...manyOptions, chats: manyOptions.chats.map((
 assert.equal(overlapsCast.text.split(manyRoles[0].settings.aiPersona).length - 1, 1, "an original-user definition may reference identical canonical cast text without equating those identities");
 const independentPlayer = core.build({ ...manyOptions, player: { key: "chat:another-person", name: manyRoles[0].name, persona: "DIFFERENT_BOUND_PERSONA" } });
 assert.match(independentPlayer.text, /DIFFERENT_BOUND_PERSONA/, "the binding is not deduplicated by display name alone");
-console.log("PASS: full canonical personas, scoped group overrides, original user identity, directed saved relations, owner/time-preserving memory, complete selected history, NPC and group-only members, selection boundaries, aliases, immutable sources and lossless shared-persona prompt deduplication");
+const priorChapters = [
+  { content: "陈安关上店门，两人先前已经打过招呼。", summary: "众人整理书架。" },
+  { content: "小陈把未读完的旧书留在桌上。", summary: "周宁决定明天再来。" },
+  { content: "这是准备被删除的章节，林澈第一次走进店里。", summary: "" }
+];
+const priorPeople = [{ key: "npc:1", name: "陈安", aliases: ["小陈"] }, { key: "chat:2", name: "周宁" }, { key: "chat:3", name: "林澈" }, { key: "chat:4", name: "未登场人物" }];
+const priorBefore = JSON.stringify([priorChapters, priorPeople]);
+const continuity = core.continuity(priorChapters, priorPeople);
+assert.deepEqual(continuity.mentions, [
+  { key: "npc:1", name: "陈安", first: 1, last: 2 },
+  { key: "chat:2", name: "周宁", first: 2, last: 2 },
+  { key: "chat:3", name: "林澈", first: 3, last: 3 }
+]);
+const rolledBack = core.continuity(priorChapters.slice(0, -1), priorPeople);
+assert.equal(rolledBack.mentions.some(person => person.name === "林澈"), false, "deleted/replaced chapters cannot establish appearances");
+assert.match(rolledBack.text, /不自动证明人物同场、见过面或知道某件私事/, "a name reference must not fabricate a meeting or shared knowledge");
+assert.equal(core.continuity([], priorPeople).mentions.length, 0);
+assert.equal(core.continuity(priorChapters, [...priorPeople, priorPeople[0]]).mentions.length, 3, "canonical identities get one appearance entry");
+assert.equal(JSON.stringify([priorChapters, priorPeople]), priorBefore, "local continuity lookup leaves chapter prose, editable summaries and persona archives unchanged");
+console.log("PASS: canonical personas, relations, selected full memory/history, immutable archives, shared-persona deduplication and chapter/alias continuity lookup with deletion and rewrite boundaries");
