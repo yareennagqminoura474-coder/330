@@ -19,6 +19,7 @@ matches("<novel_title>" + novel.title + "</novel_title><novel_content>" + novel.
 matches("<think>只应是隐藏推理，不应当成小说。</think>\n" + JSON.stringify(novel));
 const multiline = '{"title":"第一章","content":"他说："放心吧"，然后继续往前走。\n另起一段。","summary":"散步。"}';
 const recovered = matches(multiline, { title: "第一章", content: '他说："放心吧"，然后继续往前走。\n另起一段。', summary: "散步。" });
+assert.equal(core.parse('{"content":"他说："属于"，数学 $\\in$ 与 $\\notin$。\n下一段。"}').content, '他说："属于"，数学 $\\in$ 与 $\\notin$。\n下一段。');
 assert.equal(recovered.format, "recovered-json"); assert.equal(recovered.partial, false);
 matches("{title:'第一章',content:'Don\'t stop，内容不会在句中\'截断\'。',summary:'继续。'}", { title: "第一章", content: "Don't stop，内容不会在句中'截断'。", summary: "继续。" });
 const partial = core.parse('{"title":"半章","content":"已经收到的正文\n下一段尚未说完', "x");

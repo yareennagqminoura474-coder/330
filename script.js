@@ -54785,6 +54785,25 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
       _0x3d1862());
   }
   let _0x5576d5 = { activeStoryId: null, isGenerating: ![] };
+  let _ephoneNovelRewriteStory = null;
+  function _ephoneOpenNovelRewrite() {
+    if (_0x5576d5.isGenerating) return;
+    _ephoneNovelRewriteStory = _0x5576d5.activeStoryId;
+    document.getElementById("gr-rewrite-description").value = "";
+    document.getElementById("gr-rewrite-described").disabled = true;
+    document.getElementById("gr-rewrite-modal").classList.add("visible");
+  }
+  function _ephoneSubmitNovelRewrite(described) {
+    const direction = document.getElementById("gr-rewrite-description").value.trim();
+    if (described && !direction) return;
+    document.getElementById("gr-rewrite-modal").classList.remove("visible");
+    if (_ephoneNovelRewriteStory !== _0x5576d5.activeStoryId || _0x5576d5.isGenerating) return;
+    return _0x10ebb8(true, described ? direction : undefined);
+  }
+  document.getElementById("gr-rewrite-direct")?.addEventListener("click", () => _ephoneSubmitNovelRewrite(false));
+  document.getElementById("gr-rewrite-described")?.addEventListener("click", () => _ephoneSubmitNovelRewrite(true));
+  document.getElementById("gr-rewrite-cancel")?.addEventListener("click", () => document.getElementById("gr-rewrite-modal").classList.remove("visible"));
+  document.getElementById("gr-rewrite-description")?.addEventListener("input", (event) => { document.getElementById("gr-rewrite-described").disabled = !event.target.value.trim(); });
   document.getElementById("gr-stop-generation-btn")?.addEventListener("click", () => _0x5576d5.controller?.abort());
   document.getElementById("gr-last-response-close")?.addEventListener("click", () => document.getElementById("gr-last-response-modal").classList.remove("visible"));
   document.getElementById("gr-last-response-btn")?.addEventListener("click", async () => {
@@ -54795,7 +54814,7 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
     const seconds = (n) => Number.isFinite(n) ? (n / 1000).toFixed(1) + "秒" : "未记录", stats = last.stats;
     document.getElementById("gr-last-response-info").textContent = (last.api === "secondary" ? "副 API" : "主 API") + " · " + (last.model || "") + "。内容保存在本机，查看不会重新请求。" + (last.error ? "\n上次未保存为章节：" + last.error : "") +
       (last.finishReason ? "\n接口结束原因：" + last.finishReason : "") + (stats ? "\n准备资料：" + seconds(stats.preparationMs) + "；请求到响应头：" + seconds(stats.headersMs) + "；首字等待：" + seconds(stats.firstTextMs) + "；接收正文：" + seconds(stats.receiveMs) + "；总耗时：" + seconds(stats.totalMs) + "。" + (Number.isFinite(stats.charactersPerSecond) ? "平均接收约" + stats.charactersPerSecond.toFixed(1) + "字/秒。" : "") : "") +
-      (last.transportError ? "\n接收提示：" + last.transportError : "") + (last.usage && (last.usage.inputTokens != null || last.usage.outputTokens != null) ? "\n接口报告用量：输入 " + (last.usage.inputTokens ?? "未提供") + "，输出 " + (last.usage.outputTokens ?? "未提供") + " tokens" + (last.usage.reasoningTokens != null ? "，其中思考 " + last.usage.reasoningTokens : "") + "。" : "");
+      (stats?.maxTextGapMs != null ? "\n最长未收到新正文的间隔：" + seconds(stats.maxTextGapMs) + "。" : "") + (last.transportError ? "\n接收提示：" + last.transportError : "") + (last.usage && (last.usage.inputTokens != null || last.usage.outputTokens != null) ? "\n接口报告用量：输入 " + (last.usage.inputTokens ?? "未提供") + "，输出 " + (last.usage.outputTokens ?? "未提供") + " tokens" + (last.usage.reasoningTokens != null ? "，其中思考 " + last.usage.reasoningTokens : "") + "。" : "");
     document.getElementById("gr-last-response-modal").classList.add("visible");
   });
   function _ephoneNovelResult(story) {
@@ -55244,7 +55263,7 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
     ((_0x3a1dd1[_0x46aac4(0x1bf6)] += _0x46aac4(0xd1b) + _ephoneNovelEscape(_0x2ebb8a) + "</div>"),
       (_0x3a1dd1[_0x46aac4(0x1bf6)] +=
         "<div\x20class=\x22gr-chapter-text\x22>" +
-        _ephoneNovelEscape(_0x1a9795[_0x46aac4(0xfd7)]) +
+        _ephoneNovelEscape(window.EPhoneNovelPresentation.displayText(_0x1a9795[_0x46aac4(0xfd7)])) +
         "</div>"));
     const _0x2b442c =
       _0x46aac4(0x1be8) +
@@ -55304,14 +55323,7 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
               ]());
           }),
           (_0x18168f[_0x46aac4(0x791)]["display"] = _0x46aac4(0x12c8)),
-          (_0x5c8700["onclick"] = async () => {
-            const _0x3423e6 = _0x46aac4,
-              _0x37569f = await _0x41c474(_0x3423e6(0x1b0e), _0x3423e6(0x566), {
-                confirmText: "重写",
-                confirmButtonClass: "btn-danger",
-              });
-            if (_0x37569f) _0x10ebb8(!![]);
-          })),
+          (_0x5c8700["onclick"] = _ephoneOpenNovelRewrite)),
       _0x2ba2d0(),
       _0x275208("gr-reader-screen"),
       (_0x3a1dd1["scrollTop"] = 0x0));
@@ -55334,10 +55346,11 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
     }
     if (reroll) reroll.disabled = _0x5576d5.isGenerating;
     const status = document.getElementById("gr-generation-status");
+    const quietSeconds = _0x5576d5.lastProseAt ? Math.floor((Date.now() - _0x5576d5.lastProseAt) / 1000) : 0;
     if (status) {
       status.hidden = !_0x5576d5.isGenerating;
       if (_0x5576d5.isGenerating) document.getElementById("gr-generation-status-text").textContent =
-        (_0x5576d5.api === "secondary" ? "副 API" : "主 API") + " · " + (_0x5576d5.phase || "正在准备资料") + " · 已等待 " + Math.floor((Date.now() - (_0x5576d5.startedAt || Date.now())) / 1000) + " 秒" + (_0x5576d5.receivedCharacters ? " · 已收到约" + _0x5576d5.receivedCharacters + "字" : "");
+        (_0x5576d5.api === "secondary" ? "副 API" : "主 API") + " · " + (quietSeconds >= 10 ? "等待后续正文，已" + quietSeconds + "秒没有新内容" : _0x5576d5.phase || "正在准备资料") + " · 已等待 " + Math.floor((Date.now() - (_0x5576d5.startedAt || Date.now())) / 1000) + " 秒" + (_0x5576d5.receivedCharacters ? " · 已收到约" + _0x5576d5.receivedCharacters + "字" : "");
     }
     _ephoneSyncNovelPreview();
   }
@@ -55358,7 +55371,7 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
     let preview = host.querySelector("#gr-live-preview"); const created = !preview;
     if (!preview) { preview = document.createElement("section"); preview.id = "gr-live-preview"; const title = document.createElement("h3"), body = document.createElement("div"); title.id = "gr-live-preview-title"; body.id = "gr-live-preview-content"; preview.append(title, body); host.append(preview); }
     preview.querySelector("#gr-live-preview-title").textContent = _0x5576d5.isGenerating ? "本次正在生成的正文" : "已停止，收到的内容已保留";
-    preview.querySelector("#gr-live-preview-content").textContent = content;
+    preview.querySelector("#gr-live-preview-content").textContent = window.EPhoneNovelPresentation.displayText(content);
     _0x5576d5.receivedCharacters = content.replace(/\s/g, "").length;
     _0x5576d5.previewRenderedRaw = raw;
     _0x5576d5.previewRenderedBusy = _0x5576d5.isGenerating;
@@ -55378,14 +55391,7 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
         _0x10ebb8(![])));
     const _0x372593 = document[_0x2ca660(0x1023)]("gr-reroll-btn");
     _0x372593 &&
-      (_0x372593["onclick"] = async () => {
-        const _0x3bc22b = _0x2ca660,
-          _0x4956c4 = await _0x41c474(_0x3bc22b(0x1b0e), _0x3bc22b(0x4af), {
-            confirmText: "重写",
-            confirmButtonClass: "btn-danger",
-          });
-        _0x4956c4 && _0x10ebb8(!![]);
-      });
+      (_0x372593["onclick"] = _ephoneOpenNovelRewrite);
   }
   async function _0x1be883(_0x1469a6, _0x179947, _0x2038b4) {
     const _0x6c32a3 = _0x3ce505,
@@ -55426,7 +55432,7 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
     }
     return context;
   }
-  async function _0x10ebb8(rewrite = false) {
+  async function _0x10ebb8(rewrite = false, rewriteDirection) {
     if (_0x5576d5.isGenerating) return;
     _0x5576d5.isGenerating = true;
     const controller = new AbortController();
@@ -55438,12 +55444,13 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
     _0x5576d5.previewRenderedRaw = "";
     _0x5576d5.previewActive = true;
     _0x5576d5.receivedCharacters = 0;
+    _0x5576d5.lastProseAt = 0;
     document.getElementById("gr-live-preview")?.remove();
     const storyId = _0x5576d5.activeStoryId, stories = _0x24f906.grStories,
       personaDb = window.db.spaceProfiles.db,
-      direction = document.getElementById("gr-direction-input")?.value.trim() || "",
+      inputDirection = document.getElementById("gr-direction-input")?.value.trim() || "",
       button = document.getElementById("gr-generate-btn"), label = document.getElementById("gr-gen-text");
-    let received = null, api = "primary", responseModel = "", draftQueue = Promise.resolve(), lastDraftAt = 0, paintTimer = 0;
+    let received = null, api = "primary", responseModel = "", draftQueue = Promise.resolve(), lastDraftAt = 0, paintTimer = 0, maxTextGapMs = 0;
     const timer = setInterval(_ephoneSyncNovelControls, 1000);
     if (button) button.disabled = true;
     if (label) label.textContent = "创作中…";
@@ -55451,6 +55458,7 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
     try {
       const story = await stories.get(storyId);
       if (!story) throw new Error("作品已被删除，请返回书架。");
+      const direction = rewrite ? (rewriteDirection === undefined ? story.chapters?.at(-1)?.generationDirection || "" : rewriteDirection) : inputDirection;
       api = story.settings?.generationApi === "secondary" ? "secondary" : "primary";
       _0x5576d5.api = api;
       let connection;
@@ -55498,6 +55506,11 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
         onProgress: (update) => {
           _0x5576d5.phase = update.phase === "thinking" ? "接口正在处理，尚未收到正文" : update.phase === "writing" ? "正在接收正文" : "等待模型返回正文";
           if (update.raw) {
+            if (_0x5576d5.previewRaw !== update.raw) {
+              const at = Date.now();
+              if (_0x5576d5.lastProseAt) maxTextGapMs = Math.max(maxTextGapMs, at - _0x5576d5.lastProseAt);
+              _0x5576d5.lastProseAt = at;
+            }
             _0x5576d5.previewRaw = update.raw;
             const now = Date.now();
             // Coalesce arrivals outside the decoder loop. Slow phone layout
@@ -55515,7 +55528,7 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
       _ephoneSyncNovelControls();
       await draftQueue.catch(() => {});
       received = { raw: output.raw, status: "received", api, model, rewrite, finishReason: output.finishReason, usage: output.usage, transportError: output.error || "",
-        stats: { ...output.stats, preparationMs, headersMs, firstTextMs: output.stats.firstTextMs == null ? null : headersMs + output.stats.firstTextMs,
+        stats: { ...output.stats, preparationMs, headersMs, maxTextGapMs: Math.max(maxTextGapMs, _0x5576d5.lastProseAt ? Date.now() - _0x5576d5.lastProseAt : 0), firstTextMs: output.stats.firstTextMs == null ? null : headersMs + output.stats.firstTextMs,
           totalMs: Date.now() - _0x5576d5.startedAt }, receivedAt: Date.now(), elapsedMs: Date.now() - _0x5576d5.startedAt };
       // Keep the paid result before trying to interpret its chapter wrapper.
       if (await stories.get(storyId)) await stories.update(storyId, { lastGeneration: received });
@@ -55528,7 +55541,7 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
         result.warnings = [...result.warnings, "接口未确认完整输出，已保留实际收到的全部正文；没有再次请求或自动补写。"];
       }
       const chapter = { title: typeof result.title === "string" && result.title.trim() ? result.title : "第" + (chapters.length + 1) + "章",
-        content: result.content, summary: typeof result.summary === "string" ? result.summary : "", prevSummary: previous?.summary || "这是故事的开始。", timestamp: Date.now(),
+        content: result.content, summary: typeof result.summary === "string" ? result.summary : "", prevSummary: previous?.summary || "这是故事的开始。", timestamp: Date.now(), generationDirection: direction,
         ...(result.partial ? { generationPartial: true } : {}) };
       if (window.db.spaceProfiles.db !== personaDb) throw new Error("人物空间已切换，本次结果未写入作品，请回到原空间重试。");
       await stories.db.transaction("rw", stories, async () => {
@@ -55546,7 +55559,7 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
       _0x5576d5.previewActive = false;
       if (_0x5576d5.activeStoryId === storyId && document.getElementById("gr-reader-screen")?.classList.contains("active")) {
         await _0x5dec3b(storyId, chapters.length);
-        const input = document.getElementById("gr-direction-input"); if (input?.value.trim() === direction) input.value = "";
+        const input = document.getElementById("gr-direction-input"); if (!rewrite && input?.value.trim() === direction) input.value = "";
       }
     } catch (error) {
       const stopped = error.name === "AbortError" || controller.signal.aborted;

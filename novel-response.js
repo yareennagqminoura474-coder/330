@@ -51,6 +51,10 @@
       const c = text[i];
       if (c === quote && (!value || valueBoundary(text, i + 1))) return { value: content, end: i + 1, complete: true };
       if (c !== "\\") { content += c; continue; }
+      const mathCommand = value && /^\\[a-zA-Z]{2,}/.exec(text.slice(i));
+      if (mathCommand && (content.match(/(?<!\\)\$/g) || []).length % 2) {
+        content += mathCommand[0]; i += mathCommand[0].length - 1; continue;
+      }
       const next = text[++i], escapes = { '"': '"', "'": "'", "\\": "\\", "/": "/", b: "\b", f: "\f", n: "\n", r: "\r", t: "\t" };
       if (next === undefined) { content += "\\"; break; }
       if (next === "u" && /^[a-f\d]{4}$/i.test(text.slice(i + 1, i + 5))) { content += String.fromCharCode(parseInt(text.slice(i + 1, i + 5), 16)); i += 4; }

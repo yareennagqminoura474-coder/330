@@ -157,7 +157,7 @@ const { chromium } = require("playwright-core");
     const settled = () => page.waitForFunction(() => !document.getElementById("gr-generate-btn").disabled);
     async function start(rewrite = false) {
       const count = calls.length;
-      if (rewrite) { await page.locator("#gr-reroll-btn").click(); await page.locator("#custom-modal-overlay.visible #custom-modal-confirm").click(); }
+      if (rewrite) { await page.locator("#gr-reroll-btn").click(); await page.locator("#gr-rewrite-modal.visible #gr-rewrite-direct").click(); }
       else { await page.locator("#gr-direction-input").fill("继续写完整5000字正文，不改变人物关系。"); await page.locator("#gr-generate-btn").click(); }
       await until(() => calls.length > count, "novel API request did not arrive");
       assert.equal(calls.length, count + 1, "one click starts one generation request");
@@ -186,8 +186,13 @@ const { chromium } = require("playwright-core");
     await page.locator("#gr-cancel-settings-btn").click();
     const first = await start(); assert.equal(first.primary, true); assert.equal(first.streamed, true);
     await preview(first); assert.equal((await story()).chapters.length, 0, "preview is not prematurely committed as a chapter");
+    const callsBeforeQuiet = calls.length;
+    await page.evaluate(() => { window.streamTestRealNow = Date.now; Date.now = () => window.streamTestRealNow() + 11000; });
+    await page.waitForFunction(() => document.getElementById("gr-generation-status-text").textContent.includes("没有新内容"));
+    assert.equal(calls.length, callsBeforeQuiet, "a quiet stream does not retry or switch APIs");
     await page.screenshot({ path: path.join(require("node:os").tmpdir(), "ephone-novel-stream-mobile.png") });
     first.finish("STOP", true); await settled();
+    await page.evaluate(() => { Date.now = window.streamTestRealNow; });
     assert.equal(first.ended, false, "an explicit SSE end marker must finish the UI without waiting for the server to close HTTP");
     first.endPartial();
     let saved = await story(); assert.equal(saved.chapters[0].content, first.expected.content); assert.ok(saved.chapters[0].content.length > 10000);
@@ -195,6 +200,7 @@ const { chromium } = require("playwright-core");
     assert.ok(JSON.stringify(saved.lastGeneration.usage).includes("10354"), "retain provider output usage for comparison");
     assert.equal(saved.lastGeneration.stats.streamed, true); assert.ok(saved.lastGeneration.stats.visibleChars > 10000);
     assert.ok(Number.isFinite(saved.lastGeneration.stats.firstTextMs)); assert.ok(Number.isFinite(saved.lastGeneration.stats.totalMs));
+    assert.ok(saved.lastGeneration.stats.maxTextGapMs >= 10000, "the observed pause is retained for diagnosis");
     assert.ok(saved.lastGeneration.stats.firstTextMs <= saved.lastGeneration.stats.totalMs);
     assert.equal(await page.locator("#gr-reader-content .gr-chapter-text").textContent(), first.expected.content);
     assert.equal(await page.locator("#gr-live-preview").count(), 0, "committed chapter replaces its transient preview");
