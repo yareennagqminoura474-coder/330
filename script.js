@@ -54814,7 +54814,9 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
     const seconds = (n) => Number.isFinite(n) ? (n / 1000).toFixed(1) + "秒" : "未记录", stats = last.stats;
     document.getElementById("gr-last-response-info").textContent = (last.api === "secondary" ? "副 API" : "主 API") + " · " + (last.model || "") + "。内容保存在本机，查看不会重新请求。" + (last.error ? "\n上次未保存为章节：" + last.error : "") +
       (last.finishReason ? "\n接口结束原因：" + last.finishReason : "") + (stats ? "\n准备资料：" + seconds(stats.preparationMs) + "；请求到响应头：" + seconds(stats.headersMs) + "；首字等待：" + seconds(stats.firstTextMs) + "；接收正文：" + seconds(stats.receiveMs) + "；总耗时：" + seconds(stats.totalMs) + "。" + (Number.isFinite(stats.charactersPerSecond) ? "平均接收约" + stats.charactersPerSecond.toFixed(1) + "字/秒。" : "") : "") +
-      (stats?.maxTextGapMs != null ? "\n最长未收到新正文的间隔：" + seconds(stats.maxTextGapMs) + "。" : "") + (stats?.bytesReceived != null ? "\n已接收 " + stats.bytesReceived + " 字节、" + stats.eventCount + " 个数据包；其中 " + (stats.malformedEvents || 0) + " 个格式异常。" : "") + (last.transportError ? "\n接收提示：" + last.transportError : "") + (last.usage && (last.usage.inputTokens != null || last.usage.outputTokens != null) ? "\n接口报告用量：输入 " + (last.usage.inputTokens ?? "未提供") + "，输出 " + (last.usage.outputTokens ?? "未提供") + " tokens" + (last.usage.reasoningTokens != null ? "，其中思考 " + last.usage.reasoningTokens : "") + "。" : "");
+      (stats?.maxTextGapMs != null ? "\n最长未收到新正文的间隔：" + seconds(stats.maxTextGapMs) + "。" : "") + (stats?.maxByteGapMs != null ? "\n最长未收到任何数据的间隔：" + seconds(stats.maxByteGapMs) + "。" : "") +
+      (stats?.completionSignal ? "\n接收结束依据：" + ({ done_marker: "收到完整结束标记 [DONE]", eof_after_finish: "收到模型结束信息后连接自然结束", eof_without_finish: "连接结束，但未收到模型结束信息", complete_json: "收到完整 JSON 返回", message_stop: "收到 message_stop", "response.completed": "收到 response.completed", "response.incomplete": "接口报告未完整生成", aborted: "请求被取消", read_error: "读取连接时出错" }[stats.completionSignal] || stats.completionSignal) + "；取消信号：" + (stats.abortSignalReceived ? "已触发" : "未触发") + "。" : "") +
+      (stats?.bytesReceived != null ? "\n已接收 " + stats.bytesReceived + " 字节、" + stats.eventCount + " 个数据包；其中 " + (stats.malformedEvents || 0) + " 个格式异常。" : "") + (last.transportError ? "\n接收提示：" + last.transportError : "") + (last.usage && (last.usage.inputTokens != null || last.usage.outputTokens != null) ? "\n接口报告用量：输入 " + (last.usage.inputTokens ?? "未提供") + "，输出 " + (last.usage.outputTokens ?? "未提供") + " tokens" + (last.usage.reasoningTokens != null ? "，其中思考 " + last.usage.reasoningTokens : "") + "。" : "");
     document.getElementById("gr-last-response-modal").classList.add("visible");
   });
   function _ephoneNovelResult(story) {
@@ -55351,7 +55353,7 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
     if (status) {
       status.hidden = !_0x5576d5.isGenerating;
       if (_0x5576d5.isGenerating) document.getElementById("gr-generation-status-text").textContent =
-        (_0x5576d5.api === "secondary" ? "副 API" : "主 API") + " · " + (quietSeconds >= 10 ? "等待后续正文，已" + quietSeconds + "秒没有新内容" : _0x5576d5.phase || "正在准备资料") + " · 已等待 " + Math.floor((Date.now() - (_0x5576d5.startedAt || Date.now())) / 1000) + " 秒" + (_0x5576d5.receivedCharacters ? " · 已收到约" + _0x5576d5.receivedCharacters + "字" : "");
+        (_0x5576d5.api === "secondary" ? "副 API" : "主 API") + " · " + (quietSeconds >= 10 ? "等待后续正文，已" + quietSeconds + "秒没有新内容" + (_0x5576d5.lastDataAt && Date.now() - _0x5576d5.lastDataAt < 10000 ? "（仍有数据到达）" : "（暂未收到接口数据）") : _0x5576d5.phase || "正在准备资料") + " · 已等待 " + Math.floor((Date.now() - (_0x5576d5.startedAt || Date.now())) / 1000) + " 秒" + (_0x5576d5.receivedCharacters ? " · 已收到约" + _0x5576d5.receivedCharacters + "字" : "");
     }
     _ephoneSyncNovelPreview();
   }
@@ -55446,6 +55448,7 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
     _0x5576d5.previewActive = true;
     _0x5576d5.receivedCharacters = 0;
     _0x5576d5.lastProseAt = 0;
+    _0x5576d5.lastDataAt = 0;
     document.getElementById("gr-live-preview")?.remove();
     const storyId = _0x5576d5.activeStoryId, stories = _0x24f906.grStories,
       personaDb = window.db.spaceProfiles.db,
@@ -55504,6 +55507,7 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
       if (!response.ok) throw new Error("API 请求失败：" + response.status + " - " + await response.text());
       const headersMs = Date.now() - requestStartedAt;
       const output = await window.EPhoneNovelStream.read(response, { signal: controller.signal, extractText: window.ephoneChatResponse.extractText,
+        onActivity: () => { _0x5576d5.lastDataAt = Date.now(); },
         onProgress: (update) => {
           _0x5576d5.phase = update.phase === "thinking" ? "接口正在处理，尚未收到正文" : update.phase === "writing" ? "正在接收正文" : "等待模型返回正文";
           if (update.raw) {

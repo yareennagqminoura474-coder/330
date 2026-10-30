@@ -25,11 +25,12 @@ const delta = (text) => ({ choices: [{ index: 0, delta: { content: text }, finis
   stream.push(event(delta(sample)) + event({ choices: [{ index: 0, delta: {}, finish_reason: "stop" }] }) + event({ choices: [], usage: { prompt_tokens: 23, completion_tokens: 42, completion_tokens_details: { reasoning_tokens: 6 } } }) + done);
   // A server can keep its socket open after DONE; no unnecessary EOF wait.
   const result = await reading;
+  stream.close();
   assert.equal(result.raw, "第一段" + sample); assert.equal(result.partial, false); assert.equal(result.aborted, false);
   assert.equal(result.finishReason, "stop"); assert.equal(result.usage.inputTokens, 23); assert.equal(result.usage.outputTokens, 42); assert.equal(result.usage.reasoningTokens, 6);
   assert.ok(result.stats.streamed); assert.ok(result.stats.firstTextMs !== null); assert.ok(result.stats.receiveMs >= result.stats.firstTextMs);
   assert.equal(result.stats.visibleChars, result.raw.length);
-  for (const ending of [event({ choices: [{ index: 0, delta: { content: "完整正文" }, finish_reason: "stop" }], usage: { completion_tokens: 10354 } }),
+  for (const ending of [event({ choices: [{ index: 0, delta: { content: "完整正文" }, finish_reason: "stop" }], usage: { completion_tokens: 10354 } }) + done,
     event({ candidates: [{ content: { parts: [{ text: "完整正文" }] }, finishReason: "STOP" }], usageMetadata: { candidatesTokenCount: 10354 } }),
     event({ type: "content_block_delta", index: 0, delta: { type: "text_delta", text: "完整正文" } }) + event({ type: "message_stop" }),
     event({ type: "response.completed", response: { output_text: "完整正文" } })]) {
@@ -38,7 +39,45 @@ const delta = (text) => ({ choices: [{ index: 0, delta: { content: text }, finis
     open.push(ending);
     const completed = await Promise.race([ready, new Promise((_, reject) => setTimeout(() => reject(new Error("terminal provider event must not wait for socket EOF")), 1000))]);
     assert.equal(completed.raw, "完整正文"); assert.equal(completed.partial, false);
+    open.close();
   }
+  // Finish metadata may precede separately delivered tail/usage packets. Do not
+  // cancel the paid response on that metadata, even across a long pause.
+  let cancelCount = 0, lateController;
+  const late = new Response(new ReadableStream({ start(c) { lateController = c; }, cancel() { cancelCount++; } }));
+  let metadataSeen, lateSettled = false;
+  const seenMetadata = new Promise(resolve => metadataSeen = resolve);
+  const lateReading = core.read(late, { onProgress(value) { if (value.raw) metadataSeen(); } }).then(result => { lateSettled = true; return result; });
+  lateController.enqueue(encode(event(delta("开头")) + event({ choices: [{ index: 0, delta: {}, finish_reason: "stop" }] })));
+  await seenMetadata; await new Promise(resolve => setTimeout(resolve, 0));
+  assert.equal(lateSettled, false); assert.equal(cancelCount, 0);
+  lateController.enqueue(encode(event(delta("之后仍需完整接收的正文"))));
+  lateController.enqueue(encode(event({ choices: [], usage: { completion_tokens: 17000 } }) + done));
+  const lateResult = await lateReading;
+  assert.equal(lateResult.raw, "开头之后仍需完整接收的正文"); assert.equal(lateResult.usage.outputTokens, 17000);
+  assert.equal(lateResult.stats.completionSignal, "done_marker"); assert.equal(lateResult.stats.readerCancelled, false);
+  assert.equal(cancelCount, 0, "normal completion must drain, not cancel the transport");
+  lateController.close();
+  // Simulate a two-minute delivery gap without making the suite sleep. It is
+  // measured for diagnosis, never used to stop or retry the connection.
+  const realNow = Date.now, activityStream = controlled(), activities = [];
+  let clock = realNow(), activityReading;
+  try {
+    Date.now = () => clock;
+    activityReading = core.read(activityStream.response, { onActivity(value) { activities.push(value); } });
+    activityStream.push(event(delta("暂停之前"))); await new Promise(resolve => setTimeout(resolve, 0));
+    clock += 120000;
+    activityStream.push(": heartbeat\n\n"); await new Promise(resolve => setTimeout(resolve, 0));
+    clock += 3000;
+    activityStream.push(event(delta("暂停之后仍然完整")) + done);
+    const activityResult = await activityReading;
+    assert.equal(activityResult.raw, "暂停之前暂停之后仍然完整");
+    assert.equal(activityResult.stats.maxByteGapMs, 120000);
+    assert.ok(activities.length >= 3); assert.equal(activityResult.stats.abortSignalReceived, false);
+    activityStream.close();
+  } finally { Date.now = realNow; }
+  const noDone = await core.read(response(event(delta("兼容没有DONE但自然结束")) + event({ choices: [{ index: 0, delta: {}, finish_reason: "stop" }] })));
+  assert.equal(noDone.raw, "兼容没有DONE但自然结束"); assert.equal(noDone.partial, false); assert.equal(noDone.stats.completionSignal, "eof_after_finish");
   // Provider ignores stream:true and sends a whole JSON envelope, then keeps
   // HTTP open. Balanced-container detection must not wait for body EOF either.
   const jsonSocket = controlled("application/json"), jsonSocketReading = core.read(jsonSocket.response);
@@ -46,6 +85,7 @@ const delta = (text) => ({ choices: [{ index: 0, delta: { content: text }, finis
   const jsonFinished = await Promise.race([jsonSocketReading, new Promise((_, reject) => setTimeout(() => reject(new Error("full JSON envelope must not wait for EOF")), 1000))]);
   assert.equal(jsonFinished.raw, '正文里有 } 和 [，以及 "引号"，不能误判结束。');
   assert.equal(jsonFinished.partial, false); assert.equal(jsonFinished.stats.streamed, false);
+  jsonSocket.close();
 
   const unicode = await core.read(response(event(delta(sample)) + done, [1]));
   assert.equal(unicode.raw, sample, "UTF8 multibyte characters split across individual bytes must stay intact");

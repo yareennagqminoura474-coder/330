@@ -55,15 +55,24 @@
       if (signal.aborted) stopped();
     });
   }
-  async function read(response, { signal, onProgress, extractText } = {}) {
+  async function read(response, { signal, onProgress, onActivity, extractText } = {}) {
     const started = Date.now(), usage = { inputTokens: null, outputTokens: null, reasoningTokens: null, cachedInputTokens: null };
-    const stats = { firstTextMs: null, receiveMs: 0, visibleChars: 0, eventCount: 0, bytesReceived: 0, malformedEvents: 0, reasoningSeen: false, streamed: false };
+    const stats = { firstTextMs: null, firstByteMs: null, receiveMs: 0, visibleChars: 0, eventCount: 0, bytesReceived: 0, malformedEvents: 0, reasoningSeen: false, streamed: false,
+      maxByteGapMs: 0, completionSignal: "", abortSignalReceived: false, readerCancelled: false };
+    let lastByteAt = null;
     const unparsedEvents = [];
     let raw = "", complete = false, ended = false, terminal = false, broken = false, aborted = false, failure = "", finishReason = "";
     const state = { blocks: new Map(), responseParts: new Map() };
     function snapshot() {
       const receiveMs = Date.now() - started, duration = stats.firstTextMs == null ? 0 : receiveMs - stats.firstTextMs;
-      return { ...stats, receiveMs, visibleChars: raw.length, charactersPerSecond: duration > 0 ? raw.length * 1000 / duration : null };
+      return { ...stats, maxByteGapMs: Math.max(stats.maxByteGapMs, lastByteAt == null ? 0 : Date.now() - lastByteAt), receiveMs, visibleChars: raw.length, charactersPerSecond: duration > 0 ? raw.length * 1000 / duration : null };
+    }
+    function activity(bytes) {
+      const at = Date.now();
+      if (stats.firstByteMs == null) stats.firstByteMs = at - started;
+      if (lastByteAt != null) stats.maxByteGapMs = Math.max(stats.maxByteGapMs, at - lastByteAt);
+      lastByteAt = at; stats.bytesReceived += bytes;
+      try { onActivity?.({ bytesReceived: stats.bytesReceived, eventCount: stats.eventCount }); } catch {}
     }
     function emit() {
       if (!onProgress) return;
@@ -79,7 +88,12 @@
       if (stats.firstTextMs === null) stats.firstTextMs = Date.now() - started;
       emit();
     }
-    function markFinish(reason) { if (typeof reason === "string" && reason) { finishReason = reason; complete = true; terminal = true; } }
+    // OpenAI finish_reason and Anthropic message_delta are metadata, not the
+    // transport terminator: a later chunk may contain text or final usage.
+    function markFinish(reason, final = false) {
+      if (typeof reason === "string" && reason) { finishReason = reason; complete = true; }
+      if (final) { terminal = true; stats.completionSignal = "protocol_end:" + (reason || "stop"); }
+    }
     function providerError(data) {
       if (data?.error || data?.type === "error" || data?.type === "response.failed")
         throw new Error("API 返回错误：" + (text(data.error?.message || data.error || data.message || data.response?.error?.message) || "流式响应失败"));
@@ -106,7 +120,7 @@
           update([...state.blocks.entries()].sort((a, b) => a[0] - b[0]).map(([, v]) => v).join(""), true);
         }
       } else if (type === "message_delta") markFinish(value.delta?.stop_reason);
-      else if (type === "message_stop") { complete = true; terminal = true; }
+      else if (type === "message_stop") { complete = true; terminal = true; stats.completionSignal = "message_stop"; }
       else if (type === "response.output_text.delta" || type === "response.output_text.done") {
         const key = String(value.output_index ?? 0) + ":" + String(value.content_index ?? 0);
         if (type.endsWith(".delta")) state.responseParts.set(key, (state.responseParts.get(key) || "") + text(value.delta));
@@ -120,7 +134,8 @@
             const content = extract(body, extractText); if (content) update(content, true);
           }
         }
-        markFinish(type === "response.completed" ? "stop" : value.response?.incomplete_details?.reason || "incomplete");
+        markFinish(type === "response.completed" ? "stop" : value.response?.incomplete_details?.reason || "incomplete", true);
+        stats.completionSignal = type;
       } else if (Array.isArray(value.choices)) {
         const choice = value.choices.find((item) => item.index === 0) || value.choices.find((item) => item.index == null);
         if (choice) {
@@ -135,7 +150,7 @@
         if (candidate) {
           if (reasoning(candidate.content)) stats.reasoningSeen = true;
           update(partsText(candidate.content?.parts), value.cumulative === true || candidate.cumulative === true);
-          markFinish(candidate.finishReason);
+          if (candidate.finishReason) markFinish(candidate.finishReason, true);
         }
       } else if (type === "message_start") {
         if (reasoning(value.message)) stats.reasoningSeen = true;
@@ -150,7 +165,7 @@
       if (!dataLines.length) { eventName = ""; return; }
       const data = dataLines.join("\n"), name = eventName;
       dataLines = []; eventName = "";
-      if (data.trim() === "[DONE]") { ended = true; complete = true; return; }
+      if (data.trim() === "[DONE]") { ended = true; complete = true; stats.completionSignal = "done_marker"; return; }
       try { event(JSON.parse(data), name); }
       catch (error) {
         if (!(error instanceof SyntaxError)) throw error;
@@ -223,14 +238,14 @@
       if (reader) {
         while (!ended) {
           const chunk = await readChunk(reader, signal);
-          if (chunk.done) break;
-          stats.bytesReceived += chunk.value.byteLength;
+          if (chunk.done) { stats.completionSignal ||= complete ? "eof_after_finish" : "eof_without_finish"; break; }
+          activity(chunk.value.byteLength);
           const decoded = decoder.decode(chunk.value, { stream: true });
           if (mode === "sse") { feed(decoded); if (terminal) ended = true; }
           else {
             wire += decoded;
             if (/^\s*(?:data:|event:|:|id:|retry:)/.test(wire)) { mode = "sse"; stats.streamed = true; feed(wire.replace(/^\uFEFF/, "")); wire = ""; }
-            else if (completeJson()) ended = true;
+            else if (completeJson()) { ended = true; stats.completionSignal = "complete_json"; }
             if (terminal) ended = true;
           }
         }
@@ -238,7 +253,7 @@
         if (mode === "sse") feed(tail, true); else wire += tail;
       } else {
         if (signal?.aborted) throw abortError();
-        wire = await response.text(); stats.bytesReceived = new TextEncoder().encode(wire).byteLength;
+        wire = await response.text(); activity(new TextEncoder().encode(wire).byteLength);
         if (/^\s*(?:data:|event:|:|id:|retry:)/.test(wire)) { mode = "sse"; stats.streamed = true; feed(wire.replace(/^\uFEFF/, ""), true); wire = ""; }
       }
       if (mode !== "sse") {
@@ -252,7 +267,7 @@
           if (reasoning(unwrapped) || unwrapped?.choices?.[0]?.message && reasoning(unwrapped.choices[0].message) || unwrapped?.candidates?.[0]?.content && reasoning(unwrapped.candidates[0].content)) stats.reasoningSeen = true;
           if (usage.reasoningTokens > 0) stats.reasoningSeen = true;
           markFinish(unwrapped?.choices?.[0]?.finish_reason || unwrapped?.candidates?.[0]?.finishReason || unwrapped?.stop_reason);
-          complete = true;
+          complete = true; stats.completionSignal ||= "complete_json";
         }
       }
     } catch (error) {
@@ -261,10 +276,25 @@
         : /^API 返回错误：/.test(error.message || "") ? "" : wire;
       if (unfinished) { unparsedEvents.push(unfinished); stats.malformedEvents++; }
       aborted = signal?.aborted || error.name === "AbortError";
+      stats.abortSignalReceived = Boolean(signal?.aborted);
+      stats.readerCancelled = Boolean(signal?.aborted);
+      stats.completionSignal ||= aborted ? "aborted" : "read_error";
       broken = true; failure = aborted ? "生成已停止" : error.message || String(error);
       if (!raw && !aborted) { error.partialRaw = raw; error.unparsedEvents = unparsedEvents; error.stats = snapshot(); throw error; }
     } finally {
-      if (reader) { if (ended || aborted) Promise.resolve(reader.cancel()).catch(() => {}); try { reader.releaseLock(); } catch {} }
+      if (reader && ended && !aborted && !broken) {
+        // The UI can finish at the protocol terminator. Drain this SAME response
+        // to natural EOF in the background instead of cancelling the HTTP body;
+        // no additional request, timer, output limit or duplicate generation.
+        void (async () => {
+          try { while (!(await readChunk(reader, signal)).done) {} }
+          catch { /* A disconnect after the protocol end cannot erase saved prose. */ }
+          finally { try { reader.releaseLock(); } catch {} }
+        })();
+      } else if (reader) {
+        if (aborted) { stats.readerCancelled = true; Promise.resolve(reader.cancel()).catch(() => {}); }
+        try { reader.releaseLock(); } catch {}
+      }
     }
     stats.reasoningSeen ||= usage.reasoningTokens > 0;
     emit();

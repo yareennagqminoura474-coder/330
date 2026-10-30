@@ -54,6 +54,7 @@ const { chromium } = require("playwright-core");
       // than count connection keepalive bytes as generated novel characters.
       res.write(":" + " ".repeat(2048) + "\n\n");
       const event = (value) => { if (!res.destroyed && !res.writableEnded) res.write("data: " + JSON.stringify(value) + "\r\n\r\n"); };
+      call.finishMetadata = () => event({ choices: [{ delta: {}, finish_reason: "stop" }] });
       call.emit = (text) => event(native ? { candidates: [{ content: { parts: [{ text }] } }] } : { choices: [{ delta: { content: text }, finish_reason: null }] });
       call.start = () => {
         event(native ? { candidates: [{ content: { parts: [{ text: "PRIVATE_THOUGHT_MUST_NOT_BE_DISPLAYED", thought: true }] } }] }
@@ -190,6 +191,10 @@ const { chromium } = require("playwright-core");
     await page.evaluate(() => { window.streamTestRealNow = Date.now; Date.now = () => window.streamTestRealNow() + 11000; });
     await page.waitForFunction(() => document.getElementById("gr-generation-status-text").textContent.includes("没有新内容"));
     assert.equal(calls.length, callsBeforeQuiet, "a quiet stream does not retry or switch APIs");
+    first.finishMetadata();
+    await page.waitForFunction(() => document.getElementById("gr-generation-status-text").textContent.includes("仍有数据到达"));
+    assert.equal(await page.locator("#gr-generate-btn").isDisabled(), true, "finish metadata alone cannot terminate reception before later text/usage packets");
+    assert.equal(first.res.destroyed, false, "the app must leave the connection open for the rest of the paid result");
     await page.screenshot({ path: path.join(require("node:os").tmpdir(), "ephone-novel-stream-mobile.png") });
     first.finish("STOP", true); await settled();
     await page.evaluate(() => { Date.now = window.streamTestRealNow; });
@@ -201,6 +206,11 @@ const { chromium } = require("playwright-core");
     assert.equal(saved.lastGeneration.stats.streamed, true); assert.ok(saved.lastGeneration.stats.visibleChars > 10000);
     assert.ok(Number.isFinite(saved.lastGeneration.stats.firstTextMs)); assert.ok(Number.isFinite(saved.lastGeneration.stats.totalMs));
     assert.ok(saved.lastGeneration.stats.maxTextGapMs >= 10000, "the observed pause is retained for diagnosis");
+    assert.equal(saved.lastGeneration.stats.completionSignal, "done_marker"); assert.equal(saved.lastGeneration.stats.readerCancelled, false);
+    await page.locator("#gr-last-response-btn").click();
+    await page.waitForSelector("#gr-last-response-modal.visible");
+    assert.match(await page.locator("#gr-last-response-info").textContent(), /收到完整结束标记.*取消信号：未触发/);
+    await page.locator("#gr-last-response-close").click();
     assert.ok(saved.lastGeneration.stats.firstTextMs <= saved.lastGeneration.stats.totalMs);
     assert.equal(await page.locator("#gr-reader-content .gr-chapter-text").textContent(), first.expected.content);
     assert.equal(await page.locator("#gr-live-preview").count(), 0, "committed chapter replaces its transient preview");
