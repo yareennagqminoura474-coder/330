@@ -219,6 +219,21 @@ const { chromium } = require("playwright-core");
     await page.locator("#gr-generation-api").selectOption("secondary"); await page.locator("#gr-save-story-btn").click();
     const secondary = await start(); assert.equal(secondary.primary, false); await preview(secondary); secondary.finish(); await settled();
     assert.equal((await story()).chapters.at(-1).content, secondary.expected.content); assert.equal((await story()).lastGeneration.api, "secondary");
+    // Repeat without reloading the tab, while the provider never closes HTTP
+    // after DONE. This previously left every response open until tab closure.
+    const repeated = [], beforeRepeated = calls.length;
+    for (let i = 0; i < 8; i++) {
+      const round = await start(i % 2 === 1); repeated.push(round);
+      round.start(); round.finish("STOP", true); await settled();
+      assert.equal((await story()).chapters.at(-1).content, round.expected.content, "repeated generation/rewrite preserves the complete paid body");
+      await until(() => repeated.slice(0, -1).every(call => call.res.destroyed), "completed transports accumulated between generations");
+      assert.ok(await page.evaluate(() => window.__novelTestChannels.size <= 1), "only the latest completed transport may remain briefly open");
+      assert.equal(await page.locator("#gr-live-preview").count(), 0);
+      if (i === 3) await open();
+    }
+    assert.equal(calls.length, beforeRepeated + 8, "each generation or rewrite still sends exactly one API request");
+    await until(() => repeated.at(-1).res.destroyed, "the last completed transport outlived its cleanup grace");
+    await until(() => page.evaluate(() => window.__novelTestChannels.size === 0), "completed stream channel was not released");
     // An aborted rewrite retains the old complete chapter and paid partial text.
     const previous = (await story()).chapters, beforeAbortCalls = calls.length, aborted = await start(true); await preview(aborted);
     assert.deepEqual((await story()).chapters, previous);

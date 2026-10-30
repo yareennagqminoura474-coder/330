@@ -55493,6 +55493,9 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
       controller.signal.throwIfAborted();
       _0x5576d5.phase = "等待模型返回正文";
       _ephoneSyncNovelControls();
+      // Free completed responses BEFORE fetch, so old sockets cannot occupy
+      // browser connection slots while the next request waits for headers.
+      window.EPhoneNovelStream.releaseCompleted();
       const requestStartedAt = Date.now(), preparationMs = requestStartedAt - _0x5576d5.startedAt;
       let response;
       if (proxyUrl.includes("generativelanguage.googleapis.com")) {
@@ -55580,6 +55583,11 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
       clearTimeout(paintTimer);
       _0x5576d5.isGenerating = false;
       _0x5576d5.controller = null;
+      if (!_0x5576d5.previewActive) {
+        _0x5576d5.previewRaw = "";
+        _0x5576d5.previewRenderedRaw = "";
+        _0x5576d5.receivedCharacters = 0;
+      }
       for (const target of [button, document.getElementById("gr-generate-btn")]) if (target) target.disabled = false;
       for (const target of [label, document.getElementById("gr-gen-text")]) if (target) target.textContent = "续写";
       _ephoneSyncNovelControls();

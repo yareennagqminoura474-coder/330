@@ -51,6 +51,8 @@ const delta = (text) => ({ choices: [{ index: 0, delta: { content: text }, finis
   lateController.enqueue(encode(event(delta("开头")) + event({ choices: [{ index: 0, delta: {}, finish_reason: "stop" }] })));
   await seenMetadata; await new Promise(resolve => setTimeout(resolve, 0));
   assert.equal(lateSettled, false); assert.equal(cancelCount, 0);
+  core.releaseCompleted();
+  assert.equal(cancelCount, 0, "cleanup cannot cancel a generation that has not received its protocol terminator");
   lateController.enqueue(encode(event(delta("之后仍需完整接收的正文"))));
   lateController.enqueue(encode(event({ choices: [], usage: { completion_tokens: 17000 } }) + done));
   const lateResult = await lateReading;
@@ -165,5 +167,30 @@ const delta = (text) => ({ choices: [{ index: 0, delta: { content: text }, finis
   assert.equal((await core.read(response(event(delta(sample)) + done), { onProgress() { throw new Error("UI observer failure"); } })).raw, sample, "a preview error cannot discard the paid response");
   const long = "完整正文，包含\"引号\"与{括号}。".repeat(12000);
   assert.equal((await core.read(response(event(delta(long)) + done, [1200, 3600, 7000]))).raw, long, "no local sentence, character or token cutoff");
+  // Reproduce the repeated-use leak: each completed server response keeps HTTP
+  // open. Only one short-lived completed reader may remain, rather than eight.
+  let heldOpen = 0, heldCancelled = 0;
+  for (let i = 0; i < 8; i++) {
+    const held = new Response(new ReadableStream({
+      start(controller) { heldOpen++; controller.enqueue(encode(event(delta("完整正文" + i)) + done)); },
+      cancel() { heldOpen--; heldCancelled++; }
+    }));
+    const completed = await core.read(held);
+    assert.equal(completed.raw, "完整正文" + i); assert.equal(completed.partial, false);
+    assert.equal(heldOpen, 1, "prior completed connections must not accumulate between generations");
+  }
+  assert.equal(heldCancelled, 7);
+  core.releaseCompleted(); await new Promise(resolve => setTimeout(resolve, 0));
+  assert.equal(heldOpen, 0);
+  // Even when the user does not generate again, a completed, non-closing
+  // transport is eventually released. This never sets an active output limit.
+  let graceCancelled = false;
+  const grace = new Response(new ReadableStream({
+    start(controller) { controller.enqueue(encode(event(delta("完成后才清理")) + done)); },
+    cancel() { graceCancelled = true; }
+  }));
+  assert.equal((await core.read(grace)).raw, "完成后才清理");
+  await new Promise(resolve => setTimeout(resolve, 5200));
+  assert.equal(graceCancelled, true); assert.equal(core.releaseCompleted(), 0);
   console.log("PASS: immediate visible streamed prose, arbitrary UTF8/CRLF/multiline SSE, OpenAI/Gemini/Anthropic/Responses deltas, snapshots, one-read JSON fallback, reasoning privacy, full-length output and partial/abort/error preservation");
 })().catch((error) => { console.error(error); process.exitCode = 1; });

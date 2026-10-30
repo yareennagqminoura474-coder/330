@@ -55,7 +55,39 @@
       if (signal.aborted) stopped();
     });
   }
+  // Only readers whose protocol has ALREADY ended enter this set. Active
+  // generations, including arbitrarily long pauses, are never registered here.
+  const completedReaders = new Set();
+  function releaseCompleted() {
+    const count = completedReaders.size;
+    for (const entry of [...completedReaders]) entry.close();
+    return count;
+  }
+  function drainCompleted(reader, requestSignal) {
+    releaseCompleted();
+    let timer, closed = false;
+    const entry = { close() {
+      if (closed) return;
+      closed = true; clearTimeout(timer); completedReaders.delete(entry);
+      try { Promise.resolve(reader.cancel()).catch(() => {}); } catch {}
+    } };
+    completedReaders.add(entry);
+    const stopped = () => entry.close();
+    requestSignal?.addEventListener("abort", stopped, { once: true });
+    // A grace period lets the server close naturally. This deadline applies
+    // solely AFTER [DONE]/the protocol terminator, never to receiving prose.
+    timer = setTimeout(stopped, 5000);
+    if (requestSignal?.aborted) stopped();
+    // Keep this outside read() so a stuck completed connection cannot retain
+    // the entire chapter, decoder buffers, preview callbacks and draft queue.
+    void (async () => {
+      try { while (!(await reader.read()).done) {} }
+      catch { /* The protocol already ended; received prose is unaffected. */ }
+      finally { entry.close(); requestSignal?.removeEventListener("abort", stopped); try { reader.releaseLock(); } catch {} }
+    })();
+  }
   async function read(response, { signal, onProgress, onActivity, extractText } = {}) {
+    releaseCompleted();
     const started = Date.now(), usage = { inputTokens: null, outputTokens: null, reasoningTokens: null, cachedInputTokens: null };
     const stats = { firstTextMs: null, firstByteMs: null, receiveMs: 0, visibleChars: 0, eventCount: 0, bytesReceived: 0, malformedEvents: 0, reasoningSeen: false, streamed: false,
       maxByteGapMs: 0, completionSignal: "", abortSignalReceived: false, readerCancelled: false };
@@ -282,17 +314,10 @@
       broken = true; failure = aborted ? "生成已停止" : error.message || String(error);
       if (!raw && !aborted) { error.partialRaw = raw; error.unparsedEvents = unparsedEvents; error.stats = snapshot(); throw error; }
     } finally {
-      if (reader && ended && !aborted && !broken) {
-        // The UI can finish at the protocol terminator. Drain this SAME response
-        // to natural EOF in the background instead of cancelling the HTTP body;
-        // no additional request, timer, output limit or duplicate generation.
-        void (async () => {
-          try { while (!(await readChunk(reader, signal)).done) {} }
-          catch { /* A disconnect after the protocol end cannot erase saved prose. */ }
-          finally { try { reader.releaseLock(); } catch {} }
-        })();
+      if (reader && ended && !aborted) {
+        drainCompleted(reader, signal);
       } else if (reader) {
-        if (aborted) { stats.readerCancelled = true; Promise.resolve(reader.cancel()).catch(() => {}); }
+        if (aborted || broken) { stats.readerCancelled = true; Promise.resolve(reader.cancel()).catch(() => {}); }
         try { reader.releaseLock(); } catch {}
       }
     }
@@ -301,5 +326,5 @@
     return { raw, partial: broken || !complete || /^(?:length|max_tokens|max_output_tokens|incomplete|continuation)$/i.test(finishReason),
       aborted, finishReason, usage, unparsedEvents, stats: snapshot(), ...(failure ? { error: failure } : unparsedEvents.length ? { error: "收到" + unparsedEvents.length + "个格式异常的数据包，原始片段已保留，正文可能不完整。" } : {}) };
   }
-  return Object.freeze({ read });
+  return Object.freeze({ read, releaseCompleted });
 });
