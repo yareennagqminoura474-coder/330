@@ -161,7 +161,7 @@
       maxByteGapMs: 0, completionSignal: "", abortSignalReceived: false, readerCancelled: false, recoveredEvents: 0, recoveredChars: 0 };
     let lastByteAt = null;
     const unparsedEvents = [];
-    let raw = "", complete = false, ended = false, terminal = false, broken = false, aborted = false, failure = "", finishReason = "";
+    let raw = "", complete = false, ended = false, terminal = false, broken = false, aborted = false, failure = "", finishReason = "", providerFailure = null;
     const state = { blocks: new Map(), responseParts: new Map() };
     function snapshot() {
       const receiveMs = Date.now() - started, duration = stats.firstTextMs == null ? 0 : receiveMs - stats.firstTextMs;
@@ -194,16 +194,22 @@
       if (typeof reason === "string" && reason) { finishReason = reason; complete = true; }
       if (final) { terminal = true; stats.completionSignal = "protocol_end:" + (reason || "stop"); }
     }
-    function providerError(data) {
-      if (data?.error || data?.type === "error" || data?.type === "response.failed")
-        throw new Error("API 返回错误：" + (text(data.error?.message || data.error || data.message || data.response?.error?.message) || "流式响应失败"));
+    function providerError(data, force = false) {
+      if (data?.data?.error) data = data.data;
+      if (!force && !data?.error && data?.type !== "error" && data?.type !== "response.failed") return;
+      const value = data?.error || data?.response?.error || data;
+      const details = { message: text(value?.message) || text(value) || text(data?.message) || "流式响应失败",
+        type: text(value?.type) || text(value?.status) || text(data?.type) || "api_error", code: value?.code ?? value?.status_code ?? null };
+      const prefix = details.type === "upstream_error" ? "上游服务返回错误" : "API 返回错误";
+      const error = new Error(prefix + (details.code != null ? "（" + details.code + "）" : "") + "：" + details.message);
+      error.code = "API_PROVIDER_ERROR"; error.providerError = details; throw error;
     }
     function event(data, eventName = "") {
       stats.eventCount++;
       if (typeof data === "string") { update(data); return; }
       if (!data || typeof data !== "object") return;
       const value = data.data && (data.data.choices || data.data.candidates || data.data.output) ? data.data : data;
-      if (eventName === "error") throw new Error("API 返回错误：" + (text(value.error?.message || value.message || value.error) || "流式响应失败"));
+      if (eventName === "error") providerError(value, true);
       providerError(value); usageFrom(value, usage);
       const previousReasoning = stats.reasoningSeen;
       if (usage.reasoningTokens > 0) stats.reasoningSeen = true;
@@ -261,17 +267,53 @@
       if (previousReasoning !== stats.reasoningSeen && !raw) emit();
     }
     let lineBuffer = "", eventName = "", dataLines = [];
+    function joinedPackets(source) {
+      // Some compatible endpoints concatenate data frames without blank lines.
+      // Split at balanced JSON boundaries, never at data: inside quoted prose.
+      const packets = []; let at = 0;
+      const unfinished = start => packets.length ? [...packets, { unparsed: source.slice(start) }] : null;
+      while (at < source.length) {
+        while (/\s/.test(source[at] || "") && at < source.length) at++;
+        if (source.startsWith("data:", at)) { at += 5; while (/\s/.test(source[at] || "") && at < source.length) at++; }
+        if (at === source.length) break;
+        if (source.startsWith("[DONE]", at)) { packets.push({ done: true }); at += 6; continue; }
+        if (source[at] !== "{" && source[at] !== "[") return unfinished(at);
+        const start = at, stack = []; let quoted = false, escaped = false;
+        for (; at < source.length; at++) {
+          const char = source[at];
+          if (quoted) { if (escaped) escaped = false; else if (char === "\\") escaped = true; else if (char === '"') quoted = false; continue; }
+          if (char === '"') { quoted = true; continue; }
+          if (char === "{" || char === "[") stack.push(char);
+          else if (char === "}" || char === "]") {
+            if (stack.pop() !== (char === "}" ? "{" : "[")) return unfinished(start);
+            if (!stack.length) { at++; break; }
+          }
+        }
+        if (quoted || stack.length) return unfinished(start);
+        try { packets.push({ value: JSON.parse(source.slice(start, at)) }); } catch { return unfinished(start); }
+      }
+      return packets.length ? packets : null;
+    }
     function dispatch() {
       if (!dataLines.length) { eventName = ""; return; }
       const data = dataLines.join("\n"), name = eventName;
       dataLines = []; eventName = "";
       if (data.trim() === "[DONE]") { ended = true; complete = true; stats.completionSignal = "done_marker"; return; }
-      try { event(JSON.parse(data), name); }
-      catch (error) {
-        if (!(error instanceof SyntaxError)) throw error;
-        if (name === "error") throw new Error("API 流式响应返回错误：" + data);
-        if (/^[\s]*[{\[]/.test(data)) { broken = true; stats.malformedEvents++; unparsedEvents.push(data); return; }
-        if (!["ping", "heartbeat"].includes(name)) event(data, name);
+      let packets;
+      try { packets = [{ value: JSON.parse(data) }]; }
+      catch {
+        packets = joinedPackets(data);
+        if (!packets) {
+          if (name === "error") providerError({ message: data, type: "error" }, true);
+          if (/^[\s]*[{\[]/.test(data)) { broken = true; stats.malformedEvents++; unparsedEvents.push(data); return; }
+          if (!["ping", "heartbeat"].includes(name)) event(data, name);
+          return;
+        }
+      }
+      for (const packet of packets) {
+        if (packet.done) { ended = true; complete = true; stats.completionSignal = "done_marker"; break; }
+        if (packet.unparsed) { broken = true; stats.malformedEvents++; unparsedEvents.push(packet.unparsed); continue; }
+        event(packet.value, name);
       }
     }
     function line(value) {
@@ -372,25 +414,36 @@
       }
     } catch (error) {
       aborted = signal?.aborted || error.name === "AbortError";
-      if (!aborted) {
+      providerFailure = error.providerError || null;
+      if (!aborted && !providerFailure) {
         const pending = mode === "sse" ? [...dataLines, ...lineBuffer.split(/\r?\n/).filter(line => line.startsWith("data:")).map(line => line.slice(5).replace(/^ /, ""))].join("\n") : wire;
         if (pending) {
           try {
-            let packet; try { packet = JSON.parse(pending); } catch { packet = recoverPacket(pending); }
-            if (packet && (mode === "sse" || packet.choices || packet.candidates || packet.type || packet.data)) {
-              const before = raw.length; event(packet);
-              if (raw.length > before) { stats.recoveredEvents++; stats.recoveredChars += raw.length - before; }
+            let packets;
+            try { packets = [{ value: JSON.parse(pending) }]; }
+            catch { const partial = recoverPacket(pending); packets = joinedPackets(pending) || (partial ? [{ value: partial }] : []); }
+            for (const { value: packet } of packets) {
+              if (packet && (mode === "sse" || packet.choices || packet.candidates || packet.type || packet.data)) {
+                const before = raw.length; event(packet);
+                if (raw.length > before) { stats.recoveredEvents++; stats.recoveredChars += raw.length - before; }
+              }
             }
-          } catch { /* Keep the original network error and raw fragment. */ }
+          } catch (recoveredError) {
+            if (recoveredError.providerError) {
+              stats.transportErrorAlongsideProviderError = error.message || String(error);
+              providerFailure = recoveredError.providerError; error = recoveredError;
+            }
+          }
         }
       }
-      const unfinished = mode === "sse"
+      const unfinished = providerFailure ? "" : mode === "sse"
         ? (dataLines.length || /(?:^|\n)data:/.test(lineBuffer) ? [...dataLines, lineBuffer].filter(Boolean).join("\n") : "")
         : /^API 返回错误：/.test(error.message || "") ? "" : wire;
       if (unfinished) { unparsedEvents.push(unfinished); stats.malformedEvents++; }
       stats.abortSignalReceived = Boolean(signal?.aborted);
       stats.readerCancelled = Boolean(signal?.aborted);
-      stats.completionSignal ||= aborted ? "aborted" : "read_error";
+      if (providerFailure) { ended = true; stats.completionSignal = "provider_error"; }
+      else stats.completionSignal ||= aborted ? "aborted" : "read_error";
       broken = true; failure = aborted ? "生成已停止" : error.message || String(error);
       if (!raw && !aborted) { error.partialRaw = raw; error.unparsedEvents = unparsedEvents; error.stats = snapshot(); throw error; }
     } finally {
@@ -404,7 +457,7 @@
     stats.reasoningSeen ||= usage.reasoningTokens > 0;
     emit();
     return { raw, partial: broken || !complete || /^(?:length|max_tokens|max_output_tokens|incomplete|continuation)$/i.test(finishReason),
-      aborted, finishReason, usage, unparsedEvents, stats: snapshot(), ...(failure ? { error: failure } : unparsedEvents.length ? { error: "收到" + unparsedEvents.length + "个格式异常的数据包，原始片段已保留，正文可能不完整。" } : {}) };
+      aborted, finishReason, usage, unparsedEvents, providerError: providerFailure, stats: snapshot(), ...(failure ? { error: failure } : unparsedEvents.length ? { error: "收到" + unparsedEvents.length + "个格式异常的数据包，原始片段已保留，正文可能不完整。" } : {}) };
   }
   return Object.freeze({ read, releaseCompleted });
 });

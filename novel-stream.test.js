@@ -153,6 +153,20 @@ const delta = (text) => ({ choices: [{ index: 0, delta: { content: text }, finis
   await assert.rejects(() => core.read(response(event({ error: { message: "provider busy" } }, "error"))), (error) => error.partialRaw === "" && /provider busy/.test(error.message));
   const failedTail = await core.read(response(event(delta(sample)) + event({ error: { message: "provider overloaded" } }, "error")));
   assert.equal(failedTail.raw, sample); assert.equal(failedTail.partial, true); assert.match(failedTail.error, /provider overloaded/);
+  const upstream = { error: { message: "An internal error has occurred. Please retry or report in https://developers.generativeai.google/guide/troubleshooting", type: "upstream_error", param: "", code: 500 } };
+  const upstreamWire = 'data: ' + JSON.stringify(upstream) + 'data: [DONE]';
+  for (const ending of [event(upstream) + done, upstreamWire, upstreamWire.slice(0, -2), 'data: ' + JSON.stringify(upstream) + '\ndata: [DONE]\n']) {
+    const failed = await core.read(response(event(delta(sample)) + ending, [1, 3, 17]));
+    assert.equal(failed.raw, sample, "an upstream error must not enter the novel body");
+    assert.equal(failed.partial, true, "DONE cannot turn an upstream failure into success");
+    assert.deepEqual(failed.providerError, { message: upstream.error.message, type: "upstream_error", code: 500 });
+    assert.equal(failed.stats.completionSignal, "provider_error"); assert.equal(failed.stats.malformedEvents, 0);
+    assert.equal(failed.stats.readerCancelled, false, "an explicit provider failure is allowed to finish its transport gracefully");
+    assert.deepEqual(failed.unparsedEvents, []); assert.match(failed.error, /上游服务.*500/);
+  }
+  await assert.rejects(() => core.read(response(upstreamWire)), error => error.providerError?.code === 500 && error.stats.completionSignal === "provider_error");
+  const joined = 'data: ' + JSON.stringify(delta('字面量 data: [DONE] 和 {括号} 保留')) + 'data: ' + JSON.stringify(delta('后续正文')) + 'data: [DONE]';
+  assert.equal((await core.read(response(joined, [1]))).raw, '字面量 data: [DONE] 和 {括号} 保留后续正文');
   await assert.rejects(() => core.read(response('{"error":{"message":"API unavailable"}}', [3], "application/json")), /API unavailable/);
   const malformedTail = await core.read(response(event(delta(sample)) + 'data: {"choices":[\n\n' + done));
   assert.equal(malformedTail.raw, sample); assert.equal(malformedTail.partial, true);
@@ -170,6 +184,9 @@ const delta = (text) => ({ choices: [{ index: 0, delta: { content: text }, finis
   }
   const wholePacket = await cutPacket(event(delta("开头")) + 'data: ' + JSON.stringify(delta("完整收到但缺少空行的尾段")));
   assert.equal(wholePacket.raw, "开头完整收到但缺少空行的尾段"); assert.equal(wholePacket.partial, true);
+  const erroredPending = await cutPacket(event(delta(sample)) + upstreamWire);
+  assert.equal(erroredPending.providerError.code, 500); assert.equal(erroredPending.stats.completionSignal, "provider_error");
+  assert.equal(erroredPending.stats.transportErrorAlongsideProviderError, "network error"); assert.equal(erroredPending.stats.malformedEvents, 0);
   const partialJson = await cutPacket('{"choices":[{"index":0,"message":{"content":"实际收到\\n中文\\u4e2d\\uD83D\\uDE42\\u12');
   assert.equal(partialJson.raw, "实际收到\n中文中🙂"); assert.equal(partialJson.partial, true); assert.equal(partialJson.stats.recoveredEvents, 1);
   await assert.rejects(() => cutPacket('data: {"choices":[{"index":0,"delta":{"reasoning_content":"PRIVATE_REASONING'), error => error.partialRaw === "");

@@ -10,7 +10,7 @@ const { chromium } = require("playwright-core");
   });
   await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
   const origin = `http://127.0.0.1:${server.address().port}`, browser = await chromium.launch({ executablePath: "C:/Program Files/Google/Chrome/Application/chrome.exe", headless: true });
-  const calls = [], errors = [], dialogs = [], held = []; let failPrimary = false, invalidPrimary = "", responseFormat = "json", lengthReason = false, holdPrimary = false, serial = 0;
+  const calls = [], errors = [], dialogs = [], held = []; let failPrimary = false, upstreamFailure = false, invalidPrimary = "", responseFormat = "json", lengthReason = false, holdPrimary = false, serial = 0;
   const chapter = (n) => ({ title: "第" + n + "章 <约定>", content: "完整小说正文" + n + "：\n" + (n === 1 ? "陈安正在整理书架。" : n === 2 ? "林澈把旧书摆上柜台。" : "") + "日常散步和整理旧书的完整细节。".repeat(80) + '\n<约定>照旧。<img src=x onerror="window.__greenRiverInjected=true">' + "CHAPTER_END_" + n + "，数学符号（$\\in$ 与 $\\notin$）。", summary: "本章总结" + n + '：</textarea><img src=x onerror="window.__greenRiverInjected=true">' });
   try {
     const page = await browser.newPage({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true, serviceWorkers: "block" });
@@ -25,6 +25,7 @@ const { chromium } = require("playwright-core");
       if (native) { assert.ok(url.includes(primary ? "novel-native-model" : "novel-native-aux-model")); assert.equal(new URL(url).searchParams.get("key"), primary ? "fake-native-primary" : "fake-native-secondary"); }
       else { assert.equal(body.model, primary ? "novel-primary-model" : "auxiliary-model"); assert.equal(request.headers().authorization, primary ? "Bearer fake-primary" : "Bearer fake-auxiliary"); }
       if (novel && failPrimary) return route.fulfill({ status: 503, body: "isolated novel provider failure" });
+      if (novel && upstreamFailure) return route.fulfill({ contentType: "text/event-stream", body: 'data: ' + JSON.stringify({ choices: [{ index: 0, delta: { content: "<novel_content>上游报错前已经收到的小说正文。" } }] }) + '\n\ndata: {"error":{"message":"An internal error has occurred.","type":"upstream_error","code":500}}data: [DONE]' });
       if (novel && holdPrimary) { held.push({ route, native }); return; }
       let raw;
       if (!novel) raw = JSON.stringify({ result: "auxiliary remains independent" });
@@ -209,6 +210,23 @@ const { chromium } = require("playwright-core");
     assert.equal((await page.evaluate((id) => window.db.grStories.get(id), otherId)).chapters.length, 0, "stopping cannot create a fake chapter");
     assert.equal(calls.length, beforeStop + 1, "stopping does not retry or switch provider");
     for (const { route } of held.splice(0)) await route.abort().catch(() => {}); holdPrimary = false;
+    upstreamFailure = true; const beforeUpstream = calls.length;
+    await page.locator("#gr-generate-btn").click();
+    let upstreamStory; const upstreamDeadline = Date.now() + 10000;
+    while (Date.now() < upstreamDeadline) {
+      upstreamStory = await page.evaluate(id => window.db.grStories.get(id), otherId);
+      if (upstreamStory.lastGeneration?.providerError?.code === 500 && !await page.locator("#gr-generate-btn").isDisabled()) break;
+      await new Promise(resolve => setTimeout(resolve, 20));
+    }
+    if (!upstreamStory.chapters.length) console.log(JSON.stringify({ upstreamFailureDiagnostics: upstreamStory.lastGeneration, lastDialog: dialogs.at(-1) }));
+    assert.equal(upstreamStory.chapters.at(-1).content, "上游报错前已经收到的小说正文。");
+    assert.equal(upstreamStory.lastGeneration.partial, true); assert.equal(upstreamStory.lastGeneration.stats.malformedEvents, 0);
+    assert.equal(calls.length, beforeUpstream + 1, "an explicit upstream failure does not cause an automatic paid retry");
+    assert.match(await page.locator("#gr-generation-note").textContent(), /上游服务报错.*500/);
+    await page.locator("#gr-last-response-btn").click(); await page.waitForSelector("#gr-last-response-modal.visible");
+    assert.match(await page.locator("#gr-last-response-content").inputValue(), /【接口返回的错误】/);
+    assert.doesNotMatch(await page.locator("#gr-last-response-content").inputValue(), /【未能解析/);
+    await page.locator("#gr-last-response-close").click();
     assert.deepEqual(errors, []);
     console.log("PASS: Green River saved primary/auxiliary choices and compatible/native routing, complete character/relationship/history context, local JSON/tag/plaintext recovery and exact retained output, safe literal prose, failure preservation, no fallback or retries, pending stop/duplicate-tap/navigation isolation");
   } finally { await browser.close(); await new Promise((resolve) => server.close(resolve)); }

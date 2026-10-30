@@ -23,6 +23,7 @@ const { chromium } = require("playwright-core");
         res.write('data: {"choices":[{"index":0,"delta":{"content":' + JSON.stringify(tail).slice(0, -1));
         setTimeout(() => res.destroy(), 50);
       } else if (req.url === "/json-broken") res.destroy();
+      else if (req.url === "/upstream-error") res.end('data: {"error":{"message":"An internal error has occurred.","type":"upstream_error","code":500}}data: [DONE]');
       else res.end(packet(tail) + "data: [DONE]\n\n");
     }, 100);
   });
@@ -35,7 +36,7 @@ const { chromium } = require("playwright-core");
     const receive = url => page.evaluate(async url => {
       const response = await EPhoneStreamHTTP.request(url, { method: "POST", body: "one-request", headers: { "Content-Type": "application/json" } });
       const output = await EPhoneNovelStream.read(response);
-      return { raw: output.raw, partial: output.partial, error: output.error || "", recovered: output.stats.recoveredChars, signal: output.stats.completionSignal, transport: response.ephoneTransport };
+      return { raw: output.raw, partial: output.partial, error: output.error || "", providerError: output.providerError, recovered: output.stats.recoveredChars, signal: output.stats.completionSignal, transport: response.ephoneTransport };
     }, url);
     for (const url of ["/complete", "/sse-broken", "/json-broken"]) {
       const before = calls.length, output = await receive(url);
@@ -48,6 +49,9 @@ const { chromium } = require("playwright-core");
     for (let i = 0; i < 8; i++) {
       const result = await receive("/repeat-" + i); assert.equal(result.raw, prefix + tail); assert.equal(result.partial, false);
     }
+    const beforeUpstream = calls.length, upstream = await receive("/upstream-error");
+    assert.equal(upstream.raw, prefix); assert.equal(upstream.partial, true); assert.equal(upstream.providerError.code, 500);
+    assert.equal(upstream.signal, "provider_error"); assert.equal(calls.length, beforeUpstream + 1);
     const failedHTTP = await page.evaluate(async () => { const response = await EPhoneStreamHTTP.request("/http-error", { method: "POST" }); return { status: response.status, raw: await response.text() }; });
     assert.equal(failedHTTP.status, 429); assert.match(failedHTTP.raw, /test rate limit/);
     const aborted = await page.evaluate(async () => {
