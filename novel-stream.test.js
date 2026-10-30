@@ -161,7 +161,19 @@ const delta = (text) => ({ choices: [{ index: 0, delta: { content: text }, finis
   midPacket.push(event(delta(sample))); await new Promise((resolve) => setTimeout(resolve, 0));
   midPacket.push('data: {"choices":[{"delta":{"content":"后续实际收到的半包'); await new Promise((resolve) => setTimeout(resolve, 0));
   midPacket.fail(new Error("network error")); const midResult = await midReading;
-  assert.equal(midResult.raw, sample); assert.equal(midResult.partial, true); assert.match(midResult.unparsedEvents.join(""), /后续实际收到的半包/);
+  assert.equal(midResult.raw, sample + "后续实际收到的半包"); assert.equal(midResult.partial, true); assert.match(midResult.unparsedEvents.join(""), /后续实际收到的半包/);
+  assert.equal(midResult.stats.recoveredChars, "后续实际收到的半包".length);
+  async function cutPacket(wire) {
+    const source = controlled(), pending = core.read(source.response);
+    source.push(wire); await new Promise(resolve => setTimeout(resolve, 0)); source.fail(new Error("network error"));
+    return pending;
+  }
+  const wholePacket = await cutPacket(event(delta("开头")) + 'data: ' + JSON.stringify(delta("完整收到但缺少空行的尾段")));
+  assert.equal(wholePacket.raw, "开头完整收到但缺少空行的尾段"); assert.equal(wholePacket.partial, true);
+  const partialJson = await cutPacket('{"choices":[{"index":0,"message":{"content":"实际收到\\n中文\\u4e2d\\uD83D\\uDE42\\u12');
+  assert.equal(partialJson.raw, "实际收到\n中文中🙂"); assert.equal(partialJson.partial, true); assert.equal(partialJson.stats.recoveredEvents, 1);
+  await assert.rejects(() => cutPacket('data: {"choices":[{"index":0,"delta":{"reasoning_content":"PRIVATE_REASONING'), error => error.partialRaw === "");
+  await assert.rejects(() => cutPacket('data: {"candidates":[{"content":{"parts":[{"text":"MAY_BE_THOUGHT","thought":true'), error => error.partialRaw === "");
   const reasoningOnly = await core.read(response(event({ choices: [{ index: 0, delta: { reasoning_content: secret } }] }) + event({ choices: [], usage: { completion_tokens: 5, completion_tokens_details: { reasoning_tokens: 5 } } }) + done));
   assert.equal(reasoningOnly.raw, ""); assert.ok(reasoningOnly.stats.reasoningSeen); assert.equal(reasoningOnly.stats.firstTextMs, null);
   assert.equal((await core.read(response(event(delta(sample)) + done), { onProgress() { throw new Error("UI observer failure"); } })).raw, sample, "a preview error cannot discard the paid response");

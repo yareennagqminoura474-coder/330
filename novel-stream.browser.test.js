@@ -138,7 +138,10 @@ const { chromium } = require("playwright-core");
         return nativeFetch(input, options);
       };
     }, origin);
-    await page.goto(origin, { waitUntil: "domcontentloaded" }); await page.waitForFunction(() => window.ephoneAppReady); await page.locator("#update-notice-dismiss-btn").click();
+    // This suite isolates app/decoder behavior with its deterministic fetch
+    // bridge. api-stream-http.browser.test.js exercises real browser HTTP/XHR.
+    const disableXHRForBridge = () => page.evaluate(() => { window.EPhoneStreamHTTP = { canUse: () => false }; });
+    await page.goto(origin, { waitUntil: "domcontentloaded" }); await page.waitForFunction(() => window.ephoneAppReady); await disableXHRForBridge(); await page.locator("#update-notice-dismiss-btn").click();
     const storyId = await page.evaluate(async (origin) => {
       const settings = { aiPersona: "成年人，普通家庭，喜欢整理书籍，讲话温和。", myNickname: "原用户", myPersona: "成年人，独立生活。", maxMemory: 20 };
       const config = await window.db.apiConfig.get("main") || { id: "main" };
@@ -148,7 +151,7 @@ const { chromium } = require("playwright-core");
       return window.db.grStories.add({ title: "流式小说", authorId, settings: { charIds: ["stream-role"], bookIds: [], userPersonaId: "", outputLength: 5000, contextLimit: 20, macroWorldView: "现代生活。", generationApi: "primary", streamOutput: true, referenceSpaceDatabase: window.db.spaceProfiles.db.name }, chapters: [], lastUpdated: Date.now() });
     }, origin);
     const story = () => page.evaluate((id) => window.db.grStories.get(id), storyId);
-    const ready = async () => { await page.reload({ waitUntil: "domcontentloaded" }); await page.waitForFunction(() => window.ephoneAppReady); };
+    const ready = async () => { await page.reload({ waitUntil: "domcontentloaded" }); await page.waitForFunction(() => window.ephoneAppReady); await disableXHRForBridge(); };
     const open = async (name = "流式小说") => {
       await page.evaluate(() => window.openGreenRiverScreen()); await page.locator("#gr-book-list .gr-book-card").filter({ hasText: name }).click(); await page.waitForSelector("#gr-reader-screen.active");
       if (name === "流式小说" && (await story()).chapters.length) { await page.evaluate(() => window.openChapterList()); await page.locator("#gr-chapter-list-content .gr-sidebar-item").last().click(); }
@@ -195,6 +198,9 @@ const { chromium } = require("playwright-core");
     await page.waitForFunction(() => document.getElementById("gr-generation-status-text").textContent.includes("仍有数据到达"));
     assert.equal(await page.locator("#gr-generate-btn").isDisabled(), true, "finish metadata alone cannot terminate reception before later text/usage packets");
     assert.equal(first.res.destroyed, false, "the app must leave the connection open for the rest of the paid result");
+    // Synthetic lifecycle notifications verify per-request diagnostics and
+    // cleanup; this does not simulate a real phone OS freezing its renderer.
+    await page.evaluate(() => { document.dispatchEvent(new Event("freeze")); window.dispatchEvent(new Event("offline")); });
     await page.screenshot({ path: path.join(require("node:os").tmpdir(), "ephone-novel-stream-mobile.png") });
     first.finish("STOP", true); await settled();
     await page.evaluate(() => { Date.now = window.streamTestRealNow; });
@@ -207,6 +213,7 @@ const { chromium } = require("playwright-core");
     assert.ok(Number.isFinite(saved.lastGeneration.stats.firstTextMs)); assert.ok(Number.isFinite(saved.lastGeneration.stats.totalMs));
     assert.ok(saved.lastGeneration.stats.maxTextGapMs >= 10000, "the observed pause is retained for diagnosis");
     assert.equal(saved.lastGeneration.stats.completionSignal, "done_marker"); assert.equal(saved.lastGeneration.stats.readerCancelled, false);
+    assert.equal(saved.lastGeneration.lifecycle.freezeCount, 1); assert.equal(saved.lastGeneration.lifecycle.offlineCount, 1);
     await page.locator("#gr-last-response-btn").click();
     await page.waitForSelector("#gr-last-response-modal.visible");
     assert.match(await page.locator("#gr-last-response-info").textContent(), /收到完整结束标记.*取消信号：未触发/);
@@ -219,6 +226,8 @@ const { chromium } = require("playwright-core");
     await page.locator("#gr-generation-api").selectOption("secondary"); await page.locator("#gr-save-story-btn").click();
     const secondary = await start(); assert.equal(secondary.primary, false); await preview(secondary); secondary.finish(); await settled();
     assert.equal((await story()).chapters.at(-1).content, secondary.expected.content); assert.equal((await story()).lastGeneration.api, "secondary");
+    assert.equal((await story()).lastGeneration.lifecycle.freezeCount, 0, "lifecycle counters do not leak from a previous generation");
+    assert.equal((await story()).lastGeneration.lifecycle.offlineCount, 0);
     // Repeat without reloading the tab, while the provider never closes HTTP
     // after DONE. This previously left every response open until tab closure.
     const repeated = [], beforeRepeated = calls.length;

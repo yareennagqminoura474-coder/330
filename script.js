@@ -7849,6 +7849,7 @@ async function _ephoneApiFetch(_ephoneUrl, _ephoneOptions = {}) {
       : _ephoneOptions);
   } catch (_ephoneError) {
     if (_ephoneError?.name === "AbortError") throw _ephoneError;
+    _ephoneTransport = _ephoneError?.ephoneTransport || _ephoneTransport;
     const _ephoneHost = (() => {
       try {
         return new URL(_ephoneUrl).host;
@@ -54815,6 +54816,9 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
     document.getElementById("gr-last-response-info").textContent = (last.api === "secondary" ? "副 API" : "主 API") + " · " + (last.model || "") + "。内容保存在本机，查看不会重新请求。" + (last.error ? "\n上次未保存为章节：" + last.error : "") +
       (last.finishReason ? "\n接口结束原因：" + last.finishReason : "") + (stats ? "\n准备资料：" + seconds(stats.preparationMs) + "；请求到响应头：" + seconds(stats.headersMs) + "；首字等待：" + seconds(stats.firstTextMs) + "；接收正文：" + seconds(stats.receiveMs) + "；总耗时：" + seconds(stats.totalMs) + "。" + (Number.isFinite(stats.charactersPerSecond) ? "平均接收约" + stats.charactersPerSecond.toFixed(1) + "字/秒。" : "") : "") +
       (stats?.maxTextGapMs != null ? "\n最长未收到新正文的间隔：" + seconds(stats.maxTextGapMs) + "。" : "") + (stats?.maxByteGapMs != null ? "\n最长未收到任何数据的间隔：" + seconds(stats.maxByteGapMs) + "。" : "") +
+      (last.http ? "\n接收方式：" + last.http.transport + "；HTTP " + last.http.status + (last.http.requestId ? "；接口请求编号：" + last.http.requestId : "") + "。" : "") +
+      (last.lifecycle ? "\n本次页面状态：切到后台 " + last.lifecycle.hiddenCount + " 次，累计 " + seconds(last.lifecycle.backgroundMs) + "；系统冻结通知 " + last.lifecycle.freezeCount + " 次；离线通知 " + last.lifecycle.offlineCount + " 次。" : "") +
+      (stats?.recoveredChars ? "\n断开时额外保住已到达的 " + stats.recoveredChars + " 字（" + stats.recoveredEvents + " 个数据片段），未重新请求。" : "") +
       (stats?.completionSignal ? "\n接收结束依据：" + ({ done_marker: "收到完整结束标记 [DONE]", eof_after_finish: "收到模型结束信息后连接自然结束", eof_without_finish: "连接结束，但未收到模型结束信息", complete_json: "收到完整 JSON 返回", message_stop: "收到 message_stop", "response.completed": "收到 response.completed", "response.incomplete": "接口报告未完整生成", aborted: "请求被取消", read_error: "读取连接时出错" }[stats.completionSignal] || stats.completionSignal) + "；取消信号：" + (stats.abortSignalReceived ? "已触发" : "未触发") + "。" : "") +
       (stats?.bytesReceived != null ? "\n已接收 " + stats.bytesReceived + " 字节、" + stats.eventCount + " 个数据包；其中 " + (stats.malformedEvents || 0) + " 个格式异常。" : "") + (last.transportError ? "\n接收提示：" + last.transportError : "") + (last.usage && (last.usage.inputTokens != null || last.usage.outputTokens != null) ? "\n接口报告用量：输入 " + (last.usage.inputTokens ?? "未提供") + "，输出 " + (last.usage.outputTokens ?? "未提供") + " tokens" + (last.usage.reasoningTokens != null ? "，其中思考 " + last.usage.reasoningTokens : "") + "。" : "");
     document.getElementById("gr-last-response-modal").classList.add("visible");
@@ -54824,7 +54828,7 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
     if (!bar) return;
     bar.hidden = !last;
     if (last) document.getElementById("gr-generation-note").textContent = last.status === "saved"
-      ? last.partial ? last.stats?.malformedEvents ? "接收中有异常数据片段，已保留，请查看上次返回。" : /MAX_TOKENS|LENGTH/i.test(last.finishReason || "") ? "接口因输出上限提前结束（" + last.finishReason + "），已保留实际正文。" : "返回未确认完整结束，已保留实际正文，可查看结束原因。" : last.warnings?.length ? "已恢复正文并保存，可查看原始返回。" : "本次正文已保存。"
+      ? last.partial ? last.transportError ? "本次接收未完成，已保存实际收到的正文；可查看上次返回。" : last.stats?.malformedEvents ? "接收中有异常数据片段，已保留，请查看上次返回。" : /MAX_TOKENS|LENGTH/i.test(last.finishReason || "") ? "接口因输出上限提前结束（" + last.finishReason + "），已保留实际正文。" : "返回未确认完整结束，已保留实际正文，可查看结束原因。" : last.warnings?.length ? "已恢复正文并保存，可查看原始返回。" : "本次正文已保存。"
       : "返回内容已保留，可查看或复制。";
   }
   const _0x5cc2fe = [
@@ -55454,8 +55458,20 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
       personaDb = window.db.spaceProfiles.db,
       inputDirection = document.getElementById("gr-direction-input")?.value.trim() || "",
       button = document.getElementById("gr-generate-btn"), label = document.getElementById("gr-gen-text");
-    let received = null, api = "primary", responseModel = "", draftQueue = Promise.resolve(), lastDraftAt = 0, paintTimer = 0, maxTextGapMs = 0;
+    let received = null, api = "primary", responseModel = "", draftQueue = Promise.resolve(), lastDraftAt = 0, paintTimer = 0, maxTextGapMs = 0,
+      requestStartedAt = null, preparationMs = null, headersMs = null, httpDetails = null;
     const timer = setInterval(_ephoneSyncNovelControls, 1000);
+    const lifecycle = { hiddenCount: 0, freezeCount: 0, offlineCount: 0, backgroundMs: 0 };
+    let hiddenSince = document.hidden ? Date.now() : null;
+    const trackVisibility = () => {
+      if (document.hidden && hiddenSince === null) { hiddenSince = Date.now(); lifecycle.hiddenCount++; }
+      else if (!document.hidden && hiddenSince !== null) { lifecycle.backgroundMs += Date.now() - hiddenSince; hiddenSince = null; }
+    };
+    const trackFreeze = () => { lifecycle.freezeCount++; }, trackOffline = () => { lifecycle.offlineCount++; };
+    const lifecycleSnapshot = () => ({ ...lifecycle, backgroundMs: lifecycle.backgroundMs + (hiddenSince === null ? 0 : Date.now() - hiddenSince), hiddenAtEnd: document.hidden });
+    document.addEventListener("visibilitychange", trackVisibility);
+    document.addEventListener("freeze", trackFreeze);
+    window.addEventListener("offline", trackOffline);
     if (button) button.disabled = true;
     if (label) label.textContent = "创作中…";
     _ephoneSyncNovelControls();
@@ -55496,21 +55512,23 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
       // Free completed responses BEFORE fetch, so old sockets cannot occupy
       // browser connection slots while the next request waits for headers.
       window.EPhoneNovelStream.releaseCompleted();
-      const requestStartedAt = Date.now(), preparationMs = requestStartedAt - _0x5576d5.startedAt;
+      requestStartedAt = Date.now(); preparationMs = requestStartedAt - _0x5576d5.startedAt;
       let response;
       if (proxyUrl.includes("generativelanguage.googleapis.com")) {
         const request = _0x20e281(model, apiKey, prompt, [{ role: "user", content: "请写出这一章完整正文。" }]);
         const endpoint = new URL(request.url);
         if (useStream) { endpoint.pathname = endpoint.pathname.replace(/:generateContent$/, ":streamGenerateContent"); endpoint.searchParams.set("alt", "sse"); }
-        response = await fetch(endpoint.href, { ...request.data, signal: controller.signal });
+        response = await fetch(endpoint.href, { ...request.data, signal: controller.signal, ephoneReceiveMode: "xhr" });
       } else {
         response = await _ephoneApiFetch(_ephoneBuildApiEndpoint(proxyUrl, "chat/completions"), {
-          method: "POST", signal: controller.signal, stream: useStream, headers: { "Content-Type": "application/json", Authorization: "Bearer " + apiKey },
+          method: "POST", signal: controller.signal, stream: useStream, ephoneReceiveMode: "xhr", headers: { "Content-Type": "application/json", Authorization: "Bearer " + apiKey },
           body: JSON.stringify({ model, messages: [{ role: "system", content: prompt }, { role: "user", content: "请写出这一章完整正文。" }], temperature: 0.9, stream: useStream })
         });
       }
+      headersMs = Date.now() - requestStartedAt;
+      httpDetails = { status: response.status, transport: response.ephoneTransport || "browser fetch", contentType: response.headers?.get("content-type") || "",
+        requestId: response.headers?.get("x-request-id") || response.headers?.get("request-id") || response.headers?.get("x-oneapi-request-id") || "" };
       if (!response.ok) throw new Error("API 请求失败：" + response.status + " - " + await response.text());
-      const headersMs = Date.now() - requestStartedAt;
       const output = await window.EPhoneNovelStream.read(response, { signal: controller.signal, extractText: window.ephoneChatResponse.extractText,
         onActivity: () => { _0x5576d5.lastDataAt = Date.now(); },
         onProgress: (update) => {
@@ -55537,7 +55555,7 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
       clearTimeout(paintTimer); paintTimer = 0;
       _ephoneSyncNovelControls();
       await draftQueue.catch(() => {});
-      received = { raw: output.raw, status: "received", api, model, rewrite, finishReason: output.finishReason, usage: output.usage, unparsedEvents: output.unparsedEvents, transportError: output.error || "",
+      received = { raw: output.raw, status: "received", api, model, rewrite, http: httpDetails, lifecycle: lifecycleSnapshot(), finishReason: output.finishReason, usage: output.usage, unparsedEvents: output.unparsedEvents, transportError: output.error || "",
         stats: { ...output.stats, preparationMs, headersMs, maxTextGapMs: Math.max(maxTextGapMs, _0x5576d5.lastProseAt ? Date.now() - _0x5576d5.lastProseAt : 0), firstTextMs: output.stats.firstTextMs == null ? null : headersMs + output.stats.firstTextMs,
           totalMs: Date.now() - _0x5576d5.startedAt }, receivedAt: Date.now(), elapsedMs: Date.now() - _0x5576d5.startedAt };
       // Keep the paid result before trying to interpret its chapter wrapper.
@@ -55574,13 +55592,18 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
     } catch (error) {
       const stopped = error.name === "AbortError" || controller.signal.aborted;
       await draftQueue.catch(() => {});
-      if (!received && error.unparsedEvents?.length) received = { raw: error.partialRaw || "", unparsedEvents: error.unparsedEvents, stats: error.stats, api, model: responseModel, receivedAt: Date.now() };
+      if (!received && requestStartedAt !== null) received = { raw: error.partialRaw || _0x5576d5.previewRaw || "", unparsedEvents: error.unparsedEvents || [],
+        stats: { ...error.stats, preparationMs, headersMs, totalMs: Date.now() - _0x5576d5.startedAt }, http: httpDetails, lifecycle: lifecycleSnapshot(),
+        transportError: error.message, api, model: responseModel, receivedAt: Date.now() };
       if (received && await stories.get(storyId)) await stories.update(storyId, { lastGeneration: { ...received, status: "error", error: stopped ? "已停止生成" : error.message } }).catch(() => {});
       if (!stopped) { console.error("绿江生成失败：", error); alert("小说生成未完成：" + error.message + (received ? "\n返回内容已保留，可点「查看上次返回」，不需要再次调用 API。" : "")); }
     }
     finally {
       clearInterval(timer);
       clearTimeout(paintTimer);
+      document.removeEventListener("visibilitychange", trackVisibility);
+      document.removeEventListener("freeze", trackFreeze);
+      window.removeEventListener("offline", trackOffline);
       _0x5576d5.isGenerating = false;
       _0x5576d5.controller = null;
       if (!_0x5576d5.previewActive) {

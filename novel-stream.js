@@ -86,11 +86,79 @@
       finally { entry.close(); requestSignal?.removeEventListener("abort", stopped); try { reader.releaseLock(); } catch {} }
     })();
   }
+  function recoverPacket(source) {
+    // Read only actually received JSON string prefixes. A cut escape/unicode
+    // sequence is not invented or completed. Never turn reasoning into prose.
+    let at = 0;
+    const closed = new WeakSet(), skip = () => { while (/\s/.test(source[at] || "") && at < source.length) at++; };
+    function value(depth = 0) {
+      skip(); if (depth > 128 || at >= source.length) return {};
+      const first = source[at++];
+      if (first === '"') {
+        let out = "";
+        while (at < source.length) {
+          let char = source[at++];
+          if (char === '"') return { value: out, complete: true };
+          if (char !== "\\") { out += char; continue; }
+          if (at >= source.length) break;
+          char = source[at++];
+          if (char === "u") {
+            const hex = source.slice(at, at + 4); if (!/^[a-f\d]{4}$/i.test(hex)) break;
+            out += String.fromCharCode(parseInt(hex, 16)); at += 4;
+          } else {
+            const escapes = { '"': '"', "\\": "\\", "/": "/", n: "\n", r: "\r", t: "\t", b: "\b", f: "\f" };
+            out += Object.hasOwn(escapes, char) ? escapes[char] : "\\" + char;
+          }
+        }
+        return { value: out.replace(/[\uD800-\uDBFF]$/, ""), complete: false };
+      }
+      if (first === "{" || first === "[") {
+        const object = first === "{", out = object ? Object.create(null) : [], end = object ? "}" : "]";
+        while (at < source.length) {
+          skip(); if (source[at] === end) { at++; closed.add(out); return { value: out, complete: true }; }
+          let key;
+          if (object) { if (source[at] !== '"') break; const field = value(depth + 1); if (!field.complete) break; key = field.value; skip(); if (source[at++] !== ":") break; }
+          const child = value(depth + 1);
+          if (child.value !== undefined) { if (object) out[key] = child.value; else out.push(child.value); }
+          if (!child.complete) break;
+          skip(); if (source[at] === end) { at++; closed.add(out); return { value: out, complete: true }; }
+          if (source[at++] !== ",") break;
+        }
+        return { value: out, complete: false };
+      }
+      at--;
+      const token = /^(?:-?\d+(?:\.\d+)?(?:e[+-]?\d+)?|true|false|null)(?=\s*[,}\]])/i.exec(source.slice(at));
+      if (!token) return {};
+      at += token[0].length;
+      try { return { value: JSON.parse(token[0]), complete: true }; } catch { return {}; }
+    }
+    const root = value().value, data = root?.data || root;
+    const visible = (parts) => typeof parts === "string" ? parts : Array.isArray(parts)
+      ? partsText(parts.filter(part => part && typeof part === "object" && closed.has(part))) : "";
+    const choice = data?.choices?.find(item => item?.index === 0) || data?.choices?.find(item => item && item.index == null);
+    if (choice) {
+      const content = visible(choice.delta?.content ?? choice.message?.content ?? choice.text);
+      if (!content) return null;
+      return { choices: [{ index: 0, ...(choice.delta ? { delta: { content } } : { message: { content } }) }] };
+    }
+    const candidate = data?.candidates?.find(item => item?.index === 0) || data?.candidates?.find(item => item && item.index == null);
+    if (candidate) {
+      const content = visible(candidate.content?.parts);
+      return content ? { candidates: [{ index: 0, content: { parts: [{ text: content }] } }] } : null;
+    }
+    if (data?.type === "content_block_delta" && data.delta?.type === "text_delta" && data.delta.text)
+      return { type: data.type, index: data.index, delta: { type: "text_delta", text: data.delta.text } };
+    if (/^response\.output_text\.(delta|done)$/.test(data?.type || "")) {
+      const content = data.delta ?? data.text;
+      return typeof content === "string" && content ? { type: data.type, output_index: data.output_index, content_index: data.content_index, ...(data.type.endsWith("delta") ? { delta: content } : { text: content }) } : null;
+    }
+    return null;
+  }
   async function read(response, { signal, onProgress, onActivity, extractText } = {}) {
     releaseCompleted();
     const started = Date.now(), usage = { inputTokens: null, outputTokens: null, reasoningTokens: null, cachedInputTokens: null };
     const stats = { firstTextMs: null, firstByteMs: null, receiveMs: 0, visibleChars: 0, eventCount: 0, bytesReceived: 0, malformedEvents: 0, reasoningSeen: false, streamed: false,
-      maxByteGapMs: 0, completionSignal: "", abortSignalReceived: false, readerCancelled: false };
+      maxByteGapMs: 0, completionSignal: "", abortSignalReceived: false, readerCancelled: false, recoveredEvents: 0, recoveredChars: 0 };
     let lastByteAt = null;
     const unparsedEvents = [];
     let raw = "", complete = false, ended = false, terminal = false, broken = false, aborted = false, failure = "", finishReason = "";
@@ -303,11 +371,23 @@
         }
       }
     } catch (error) {
+      aborted = signal?.aborted || error.name === "AbortError";
+      if (!aborted) {
+        const pending = mode === "sse" ? [...dataLines, ...lineBuffer.split(/\r?\n/).filter(line => line.startsWith("data:")).map(line => line.slice(5).replace(/^ /, ""))].join("\n") : wire;
+        if (pending) {
+          try {
+            let packet; try { packet = JSON.parse(pending); } catch { packet = recoverPacket(pending); }
+            if (packet && (mode === "sse" || packet.choices || packet.candidates || packet.type || packet.data)) {
+              const before = raw.length; event(packet);
+              if (raw.length > before) { stats.recoveredEvents++; stats.recoveredChars += raw.length - before; }
+            }
+          } catch { /* Keep the original network error and raw fragment. */ }
+        }
+      }
       const unfinished = mode === "sse"
         ? (dataLines.length || /(?:^|\n)data:/.test(lineBuffer) ? [...dataLines, lineBuffer].filter(Boolean).join("\n") : "")
         : /^API 返回错误：/.test(error.message || "") ? "" : wire;
       if (unfinished) { unparsedEvents.push(unfinished); stats.malformedEvents++; }
-      aborted = signal?.aborted || error.name === "AbortError";
       stats.abortSignalReceived = Boolean(signal?.aborted);
       stats.readerCancelled = Boolean(signal?.aborted);
       stats.completionSignal ||= aborted ? "aborted" : "read_error";

@@ -89,6 +89,7 @@ const { chromium } = require("playwright-core");
     await page.locator("#gr-save-story-btn").click(); await page.waitForSelector("#gr-reader-screen.active"); assert.equal(calls.length, 0, "creating and reviewing story settings does not call a provider");
     await generate("三人在旧书店重逢。"); assert.equal(calls.length, 1); assert.equal(calls.at(-1).primary, true);
     assert.equal((await stories())[0].chapters[0].content, chapter(1).content);
+    assert.equal((await stories())[0].lastGeneration.http.transport, "browser xhr", "public direct novel requests use progress-preserving HTTP reception");
     assert.ok((await page.locator("#gr-reader-content .gr-chapter-text").textContent()).startsWith(chapter(1).content.split("数学符号")[0]), "novel prose including literal angle brackets remains complete on screen");
     assert.equal(await page.locator("#gr-reader-content .gr-chapter-text .katex").count(), 2, "saved formulas are typeset from their original source");
     assert.equal(await page.locator("#gr-reader-content textarea").first().inputValue(), chapter(1).summary, "summary text cannot close its textarea or inject markup");
@@ -130,6 +131,8 @@ const { chromium } = require("playwright-core");
     assert.match(calls.at(-1).prompt, /EXPLICIT_USER_PRESET_COMPLETE/); assert.match(calls.at(-1).prompt, /EXPLICIT_WORLD_BOOK_COMPLETE/); assert.doesNotMatch(calls.at(-1).prompt, /DISABLED_WORLD_BOOK_ENTRY/);
     const preserved = (await stories())[0].chapters;
     failPrimary = true; await reroll(false); failPrimary = false; assert.deepEqual((await stories())[0].chapters, preserved, "failed reroll preserves existing complete chapters");
+    assert.equal((await stories())[0].lastGeneration.http.status, 503);
+    assert.equal((await stories())[0].lastGeneration.raw, "", "a failed new HTTP response cannot keep displaying the prior generation's paid result as its own diagnostics");
     for (const invalid of ["malformed", "missing"]) {
       invalidPrimary = invalid; const beforeInvalid = calls.length; await reroll(false); invalidPrimary = "";
       assert.equal(calls.length, beforeInvalid + 1, "invalid output uses one main request without automatic retry"); assert.equal(calls.at(-1).primary, true);

@@ -25,5 +25,13 @@ const assert = require("node:assert/strict"), fs = require("node:fs"), vm = requ
   assert.equal(calls.at(-1)[1].headers.get("x-goog-api-key"), "fake-native"); assert.doesNotMatch(calls.at(-1)[1].headers.get("X-EPhone-Target"), /fake-native/); assert.equal(calls.at(-1)[1].body, body);
   const stop = new AbortController(); stop.abort(); const count = calls.length; await assert.rejects(root.fetch("https://one.example/v1/models", { signal: stop.signal }), (e) => e.name === "AbortError"); assert.equal(calls.length, count);
   const snapshot = root.ephoneApiTransport.snapshot(); assert.equal(snapshot.routes["https://one.example"], "relay"); assert.equal(snapshot.routes["https://two.example"], undefined);
+  const xhrCalls = [];
+  root.EPhoneStreamHTTP = { canUse: (input, options) => options.redirect !== "error", request: async (...args) => { xhrCalls.push(args); return new Response("xhr result"); } };
+  const nativeBefore = calls.length;
+  await root.fetch("https://two.example/v1/chat/completions", { method: "POST", body: "exact-body", ephoneReceiveMode: "xhr" });
+  assert.equal(xhrCalls.length, 1); assert.equal(calls.length, nativeBefore); assert.equal(xhrCalls[0][1].body, "exact-body");
+  await root.fetch("https://one.example/v1/chat/completions", { method: "POST", body: "relay-body", ephoneReceiveMode: "xhr" });
+  assert.equal(xhrCalls.length, 1, "the XHR receive mode cannot bypass the relay's redirect:error policy");
+  assert.equal(calls.length, nativeBefore + 1); assert.ok(calls.at(-1)[0].includes("/relay")); assert.equal(calls.at(-1)[1].body, "relay-body");
   console.log("PASS: address-specific explicit opt-in, unchanged direct defaults and local requests, shared selection and snapshots, independent addresses, missing-token fail-closed, native key headers, exact body/signal, no retries");
 })().catch((error) => { console.error(error); process.exitCode = 1; });

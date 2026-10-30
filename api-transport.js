@@ -2,7 +2,13 @@
 (function (root) {
   "use strict";
   const relayOrigin = "https://ephone-gcli-proxy.yareennagqminoura474.workers.dev";
-  const nativeFetch = root.fetch.bind(root);
+  const browserFetch = root.fetch.bind(root);
+  const nativeFetch = (input, options = {}) => {
+    if (!("ephoneReceiveMode" in options)) return browserFetch(input, options);
+    const { ephoneReceiveMode, ...transport } = options;
+    if (ephoneReceiveMode === "xhr" && root.EPhoneStreamHTTP?.canUse(input, transport)) return root.EPhoneStreamHTTP.request(input, transport);
+    return browserFetch(input, transport);
+  };
   let adapter, row = { id: "api-transport", routes: {}, token: "" }, queue = Promise.resolve();
   // This script is loaded before third-party scripts. Keep setup credentials in
   // this closure and remove them from the address bar before anything else runs.
