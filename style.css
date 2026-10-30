@@ -18631,3 +18631,8 @@ body.frame-mode-active .cphone-dock-container {
 #gr-last-response-modal textarea { white-space: pre-wrap; overflow-wrap: anywhere; font: inherit; font-size: 13px; line-height: 1.7; user-select: text; }
 #gr-reader-screen .gr-control-panel { position: static; flex: none; }
 #gr-reader-screen .gr-reader-content { flex: 1; min-height: 0; padding-bottom: 24px; }
+#gr-live-preview { margin: 20px 0; padding: 16px; border: 1px solid #d5e3dc; border-radius: 12px; background: #f7faf8; }
+#gr-live-preview-title { margin: 0 0 14px; color: #1b4f3e; font-size: 14px; }
+#gr-live-preview-content { white-space: pre-wrap; overflow-wrap: anywhere; user-select: text; }
+#phone-screen.dark-mode #gr-live-preview { background: #222b26; color: #eee; border-color: #405448; }
+#phone-screen.dark-mode #gr-live-preview-title { color: #a9d4ba; }

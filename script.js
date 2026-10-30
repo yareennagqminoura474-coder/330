@@ -54792,7 +54792,10 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
     if (_0x5576d5.activeStoryId !== storyId || !story?.lastGeneration) return;
     const last = story.lastGeneration;
     document.getElementById("gr-last-response-content").value = last.raw || "";
-    document.getElementById("gr-last-response-info").textContent = (last.api === "secondary" ? "副 API" : "主 API") + " · " + (last.model || "") + "。内容保存在本机，查看不会重新请求。" + (last.error ? "\n上次未保存为章节：" + last.error : "");
+    const seconds = (n) => Number.isFinite(n) ? (n / 1000).toFixed(1) + "秒" : "未记录", stats = last.stats;
+    document.getElementById("gr-last-response-info").textContent = (last.api === "secondary" ? "副 API" : "主 API") + " · " + (last.model || "") + "。内容保存在本机，查看不会重新请求。" + (last.error ? "\n上次未保存为章节：" + last.error : "") +
+      (last.finishReason ? "\n接口结束原因：" + last.finishReason : "") + (stats ? "\n准备资料：" + seconds(stats.preparationMs) + "；请求到响应头：" + seconds(stats.headersMs) + "；首字等待：" + seconds(stats.firstTextMs) + "；接收正文：" + seconds(stats.receiveMs) + "；总耗时：" + seconds(stats.totalMs) + "。" + (Number.isFinite(stats.charactersPerSecond) ? "平均接收约" + stats.charactersPerSecond.toFixed(1) + "字/秒。" : "") : "") +
+      (last.transportError ? "\n接收提示：" + last.transportError : "") + (last.usage && (last.usage.inputTokens != null || last.usage.outputTokens != null) ? "\n接口报告用量：输入 " + (last.usage.inputTokens ?? "未提供") + "，输出 " + (last.usage.outputTokens ?? "未提供") + " tokens" + (last.usage.reasoningTokens != null ? "，其中思考 " + last.usage.reasoningTokens : "") + "。" : "");
     document.getElementById("gr-last-response-modal").classList.add("visible");
   });
   function _ephoneNovelResult(story) {
@@ -54800,7 +54803,7 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
     if (!bar) return;
     bar.hidden = !last;
     if (last) document.getElementById("gr-generation-note").textContent = last.status === "saved"
-      ? last.partial ? "返回可能未完，已保留实际正文，可继续续写。" : last.warnings?.length ? "已恢复正文并保存，可查看原始返回。" : "本次正文已保存。"
+      ? last.partial ? /MAX_TOKENS|LENGTH/i.test(last.finishReason || "") ? "接口因输出上限提前结束（" + last.finishReason + "），已保留实际正文。" : "返回未确认完整结束，已保留实际正文，可查看结束原因。" : last.warnings?.length ? "已恢复正文并保存，可查看原始返回。" : "本次正文已保存。"
       : "返回内容已保留，可查看或复制。";
   }
   const _0x5cc2fe = [
@@ -55022,6 +55025,7 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
   }
   async function _0x4b44e8(_0x352e0a = {}, _0x1219a8 = null) {
     document.getElementById("gr-generation-api").value = _0x352e0a.generationApi === "secondary" ? "secondary" : "primary";
+    document.getElementById("gr-stream-output").checked = _0x352e0a.streamOutput !== false;
     const _0x112bcc = _0x3ce505,
       _0x4f44b4 = document[_0x112bcc(0x1023)]("gr-author-select");
     _0x4f44b4["innerHTML"] = "";
@@ -55167,6 +55171,7 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
       macroWorldView: _0x90d6c5,
       referenceSpaceDatabase: window.db.spaceProfiles.db.name,
       generationApi: document.getElementById("gr-generation-api").value === "secondary" ? "secondary" : "primary",
+      streamOutput: document.getElementById("gr-stream-output").checked,
     };
     if (_0x5576d5["activeStoryId"])
       await _0x24f906["grStories"]["update"](_0x5576d5[_0x21b2af(0xf42)], {
@@ -55332,8 +55337,33 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
     if (status) {
       status.hidden = !_0x5576d5.isGenerating;
       if (_0x5576d5.isGenerating) document.getElementById("gr-generation-status-text").textContent =
-        (_0x5576d5.api === "secondary" ? "副 API" : "主 API") + " · " + (_0x5576d5.phase || "正在准备资料") + " · 已等待 " + Math.floor((Date.now() - (_0x5576d5.startedAt || Date.now())) / 1000) + " 秒";
+        (_0x5576d5.api === "secondary" ? "副 API" : "主 API") + " · " + (_0x5576d5.phase || "正在准备资料") + " · 已等待 " + Math.floor((Date.now() - (_0x5576d5.startedAt || Date.now())) / 1000) + " 秒" + (_0x5576d5.receivedCharacters ? " · 已收到约" + _0x5576d5.receivedCharacters + "字" : "");
     }
+    _ephoneSyncNovelPreview();
+  }
+  function _ephoneNovelPreviewText(raw) {
+    const opening = /<novel_content\b[^>]*>/i.exec(raw || "");
+    if (opening) {
+      const tail = raw.slice(opening.index + opening[0].length), end = /<\/?novel_(?:content|summary|title)\b/i.exec(tail);
+      return (end ? tail.slice(0, end.index) : tail).replace(/<\/?novel_[^>]*$/i, "");
+    }
+    try { return window.EPhoneNovelResponse.parse(raw).content; } catch { return ""; }
+  }
+  function _ephoneSyncNovelPreview() {
+    if (!_0x5576d5.previewActive || _0x5576d5.activeStoryId !== _0x5576d5.generatingStoryId || !document.getElementById("gr-reader-screen")?.classList.contains("active")) return;
+    const host = document.getElementById("gr-reader-content"), raw = _0x5576d5.previewRaw || "";
+    if (!host || !raw || _0x5576d5.previewRenderedRaw === raw && _0x5576d5.previewRenderedBusy === _0x5576d5.isGenerating && host.querySelector("#gr-live-preview")) return;
+    const content = _ephoneNovelPreviewText(raw); if (!content) return;
+    const follow = host.scrollHeight - host.scrollTop - host.clientHeight < 100;
+    let preview = host.querySelector("#gr-live-preview"); const created = !preview;
+    if (!preview) { preview = document.createElement("section"); preview.id = "gr-live-preview"; const title = document.createElement("h3"), body = document.createElement("div"); title.id = "gr-live-preview-title"; body.id = "gr-live-preview-content"; preview.append(title, body); host.append(preview); }
+    preview.querySelector("#gr-live-preview-title").textContent = _0x5576d5.isGenerating ? "本次正在生成的正文" : "已停止，收到的内容已保留";
+    preview.querySelector("#gr-live-preview-content").textContent = content;
+    _0x5576d5.receivedCharacters = content.replace(/\s/g, "").length;
+    _0x5576d5.previewRenderedRaw = raw;
+    _0x5576d5.previewRenderedBusy = _0x5576d5.isGenerating;
+    if (created) host.scrollTop += preview.getBoundingClientRect().top - host.getBoundingClientRect().top;
+    else if (follow) host.scrollTop = host.scrollHeight;
   }
   function _0x308e0e(_0x23d846) {
     const _0x2ca660 = _0x3ce505,
@@ -55371,10 +55401,12 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
     const settings = story.settings || {};
     if (settings.referenceSpaceDatabase && settings.referenceSpaceDatabase !== personaDb.name)
       throw new Error("这部作品引用的是另一个空间的人物。请回到原空间继续，或在作品设定中重新选择本空间的角色后保存。");
-    const [chats, npcs, relations, binding, aliases] = await Promise.all([
-      personaDb.chats.toArray(), personaDb.npcs.toArray(), personaDb.characterRelations.toArray(),
+    const [npcs, relations, binding, aliases] = await Promise.all([
+      personaDb.npcs.toArray(), personaDb.characterRelations.toArray(),
       personaDb.spaceProfiles.get("player"), personaDb.spaceProfiles.get("person-identity-aliases")
     ]);
+    const chats = await window.EPhoneNovelSources.loadChats(personaDb.chats, _0x5ea3c1.chats, settings.charIds, npcs,
+      { identity: window.ephonePlayerIdentity, groupContext: window.ephoneGroupContext });
     const player = !settings.userPersonaId && binding?.key
       ? window.ephonePlayerIdentity.choices(chats, npcs).find((p) => p.key === binding.key) : null;
     const context = window.EPhoneNovelContext.build({ selectedIds: settings.charIds, chats, npcs, relations, player,
@@ -55401,11 +55433,17 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
     _0x5576d5.controller = controller;
     _0x5576d5.startedAt = Date.now();
     _0x5576d5.phase = "正在准备资料";
+    _0x5576d5.generatingStoryId = _0x5576d5.activeStoryId;
+    _0x5576d5.previewRaw = "";
+    _0x5576d5.previewRenderedRaw = "";
+    _0x5576d5.previewActive = true;
+    _0x5576d5.receivedCharacters = 0;
+    document.getElementById("gr-live-preview")?.remove();
     const storyId = _0x5576d5.activeStoryId, stories = _0x24f906.grStories,
       personaDb = window.db.spaceProfiles.db,
       direction = document.getElementById("gr-direction-input")?.value.trim() || "",
       button = document.getElementById("gr-generate-btn"), label = document.getElementById("gr-gen-text");
-    let received = null, api = "primary", responseModel = "";
+    let received = null, api = "primary", responseModel = "", draftQueue = Promise.resolve(), lastDraftAt = 0, paintTimer = 0;
     const timer = setInterval(_ephoneSyncNovelControls, 1000);
     if (button) button.disabled = true;
     if (label) label.textContent = "创作中…";
@@ -55420,6 +55458,7 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
       else connection = _ephoneApiFor("novel");
       const { proxyUrl, apiKey, model } = connection;
       responseModel = model;
+      const useStream = story.settings?.streamOutput !== false;
       const author = await _0x24f906.grAuthors.get(story.authorId);
       if (!author) throw new Error("所选作者已不存在，请在作品设定重新选择文风。");
       const context = await _ephoneNovelSources(story, personaDb), originalChapters = story.chapters || [],
@@ -55440,34 +55479,54 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
       controller.signal.throwIfAborted();
       _0x5576d5.phase = "等待模型返回正文";
       _ephoneSyncNovelControls();
+      const requestStartedAt = Date.now(), preparationMs = requestStartedAt - _0x5576d5.startedAt;
       let response;
       if (proxyUrl.includes("generativelanguage.googleapis.com")) {
         const request = _0x20e281(model, apiKey, prompt, [{ role: "user", content: "请写出这一章完整正文。" }]);
-        response = await fetch(request.url, { ...request.data, signal: controller.signal });
+        const endpoint = new URL(request.url);
+        if (useStream) { endpoint.pathname = endpoint.pathname.replace(/:generateContent$/, ":streamGenerateContent"); endpoint.searchParams.set("alt", "sse"); }
+        response = await fetch(endpoint.href, { ...request.data, signal: controller.signal });
       } else {
         response = await _ephoneApiFetch(_ephoneBuildApiEndpoint(proxyUrl, "chat/completions"), {
-          method: "POST", signal: controller.signal, headers: { "Content-Type": "application/json", Authorization: "Bearer " + apiKey },
-          body: JSON.stringify({ model, messages: [{ role: "system", content: prompt }, { role: "user", content: "请写出这一章完整正文。" }], temperature: 0.9 })
+          method: "POST", signal: controller.signal, stream: useStream, headers: { "Content-Type": "application/json", Authorization: "Bearer " + apiKey },
+          body: JSON.stringify({ model, messages: [{ role: "system", content: prompt }, { role: "user", content: "请写出这一章完整正文。" }], temperature: 0.9, stream: useStream })
         });
       }
       if (!response.ok) throw new Error("API 请求失败：" + response.status + " - " + await response.text());
-      const wire = await response.text();
-      let raw = wire;
-      try {
-        const payload = JSON.parse(wire);
-        if (payload?.error) throw new Error("API 返回错误：" + String(payload.error.message || payload.error));
-        raw = getGeminiResponseText(payload);
-        if (!raw && (payload?.title || payload?.novel_title) && (payload?.content || payload?.body)) raw = JSON.stringify(payload);
-        if (typeof payload === "string") raw = payload;
-      } catch (error) { if (!(error instanceof SyntaxError)) throw error; }
-      received = { raw: typeof raw === "string" ? raw : "", status: "received", api, model, rewrite,
-        receivedAt: Date.now(), elapsedMs: Date.now() - _0x5576d5.startedAt };
+      const headersMs = Date.now() - requestStartedAt;
+      const output = await window.EPhoneNovelStream.read(response, { signal: controller.signal, extractText: window.ephoneChatResponse.extractText,
+        onProgress: (update) => {
+          _0x5576d5.phase = update.phase === "thinking" ? "接口正在处理，尚未收到正文" : update.phase === "writing" ? "正在接收正文" : "等待模型返回正文";
+          if (update.raw) {
+            _0x5576d5.previewRaw = update.raw;
+            const now = Date.now();
+            // Coalesce arrivals outside the decoder loop. Slow phone layout
+            // must never cause a full-page paint for every queued token.
+            if (!paintTimer) paintTimer = setTimeout(() => { paintTimer = 0; _ephoneSyncNovelControls(); }, 250);
+            if (now - lastDraftAt >= 3000) {
+              lastDraftAt = now;
+              const draft = { raw: update.raw, status: "received", api, model, rewrite, receivedAt: now, elapsedMs: now - _0x5576d5.startedAt };
+              draftQueue = draftQueue.catch(() => {}).then(async () => { if (await stories.get(storyId)) await stories.update(storyId, { lastGeneration: draft }); });
+            }
+          }
+        } });
+      _0x5576d5.previewRaw = output.raw;
+      clearTimeout(paintTimer); paintTimer = 0;
+      _ephoneSyncNovelControls();
+      await draftQueue.catch(() => {});
+      received = { raw: output.raw, status: "received", api, model, rewrite, finishReason: output.finishReason, usage: output.usage, transportError: output.error || "",
+        stats: { ...output.stats, preparationMs, headersMs, firstTextMs: output.stats.firstTextMs == null ? null : headersMs + output.stats.firstTextMs,
+          totalMs: Date.now() - _0x5576d5.startedAt }, receivedAt: Date.now(), elapsedMs: Date.now() - _0x5576d5.startedAt };
       // Keep the paid result before trying to interpret its chapter wrapper.
       if (await stories.get(storyId)) await stories.update(storyId, { lastGeneration: received });
       controller.signal.throwIfAborted();
       _0x5576d5.phase = "正在整理并保存正文";
       _ephoneSyncNovelControls();
       const result = window.EPhoneNovelResponse.parse(received.raw, "第" + (chapters.length + 1) + "章");
+      if (output.partial || /MAX_TOKENS|LENGTH/i.test(output.finishReason || "")) {
+        result.partial = true;
+        result.warnings = [...result.warnings, "接口未确认完整输出，已保留实际收到的全部正文；没有再次请求或自动补写。"];
+      }
       const chapter = { title: typeof result.title === "string" && result.title.trim() ? result.title : "第" + (chapters.length + 1) + "章",
         content: result.content, summary: typeof result.summary === "string" ? result.summary : "", prevSummary: previous?.summary || "这是故事的开始。", timestamp: Date.now(),
         ...(result.partial ? { generationPartial: true } : {}) };
@@ -55481,19 +55540,23 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
         fresh.settings = { ...fresh.settings, referenceSpaceDatabase: personaDb.name };
         fresh.lastUpdated = Date.now();
         fresh.lastGeneration = { ...received, status: "saved", warnings: result.warnings || [], partial: !!result.partial, format: result.format };
+        fresh.lastGeneration.stats.totalMs = Date.now() - _0x5576d5.startedAt;
         await stories.put(fresh);
       });
+      _0x5576d5.previewActive = false;
       if (_0x5576d5.activeStoryId === storyId && document.getElementById("gr-reader-screen")?.classList.contains("active")) {
         await _0x5dec3b(storyId, chapters.length);
         const input = document.getElementById("gr-direction-input"); if (input?.value.trim() === direction) input.value = "";
       }
     } catch (error) {
       const stopped = error.name === "AbortError" || controller.signal.aborted;
+      await draftQueue.catch(() => {});
       if (received && await stories.get(storyId)) await stories.update(storyId, { lastGeneration: { ...received, status: "error", error: stopped ? "已停止生成" : error.message } }).catch(() => {});
       if (!stopped) { console.error("绿江生成失败：", error); alert("小说生成未完成：" + error.message + (received ? "\n返回内容已保留，可点「查看上次返回」，不需要再次调用 API。" : "")); }
     }
     finally {
       clearInterval(timer);
+      clearTimeout(paintTimer);
       _0x5576d5.isGenerating = false;
       _0x5576d5.controller = null;
       for (const target of [button, document.getElementById("gr-generate-btn")]) if (target) target.disabled = false;
