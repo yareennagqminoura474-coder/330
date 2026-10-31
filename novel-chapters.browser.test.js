@@ -62,6 +62,7 @@ const { chromium } = require("playwright-core"), core = require("./novel-chapter
     assert.equal((await story()).chapters.at(-1).title, "这回让我把话说完。"); assert.equal((await story()).chapters.at(-1).wordCount, core.count(generated));
     await page.evaluate(() => window.closeChapterList()); await catalog();
     await page.locator(".gr-sidebar-item").first().click();
+    await until(() => page.locator("#gr-reader-content .gr-chapter-text").textContent().then(text => text.includes("EDITED_FIRST_BODY_ONLY")), "selected first chapter not rendered");
     await page.locator("#gr-reader-content textarea").fill("已更新的第一章接续摘要"); await page.locator("#gr-reader-content .save-summary-btn").click();
     await until(async () => (await story()).chapters[0].summaryStale === false, "inline summary save did not validate the edited chapter's checkpoint");
     assert.equal((await story()).chapters[1].prevSummary, "已更新的第一章接续摘要");

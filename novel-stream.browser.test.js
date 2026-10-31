@@ -95,6 +95,13 @@ const { chromium } = require("playwright-core");
   const browser = await chromium.launch({ executablePath: "C:/Program Files/Google/Chrome/Application/chrome.exe", headless: true });
   try {
     const page = await browser.newPage({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true, serviceWorkers: "block" });
+    await page.addInitScript(() => {
+      window.__novelWakeLocks = [];
+      Object.defineProperty(navigator, "wakeLock", { value: { request: async () => {
+        const lock = { released: false, release: async () => { lock.released = true; } };
+        window.__novelWakeLocks.push(lock); return lock;
+      } } });
+    });
     page.on("pageerror", (e) => errors.push(e.message)); page.on("dialog", (d) => { dialogs.push(d.message()); return d.accept(); });
     await page.exposeBinding("__novelTestFetch", ({ page }, input) => new Promise((resolve, reject) => {
       let sent = Promise.resolve(), hasHeaders = false;
@@ -189,6 +196,7 @@ const { chromium } = require("playwright-core");
     assert.equal(await page.locator("#gr-stream-output").isChecked(), true); assert.equal(await page.locator("#gr-output-length").inputValue(), "5000");
     await page.locator("#gr-cancel-settings-btn").click();
     const first = await start(); assert.equal(first.primary, true); assert.equal(first.streamed, true);
+    assert.equal(await page.evaluate(() => window.__novelWakeLocks.some(lock => !lock.released)), true, "generation requests a screen wake lock when supported");
     await preview(first); assert.equal((await story()).chapters.length, 0, "preview is not prematurely committed as a chapter");
     const callsBeforeQuiet = calls.length;
     await page.evaluate(() => { window.streamTestRealNow = Date.now; Date.now = () => window.streamTestRealNow() + 11000; });
@@ -202,10 +210,13 @@ const { chromium } = require("playwright-core");
     // cleanup; this does not simulate a real phone OS freezing its renderer.
     await page.evaluate(() => { document.dispatchEvent(new Event("freeze")); window.dispatchEvent(new Event("offline")); });
     await page.screenshot({ path: path.join(require("node:os").tmpdir(), "ephone-novel-stream-mobile.png") });
-    first.finish("STOP", true); await settled();
+    first.finish("STOP", true);
+    await page.waitForTimeout(100);
+    assert.equal(await page.locator("#gr-generate-btn").isDisabled(), true, "a protocol marker cannot end the request before HTTP EOF");
+    first.endPartial(); await settled();
+    assert.equal(await page.evaluate(() => window.__novelWakeLocks.every(lock => lock.released)), true, "completion releases screen wake locks");
     await page.evaluate(() => { Date.now = window.streamTestRealNow; });
-    assert.equal(first.ended, false, "an explicit SSE end marker must finish the UI without waiting for the server to close HTTP");
-    first.endPartial();
+    assert.equal(first.ended, true, "the entire paid HTTP response is consumed without cancelling it");
     let saved = await story(); assert.equal(saved.chapters[0].content, first.expected.content); assert.ok(saved.chapters[0].content.length > 10000);
     assert.equal(saved.lastGeneration.raw, first.raw); assert.equal(saved.lastGeneration.finishReason.toUpperCase(), "STOP");
     assert.ok(JSON.stringify(saved.lastGeneration.usage).includes("10354"), "retain provider output usage for comparison");
@@ -233,7 +244,7 @@ const { chromium } = require("playwright-core");
     const repeated = [], beforeRepeated = calls.length;
     for (let i = 0; i < 8; i++) {
       const round = await start(i % 2 === 1); repeated.push(round);
-      round.start(); round.finish("STOP", true); await settled();
+      round.start(); round.finish("STOP"); await settled();
       assert.equal((await story()).chapters.at(-1).content, round.expected.content, "repeated generation/rewrite preserves the complete paid body");
       await until(() => repeated.slice(0, -1).every(call => call.res.destroyed), "completed transports accumulated between generations");
       assert.ok(await page.evaluate(() => window.__novelTestChannels.size <= 1), "only the latest completed transport may remain briefly open");
@@ -264,8 +275,8 @@ const { chromium } = require("playwright-core");
     await page.evaluate(async () => window.db.apiConfig.update("main", { proxyUrl: "https://generativelanguage.googleapis.com/v1beta/models", apiKey: "fake-native-primary", model: "stream-native-model" }));
     await ready(); await open(); await page.locator('#gr-reader-screen [title="设定"]').click(); await page.waitForSelector("#gr-settings-modal.visible");
     await page.locator("#gr-generation-api").selectOption("primary"); await page.locator("#gr-save-story-btn").click();
-    const native = await start(); assert.equal(native.native, true); assert.equal(native.streamed, true); await preview(native); native.finish("STOP", true); await settled();
-    assert.equal(native.ended, false, "native finishReason completes without an extra wait for connection closure"); native.endPartial();
+    const native = await start(); assert.equal(native.native, true); assert.equal(native.streamed, true); await preview(native); native.finish("STOP"); await settled();
+    assert.equal(native.ended, true, "native responses are consumed to natural EOF too");
     assert.equal((await story()).chapters.at(-1).content, native.expected.content);
     const limited = await start(); await preview(limited); limited.limit("MAX_TOKENS"); await settled();
     saved = await story(); assert.equal(saved.lastGeneration.finishReason, "MAX_TOKENS"); assert.equal(saved.lastGeneration.partial, true);

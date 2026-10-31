@@ -154,7 +154,7 @@
     }
     return null;
   }
-  async function read(response, { signal, onProgress, onActivity, extractText } = {}) {
+  async function read(response, { signal, onProgress, onActivity, extractText, waitForEOF = false } = {}) {
     releaseCompleted();
     const started = Date.now(), usage = { inputTokens: null, outputTokens: null, reasoningTokens: null, cachedInputTokens: null };
     const stats = { firstTextMs: null, firstByteMs: null, receiveMs: 0, visibleChars: 0, eventCount: 0, bytesReceived: 0, malformedEvents: 0, reasoningSeen: false, streamed: false,
@@ -298,7 +298,7 @@
       if (!dataLines.length) { eventName = ""; return; }
       const data = dataLines.join("\n"), name = eventName;
       dataLines = []; eventName = "";
-      if (data.trim() === "[DONE]") { ended = true; complete = true; stats.completionSignal = "done_marker"; return; }
+      if (data.trim() === "[DONE]") { ended = !waitForEOF; complete = true; stats.completionSignal = "done_marker"; return; }
       let packets;
       try { packets = [{ value: JSON.parse(data) }]; }
       catch {
@@ -311,7 +311,7 @@
         }
       }
       for (const packet of packets) {
-        if (packet.done) { ended = true; complete = true; stats.completionSignal = "done_marker"; break; }
+        if (packet.done) { ended = !waitForEOF; complete = true; stats.completionSignal = "done_marker"; if (ended) break; else continue; }
         if (packet.unparsed) { broken = true; stats.malformedEvents++; unparsedEvents.push(packet.unparsed); continue; }
         event(packet.value, name);
       }
@@ -380,15 +380,15 @@
       if (reader) {
         while (!ended) {
           const chunk = await readChunk(reader, signal);
-          if (chunk.done) { stats.completionSignal ||= complete ? "eof_after_finish" : "eof_without_finish"; break; }
+          if (chunk.done) { stats.httpEOF = true; stats.completionSignal ||= complete ? "eof_after_finish" : "eof_without_finish"; break; }
           activity(chunk.value.byteLength);
           const decoded = decoder.decode(chunk.value, { stream: true });
-          if (mode === "sse") { feed(decoded); if (terminal) ended = true; }
+          if (mode === "sse") { feed(decoded); if (terminal && !waitForEOF) ended = true; }
           else {
             wire += decoded;
             if (/^\s*(?:data:|event:|:|id:|retry:)/.test(wire)) { mode = "sse"; stats.streamed = true; feed(wire.replace(/^\uFEFF/, "")); wire = ""; }
-            else if (completeJson()) { ended = true; stats.completionSignal = "complete_json"; }
-            if (terminal) ended = true;
+            else if (!waitForEOF && completeJson()) { ended = true; stats.completionSignal = "complete_json"; }
+            if (terminal && !waitForEOF) ended = true;
           }
         }
         const tail = decoder.decode();
@@ -447,7 +447,12 @@
       broken = true; failure = aborted ? "生成已停止" : error.message || String(error);
       if (!raw && !aborted) { error.partialRaw = raw; error.unparsedEvents = unparsedEvents; error.stats = snapshot(); throw error; }
     } finally {
-      if (reader && ended && !aborted) {
+      if (reader && stats.httpEOF) {
+        // Novel requests consume the entire HTTP body, even when a compatible
+        // provider sends an early protocol marker. Never cancel a live paid
+        // response on a marker, inactivity interval or output length.
+        try { reader.releaseLock(); } catch {}
+      } else if (reader && ended && !aborted) {
         drainCompleted(reader, signal);
       } else if (reader) {
         if (aborted || broken) { stats.readerCancelled = true; Promise.resolve(reader.cancel()).catch(() => {}); }

@@ -36,5 +36,17 @@
       errorCallback: () => {}
     });
   }
-  return Object.freeze({ displayText, render });
+  const previews = new WeakMap();
+  function renderStream(element, value) {
+    if (!element) return;
+    value = String(value ?? "");
+    const previous = previews.get(element), hasMath = /(?<!\\)\$|\\(?:\(|\[|begin\{)/u.test(value);
+    if (!hasMath && previous?.node?.parentNode === element && value.startsWith(previous.source)) {
+      previous.node.appendData(value.slice(previous.source.length)); previous.source = value;
+    } else {
+      render(element, value);
+      previews.set(element, { source: value, node: !hasMath && element.childNodes.length === 1 && element.firstChild.nodeType === 3 ? element.firstChild : null });
+    }
+  }
+  return Object.freeze({ displayText, render, renderStream });
 });

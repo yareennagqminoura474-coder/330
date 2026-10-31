@@ -14,6 +14,20 @@ function controlled(type = "text/event-stream") {
 }
 const delta = (text) => ({ choices: [{ index: 0, delta: { content: text }, finish_reason: null }] });
 (async () => {
+  // Novel mode: early terminators are advisory. Even a long delivery pause and
+  // cleanup of an unrelated completed request cannot abort this paid response.
+  for (const marker of [done, event({ candidates: [{ content: { parts: [] }, finishReason: "STOP" }] }), event({ type: "message_stop" }), event({ type: "response.completed" })]) {
+    const active = controlled(); let stopped = false;
+    const task = core.read(active.response, { waitForEOF: true }).then(value => { stopped = true; return value; });
+    active.push(event(delta("开始")) + marker);
+    await new Promise(resolve => setTimeout(resolve, 0));
+    assert.equal(stopped, false); core.releaseCompleted();
+    active.push(event(delta("后续仍然属于同一次付费请求")) + event({ choices: [], usage: { completion_tokens: 17736 } }) + done);
+    active.close();
+    const result = await task;
+    assert.equal(result.raw, "开始后续仍然属于同一次付费请求");
+    assert.equal(result.usage.outputTokens, 17736); assert.equal(result.stats.httpEOF, true); assert.equal(result.stats.readerCancelled, false);
+  }
   const sample = '中文、emoji🙂和引号"，{括号}，\n正文不会在缓冲边界丢失。';
   const progress = [], stream = controlled(); let settled = false, first;
   const firstReceived = new Promise((resolve) => first = resolve);

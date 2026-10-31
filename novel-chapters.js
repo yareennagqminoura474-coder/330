@@ -25,6 +25,9 @@
     }
     for (const line of sentences(body)) add(line, false, body.indexOf(line));
     const suggested = clean(text(proposed).replace(/^第[一二三四五六七八九十百千零〇\d]+章\s*[：:、.\-]?\s*/u, ""));
+    // Keep a meaningful verbatim clause chosen with the model's full chapter
+    // context, even when it is only part of a longer quoted sentence.
+    if (count(suggested) >= 3 && count(suggested) <= 64 && /\p{L}/u.test(suggested) && !/[<>\n\r]|\\[a-z]+/iu.test(suggested) && body.includes(suggested)) return suggested;
     const exact = candidates.find(item => key(item.value) === key(suggested));
     if (exact) return body.includes(suggested) ? suggested : exact.value;
     candidates.sort((a, b) => Number(b.dialogue) - Number(a.dialogue) || b.score - a.score);
@@ -53,7 +56,9 @@
     const chapter = { ...old, title: changes.title === undefined ? old.title : text(changes.title).trim() || chooseTitle(content), content, summary,
       summaryStale: Boolean(summary) && !(changedSummary || changes.summaryConfirmed) && (changedBody || Boolean(old.summaryStale)), editedAt: now };
     const chapters = story.chapters.map((item, at) => at === index ? chapter : item);
-    return { ...story, chapters: relink(chapters), lastUpdated: now,
+    const readingPosition = story.readingPosition && changedBody && story.readingPosition.chapterIndex === index
+      ? { ...story.readingPosition, chapterSignature: null, updatedAt: Math.max(now, (story.readingPosition.updatedAt || 0) + 1) } : story.readingPosition;
+    return { ...story, ...(story.readingPosition ? { readingPosition } : {}), chapters: relink(chapters), lastUpdated: now,
       lastGeneration: linkedIndex(story) === index && story.lastGeneration?.status === "saved" ? { ...story.lastGeneration, chapterIndex: index, chapterEditedAt: now } : story.lastGeneration };
   }
   function remove(story, index, now = Date.now()) {
@@ -62,7 +67,15 @@
     let lastGeneration = story.lastGeneration;
     if (linked === index && lastGeneration?.status === "saved") lastGeneration = null;
     else if (linked > index) lastGeneration = { ...lastGeneration, chapterIndex: linked - 1 };
-    return { ...story, chapters: relink(chapters), lastGeneration, lastUpdated: now };
+    let readingPosition = story.readingPosition;
+    if (readingPosition) {
+      const at = readingPosition.chapterIndex;
+      readingPosition = chapters.length ? { ...readingPosition,
+        chapterIndex: Math.min(at > index ? at - 1 : at, chapters.length - 1),
+        ...(at === index ? { chapterSignature: null, scrollTop: 0, ratio: 0, scrollHeight: 0, bodyOffset: null, bodyHeight: null } : {}),
+        updatedAt: Math.max(now, (readingPosition.updatedAt || 0) + 1) } : null;
+    }
+    return { ...story, ...(story.readingPosition ? { readingPosition } : {}), chapters: relink(chapters), lastGeneration, lastUpdated: now };
   }
   return Object.freeze({ count, chooseTitle, edit, remove });
 });

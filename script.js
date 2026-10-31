@@ -54786,7 +54786,26 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
       _0x3d1862());
   }
   let _0x5576d5 = { activeStoryId: null, isGenerating: ![] };
-  let _ephoneNovelChapterEditor = null, _ephoneNovelDeleteTarget = null, _ephoneNovelReaderChapter = null, _ephoneNovelChapterMutation = null;
+  let _ephoneNovelChapterEditor = null, _ephoneNovelDeleteTarget = null, _ephoneNovelReaderChapter = null, _ephoneNovelChapterMutation = null, _ephoneNovelReaderRequest = 0;
+  const _ephoneNovelReading = window.EPhoneNovelReading.create({
+    element: document.getElementById("gr-reader-content"),
+    visible: () => document.getElementById("gr-reader-screen").classList.contains("active"),
+    blocked: id => _0x5576d5.isGenerating && _0x5576d5.generatingStoryId === id,
+    scope: "green-river:" + location.pathname,
+    save: async (id, position) => {
+      const table = _0x24f906.grStories;
+      await table.db.transaction("rw", table, async () => {
+        const story = await table.get(id);
+        if (!story || (story.readingPosition?.updatedAt || 0) > position.updatedAt) return;
+        const index = story.chapters.findIndex(chapter => window.EPhoneNovelReading.signature(chapter) === position.chapterSignature);
+        if (index < 0) return;
+        await table.update(id, { readingPosition: { ...position, chapterIndex: index } });
+      });
+    }
+  });
+  new MutationObserver(() => {
+    if (!document.getElementById("gr-reader-screen").classList.contains("active")) void _ephoneNovelReading.flush(false);
+  }).observe(document.getElementById("gr-reader-screen"), { attributes: true, attributeFilter: ["class"] });
   const _ephoneChapterBusy = id => _0x5576d5.isGenerating && _0x5576d5.generatingStoryId === id || _ephoneNovelChapterMutation !== null && _ephoneNovelChapterMutation === id;
   async function _ephoneChapterTarget(index, expected) {
     const storyId = _0x5576d5.activeStoryId, story = await _0x24f906.grStories.get(storyId);
@@ -54827,13 +54846,16 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
     if (_ephoneChapterBusy(state.storyId)) throw new Error("本作品正在生成或保存，请稍后再试。");
     _ephoneNovelChapterMutation = state.storyId; _ephoneSyncNovelControls();
     try {
+      await _ephoneNovelReading.flush(); _ephoneNovelReading.pause(state.storyId);
       const table = _0x24f906.grStories;
-      return await table.db.transaction("rw", table, async () => {
+      const updated = await table.db.transaction("rw", table, async () => {
         const fresh = await table.get(state.storyId);
         if (!fresh || JSON.stringify(fresh.chapters) !== state.snapshot) throw new Error("章节已在其他位置改变，本次未覆盖；请关闭后重新打开编辑。");
         const updated = transform(fresh); await table.put(updated); return updated;
       });
-    } finally { _ephoneNovelChapterMutation = null; _ephoneSyncNovelControls(); }
+      _ephoneNovelReading.adopt(updated.id, updated.readingPosition);
+      return updated;
+    } finally { _ephoneNovelReading.resume(); _ephoneNovelChapterMutation = null; _ephoneSyncNovelControls(); }
   }
   document.getElementById("gr-edit-chapter-btn")?.addEventListener("click", () => { const state = _ephoneNovelReaderChapter; if (state) _ephoneOpenChapterEditor(state.index, state.chapter); });
   document.getElementById("gr-delete-chapter-btn")?.addEventListener("click", () => { const state = _ephoneNovelReaderChapter; if (state) _ephoneOpenChapterDelete(state.index, state.chapter); });
@@ -54850,7 +54872,7 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
     try {
       const updated = await _ephoneCommitChapter(state, fresh => window.EPhoneNovelChapters.edit(fresh, state.index, changes));
       document.getElementById("gr-chapter-edit-modal").classList.remove("visible"); _ephoneNovelChapterEditor = null;
-      if (_0x5576d5.activeStoryId === state.storyId && document.getElementById("gr-reader-screen").classList.contains("active")) { await _0x5dec3b(state.storyId, state.index); _ephoneRenderChapterList(updated); }
+      if (_0x5576d5.activeStoryId === state.storyId && document.getElementById("gr-reader-screen").classList.contains("active")) { await _0x5dec3b(state.storyId, state.index, { preservePosition: true }); _ephoneRenderChapterList(updated); }
     } catch (error) { document.getElementById("gr-edit-chapter-status").textContent = error.message; }
     finally { button.disabled = false; }
   });
@@ -54864,7 +54886,7 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
       document.getElementById("gr-chapter-delete-modal").classList.remove("visible");
       document.getElementById("gr-chapter-edit-modal").classList.remove("visible"); _ephoneNovelDeleteTarget = _ephoneNovelChapterEditor = null;
       if (_0x5576d5.activeStoryId === state.storyId && document.getElementById("gr-reader-screen").classList.contains("active")) {
-        await _0x5dec3b(state.storyId, Math.max(0, Math.min(current > state.index ? current - 1 : current, updated.chapters.length - 1)));
+        await _0x5dec3b(state.storyId, Math.max(0, Math.min(current > state.index ? current - 1 : current, updated.chapters.length - 1)), { preservePosition: true });
         _ephoneRenderChapterList(updated);
       }
     } catch (error) { document.getElementById("gr-delete-chapter-status").textContent = error.message; }
@@ -54907,6 +54929,7 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
       (last.lifecycle ? "\n本次页面状态：切到后台 " + last.lifecycle.hiddenCount + " 次，累计 " + seconds(last.lifecycle.backgroundMs) + "；系统冻结通知 " + last.lifecycle.freezeCount + " 次；离线通知 " + last.lifecycle.offlineCount + " 次。" : "") +
       (stats?.recoveredChars ? "\n断开时额外保住已到达的 " + stats.recoveredChars + " 字（" + stats.recoveredEvents + " 个数据片段），未重新请求。" : "") +
       (stats?.completionSignal ? "\n接收结束依据：" + ({ done_marker: "收到完整结束标记 [DONE]", eof_after_finish: "收到模型结束信息后连接自然结束", eof_without_finish: "连接结束，但未收到模型结束信息", complete_json: "收到完整 JSON 返回", message_stop: "收到 message_stop", "response.completed": "收到 response.completed", "response.incomplete": "接口报告未完整生成", aborted: "请求被取消", read_error: "读取连接时出错", provider_error: "接口明确返回错误，生成未完成" }[stats.completionSignal] || stats.completionSignal) + "；取消信号：" + (stats.abortSignalReceived ? "已触发" : "未触发") + "。" : "") +
+      (last.http?.reception ? "\n连接实际结束：" + ({ http_eof: "HTTP 自然结束", network_error: "浏览器报告网络错误", aborted: "请求被取消", cancelled: "接收端关闭" }[last.http.reception.end] || last.http.reception.end) + "；小手机主动取消：" + (last.http.reception.cancelledBy || "没有") + "。" : "") +
       (stats?.bytesReceived != null ? "\n已接收 " + stats.bytesReceived + " 字节、" + stats.eventCount + " 个数据包；其中 " + (stats.malformedEvents || 0) + " 个格式异常。" : "") + (last.transportError ? "\n接收提示：" + last.transportError : "") + (last.usage && (last.usage.inputTokens != null || last.usage.outputTokens != null) ? "\n接口报告用量：输入 " + (last.usage.inputTokens ?? "未提供") + "，输出 " + (last.usage.outputTokens ?? "未提供") + " tokens" + (last.usage.reasoningTokens != null ? "，其中思考 " + last.usage.reasoningTokens : "") + "。" : "");
     document.getElementById("gr-last-response-modal").classList.add("visible");
   });
@@ -55013,7 +55036,9 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
           confirm(
             _0x51443e(0x178b) + _0x53c03a[_0x51443e(0xe6d)] + _0x51443e(0xf7),
           ) &&
-            (await _0x24f906["grStories"][_0x51443e(0xd00)](_0x53c03a["id"]),
+            (await _ephoneNovelReading.flush(),
+            _ephoneNovelReading.forget(_0x53c03a["id"]),
+            await _0x24f906["grStories"][_0x51443e(0xd00)](_0x53c03a["id"]),
             _0x205c38());
         }),
         _0x4c579b[_0x1ee615(0x3fe)](_0x58fa1d));
@@ -55318,14 +55343,21 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
         0x0,
         _0x5241cd[_0x21b2af(0x1bbd)][_0x21b2af(0xa5d)] - 0x1,
       );
-    _0x5dec3b(_0x5576d5[_0x21b2af(0xf42)], _0x41cb78);
+    _0x5dec3b(_0x5576d5[_0x21b2af(0xf42)], Math.min(_0x5576d5.currentChapterIndex || 0, _0x41cb78), { preservePosition: true });
   }
-  async function _0x5dec3b(_0x154236, _0x29d7a8 = 0x0) {
+  async function _0x5dec3b(_0x154236, _0x29d7a8, options = {}) {
+    const request = ++_ephoneNovelReaderRequest;
+    await _ephoneNovelReading.flush();
+    if (request !== _ephoneNovelReaderRequest) return;
+    _ephoneNovelReading.unmount();
     const _0x46aac4 = _0x3ce505;
     _0x5576d5[_0x46aac4(0xf42)] = _0x154236;
     const _0x32ce26 =
       await _0x24f906[_0x46aac4(0xdca)][_0x46aac4(0x7eb)](_0x154236);
-    if (!_0x32ce26) return;
+    if (!_0x32ce26 || request !== _ephoneNovelReaderRequest) return;
+    const resume = _0x29d7a8 === undefined || options.preservePosition;
+    if (_0x29d7a8 === undefined) _0x29d7a8 = window.EPhoneNovelReading.resolve(_0x32ce26.chapters,
+      _ephoneNovelReading.latest(_0x154236, _0x32ce26.readingPosition)).chapterIndex;
     _ephoneNovelResult(_0x32ce26);
     const _0x5d3484 = _0x32ce26[_0x46aac4(0x1bbd)][_0x46aac4(0xa5d)];
     if (_0x5d3484 > 0x0 && _0x29d7a8 >= _0x5d3484) _0x29d7a8 = _0x5d3484 - 0x1;
@@ -55432,7 +55464,7 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
       _0x2ba2d0(),
       window.EPhoneNovelPresentation.render(_0x3a1dd1.querySelector(".gr-chapter-text")),
       _0x275208("gr-reader-screen"),
-      (_0x3a1dd1["scrollTop"] = 0x0));
+      _ephoneNovelReading.mount(_0x32ce26, _0x29d7a8, resume));
   }
   function _0x2ba2d0() {
     const _0x183fc2 = _0x3ce505,
@@ -55478,7 +55510,7 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
     let preview = host.querySelector("#gr-live-preview"); const created = !preview;
     if (!preview) { preview = document.createElement("section"); preview.id = "gr-live-preview"; const title = document.createElement("h3"), body = document.createElement("div"); title.id = "gr-live-preview-title"; body.id = "gr-live-preview-content"; preview.append(title, body); host.append(preview); }
     preview.querySelector("#gr-live-preview-title").textContent = _0x5576d5.isGenerating ? "本次正在生成的正文" : "已停止，收到的内容已保留";
-    window.EPhoneNovelPresentation.render(preview.querySelector("#gr-live-preview-content"), content);
+    window.EPhoneNovelPresentation.renderStream(preview.querySelector("#gr-live-preview-content"), content);
     _0x5576d5.receivedCharacters = content.replace(/\s/g, "").length;
     _0x5576d5.previewRenderedRaw = raw;
     _0x5576d5.previewRenderedBusy = _0x5576d5.isGenerating;
@@ -55542,6 +55574,7 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
   async function _0x10ebb8(rewrite = false, rewriteDirection) {
     if (_0x5576d5.isGenerating) return;
     if (_ephoneNovelChapterMutation !== null && _ephoneNovelChapterMutation === _0x5576d5.activeStoryId) return;
+    void _ephoneNovelReading.flush();
     _0x5576d5.isGenerating = true;
     const controller = new AbortController();
     _0x5576d5.controller = controller;
@@ -55563,10 +55596,19 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
       requestStartedAt = null, preparationMs = null, headersMs = null, httpDetails = null;
     const timer = setInterval(_ephoneSyncNovelControls, 1000);
     const lifecycle = { hiddenCount: 0, freezeCount: 0, offlineCount: 0, backgroundMs: 0 };
-    let hiddenSince = document.hidden ? Date.now() : null;
+    let hiddenSince = document.hidden ? Date.now() : null, wakeLock = null, wakeRequest = null, generationFinished = false;
+    const keepScreenAwake = () => {
+      if (generationFinished || document.hidden || wakeLock && !wakeLock.released || wakeRequest || !navigator.wakeLock) return;
+      wakeRequest = navigator.wakeLock.request("screen").then(lock => {
+        if (generationFinished) return lock.release();
+        wakeLock = lock;
+      }).catch(() => {}).finally(() => { wakeRequest = null; });
+    };
+    keepScreenAwake();
     const trackVisibility = () => {
       if (document.hidden && hiddenSince === null) { hiddenSince = Date.now(); lifecycle.hiddenCount++; }
       else if (!document.hidden && hiddenSince !== null) { lifecycle.backgroundMs += Date.now() - hiddenSince; hiddenSince = null; }
+      if (!document.hidden) keepScreenAwake();
     };
     const trackFreeze = () => { lifecycle.freezeCount++; }, trackOffline = () => { lifecycle.offlineCount++; };
     const lifecycleSnapshot = () => ({ ...lifecycle, backgroundMs: lifecycle.backgroundMs + (hiddenSince === null ? 0 : Date.now() - hiddenSince), hiddenAtEnd: document.hidden });
@@ -55606,7 +55648,7 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
         "\n\n# 上一章完整正文（承接结尾，不重复抄写）\n" + (previous?.content || "（开篇，无上一章）") +
         "\n\n" + continuity.text +
         "\n\n# 本次剧情方向\n" + (direction || "按当前人物动机和未完成情节自然展开。") +
-        '\n\n# 章节标题\n写完正文后，从正文原文中选一句角色实际说过的、有本章意味的话当标题；没有合适对话时选一句关键原文。标题必须能在正文中找到，不另造抽象意象、华丽四字词组或概括性题目，不加第几章编号，不拼接不同句子，不改写原句。\n# 输出格式\n分别使用以下标签输出，不使用JSON字符串，也不需要对正文引号或换行转义：\n<novel_title>从本章正文摘录的一句话</novel_title>\n<novel_content>完整小说正文，保留自然换行</novel_content>\n<novel_summary>给下一章用的精炼接续记录：本章真正新增或改变的事实；初次出现/再次出现的相关人物及彼此已成立的认识和称呼（不能把提及某人当成见过面）；结尾实际的时间、地点、在场者、正在进行的动作和未消退的情绪；已完成与仍待履行的约定、未解决的问题，以及各人新知道或仍不知道的重要信息。只记相关变化和下章必需线索，不堆人设、不复述全章、不把计划写成已完成；如某个特征或互动本章已充分写过，可简记为已用过、下章无需重复展示。</novel_summary>\n正文不可省略，不输出详细思维链。';
+        '\n\n# 章节标题\n写完正文后，围绕本章最重要的冲突、转折、秘密或关系变化，从正文原文中选一句有代表性、有张力、让读者想继续看的角色原话当标题；没有合适对话时选一句关键原文。优先选择有潜台词或悬念、能够代表这一章独特进展的句子，避免普通寒暄、随手挑第一句话、重复人设特点或沿用前章标题；平静章节可以抓住关键情绪变化，不强行制造冲突。吸引力来自真实内容，不夸大、不编造悬念。标题必须能在正文中找到，不另造抽象意象、华丽四字词组或概括性题目，不加第几章编号，不拼接不同句子，不改写原句。\n# 输出格式\n分别使用以下标签输出，不使用JSON字符串，也不需要对正文引号或换行转义：\n<novel_title>从本章正文摘录的一句话</novel_title>\n<novel_content>完整小说正文，保留自然换行</novel_content>\n<novel_summary>给下一章用的精炼接续记录：本章真正新增或改变的事实；初次出现/再次出现的相关人物及彼此已成立的认识和称呼（不能把提及某人当成见过面）；结尾实际的时间、地点、在场者、正在进行的动作和未消退的情绪；已完成与仍待履行的约定、未解决的问题，以及各人新知道或仍不知道的重要信息。只记相关变化和下章必需线索，不堆人设、不复述全章、不把计划写成已完成；如某个特征或互动本章已充分写过，可简记为已用过、下章无需重复展示。</novel_summary>\n正文不可省略，不输出详细思维链。';
       controller.signal.throwIfAborted();
       _0x5576d5.phase = "等待模型返回正文";
       _ephoneSyncNovelControls();
@@ -55627,10 +55669,12 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
         });
       }
       headersMs = Date.now() - requestStartedAt;
-      httpDetails = { status: response.status, transport: response.ephoneTransport || "browser fetch", contentType: response.headers?.get("content-type") || "",
+      httpDetails = { status: response.status, transport: response.ephoneTransport || "browser fetch", reception: response.ephoneReceiveDiagnostics || null, contentType: response.headers?.get("content-type") || "",
         requestId: response.headers?.get("x-request-id") || response.headers?.get("request-id") || response.headers?.get("x-oneapi-request-id") || "" };
       if (!response.ok) throw new Error("API 请求失败：" + response.status + " - " + await response.text());
-      const output = await window.EPhoneNovelStream.read(response, { signal: controller.signal, extractText: window.ephoneChatResponse.extractText,
+      // Consume this one HTTP response through natural EOF. Compatible APIs
+      // can send protocol end markers before their final prose/usage arrives.
+      const output = await window.EPhoneNovelStream.read(response, { signal: controller.signal, waitForEOF: true, extractText: window.ephoneChatResponse.extractText,
         onActivity: () => { _0x5576d5.lastDataAt = Date.now(); },
         onProgress: (update) => {
           _0x5576d5.phase = update.phase === "thinking" ? "接口正在处理，尚未收到正文" : update.phase === "writing" ? "正在接收正文" : "等待模型返回正文";
@@ -55652,6 +55696,7 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
             }
           }
         } });
+      if (response.ephoneReceiveDiagnostics) httpDetails.reception = { ...response.ephoneReceiveDiagnostics };
       _0x5576d5.previewRaw = output.raw;
       clearTimeout(paintTimer); paintTimer = 0;
       _ephoneSyncNovelControls();
@@ -55702,6 +55747,9 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
     finally {
       clearInterval(timer);
       clearTimeout(paintTimer);
+      generationFinished = true;
+      if (wakeLock && !wakeLock.released) void wakeLock.release().catch(() => {});
+      wakeLock = null;
       document.removeEventListener("visibilitychange", trackVisibility);
       document.removeEventListener("freeze", trackFreeze);
       window.removeEventListener("offline", trackOffline);

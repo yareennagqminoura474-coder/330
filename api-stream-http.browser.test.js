@@ -10,13 +10,14 @@ const { chromium } = require("playwright-core");
     if (["/api-stream-http.js", "/novel-stream.js"].includes(req.url)) { res.setHeader("Content-Type", "application/javascript"); return res.end(fs.readFileSync("." + req.url)); }
     if (req.url === "/favicon.ico") return res.writeHead(204).end();
     let body = ""; for await (const part of req) body += part;
-    calls.push({ url: req.url, body });
+    const call = { url: req.url, body, prematureClose: false }; calls.push(call);
+    res.on("close", () => { call.prematureClose = !res.writableEnded; });
     if (req.url === "/http-error") return res.writeHead(429, { "Content-Type": "application/json" }).end('{"error":{"message":"test rate limit"}}');
     res.writeHead(200, { "Content-Type": req.url === "/json-broken" ? "application/json" : "text/event-stream", "Cache-Control": "no-cache", "X-Content-Type-Options": "nosniff", "X-Request-Id": "isolated-http-test" });
     res.flushHeaders();
     if (req.url === "/abort") return;
     if (req.url === "/json-broken") res.write('{"choices":[{"index":0,"message":{"content":' + JSON.stringify(prefix + tail).slice(0, -1));
-    else res.write(packet(prefix));
+    else res.write(packet(prefix) + (req.url === "/early-marker" ? "data: [DONE]\n\n" : ""));
     setTimeout(() => {
       if (res.destroyed) return;
       if (req.url === "/sse-broken") {
@@ -25,7 +26,7 @@ const { chromium } = require("playwright-core");
       } else if (req.url === "/json-broken") res.destroy();
       else if (req.url === "/upstream-error") res.end('data: {"error":{"message":"An internal error has occurred.","type":"upstream_error","code":500}}data: [DONE]');
       else res.end(packet(tail) + "data: [DONE]\n\n");
-    }, 100);
+    }, req.url === "/early-marker" ? 6500 : 100);
   });
   server.on("connection", socket => { sockets.add(socket); socket.on("close", () => sockets.delete(socket)); });
   await new Promise(resolve => server.listen(0, "127.0.0.1", resolve));
@@ -35,16 +36,19 @@ const { chromium } = require("playwright-core");
     await page.goto(`http://127.0.0.1:${server.address().port}`, { waitUntil: "load" });
     const receive = url => page.evaluate(async url => {
       const response = await EPhoneStreamHTTP.request(url, { method: "POST", body: "one-request", headers: { "Content-Type": "application/json" } });
-      const output = await EPhoneNovelStream.read(response);
-      return { raw: output.raw, partial: output.partial, error: output.error || "", providerError: output.providerError, recovered: output.stats.recoveredChars, signal: output.stats.completionSignal, transport: response.ephoneTransport };
+      const output = await EPhoneNovelStream.read(response, { waitForEOF: true });
+      return { raw: output.raw, partial: output.partial, error: output.error || "", providerError: output.providerError, recovered: output.stats.recoveredChars, signal: output.stats.completionSignal, transport: response.ephoneTransport, reception: response.ephoneReceiveDiagnostics };
     }, url);
-    for (const url of ["/complete", "/sse-broken", "/json-broken"]) {
+    for (const url of ["/complete", "/early-marker", "/sse-broken", "/json-broken"]) {
       const before = calls.length, output = await receive(url);
       assert.equal(calls.length, before + 1, "no retries after a transport error");
       assert.equal(output.raw, prefix + tail, "every arrived prose character survives the native network-error path: " + url);
       assert.equal(output.transport, "browser xhr");
-      assert.equal(output.partial, url !== "/complete");
-      if (url !== "/complete") { assert.match(output.error, /network error/); assert.ok(output.recovered > 0); }
+      assert.equal(output.partial, url.endsWith("-broken"));
+      assert.equal(output.reception.cancelledBy, "", "the app must never cancel a live response on a protocol marker");
+      assert.equal(output.reception.end, url.endsWith("-broken") ? "network_error" : "http_eof");
+      if (url === "/early-marker") assert.equal(calls.at(-1).prematureClose, false, "no client_gone after an early marker and a pause longer than the old five-second cleanup deadline");
+      if (url.endsWith("-broken")) { assert.match(output.error, /network error/); assert.ok(output.recovered > 0); }
     }
     for (let i = 0; i < 8; i++) {
       const result = await receive("/repeat-" + i); assert.equal(result.raw, prefix + tail); assert.equal(result.partial, false);

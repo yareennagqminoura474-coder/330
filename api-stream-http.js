@@ -22,6 +22,7 @@
   function request(input, options = {}) {
     return new Promise((resolve, reject) => {
       const xhr = new root.XMLHttpRequest(), encoder = new TextEncoder();
+      const diagnostics = { transport: "browser xhr", end: "receiving", cancelledBy: "", receivedChars: 0, progressEvents: 0 };
       let resolved = false, finished = false, cancelled = false, cursor = 0;
       let chunks = [], nextChunk = 0, pulling = false, controller, ending;
       const abortError = () => Object.assign(new Error("生成已停止"), { name: "AbortError" });
@@ -42,7 +43,7 @@
         if (typeof value !== "string" || value.length <= cursor) return;
         let end = value.length;
         if (!final && /[\uD800-\uDBFF]/.test(value[end - 1])) end--;
-        if (end > cursor) { chunks.push(encoder.encode(value.slice(cursor, end))); cursor = end; deliver(); }
+        if (end > cursor) { chunks.push(encoder.encode(value.slice(cursor, end))); cursor = end; diagnostics.receivedChars = cursor; deliver(); }
       }
       function detach() {
         xhr.onreadystatechange = xhr.onprogress = xhr.onload = xhr.onerror = xhr.onabort = xhr.ontimeout = null;
@@ -61,11 +62,12 @@
           pull() { pulling = true; deliver(); },
           cancel() {
             cancelled = true; chunks = []; ending = null; detach();
-            if (!finished) { finished = true; xhr.abort(); }
+            if (!finished) { finished = true; diagnostics.cancelledBy = "reader"; diagnostics.end = "cancelled"; xhr.abort(); }
           }
         });
         const response = new root.Response(body, { status: xhr.status, statusText: xhr.statusText, headers: responseHeaders });
         Object.defineProperty(response, "ephoneTransport", { value: "browser xhr" });
+        Object.defineProperty(response, "ephoneReceiveDiagnostics", { value: diagnostics });
         Object.defineProperty(response, "url", { value: xhr.responseURL || String(input) });
         resolved = true; resolve(response);
       }
@@ -76,11 +78,13 @@
         // because ReadableStream.error() would discard that queue immediately.
         available(!error); headers(); finished = true; detach();
         ending = error || "eof";
+        diagnostics.end = error ? error.name === "AbortError" ? "aborted" : "network_error" : "http_eof";
         if (!resolved) fail(error || new TypeError("API 未返回可读取的 HTTP 响应"));
         else deliver();
       }
       function stop() {
         if (finished || cancelled) return;
+        diagnostics.cancelledBy = "signal";
         const error = abortError(); finish(error); xhr.abort();
       }
       try {
@@ -90,7 +94,7 @@
         xhr.withCredentials = options.credentials === "include";
         for (const [key, value] of new Headers(options.headers || {})) xhr.setRequestHeader(key, value);
         xhr.onreadystatechange = () => { if (xhr.readyState >= 2) headers(); if (xhr.readyState === 3) available(); };
-        xhr.onprogress = () => { headers(); available(); };
+        xhr.onprogress = () => { diagnostics.progressEvents++; headers(); available(); };
         xhr.onload = () => finish();
         xhr.onerror = () => finish(new TypeError("network error"));
         xhr.onabort = () => finish(abortError());

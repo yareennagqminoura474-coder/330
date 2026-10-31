@@ -77,6 +77,15 @@ const { chromium } = require("playwright-core");
     assert.ok(fontResponses.every(response => response.status === 200 && response.url.startsWith(origin)));
     assert.equal(await page.evaluate(() => document.querySelector("#gr-reader-content").scrollWidth > document.querySelector("#gr-reader-content").clientWidth + 1), false, "wide display math scrolls within its own line on a phone");
     await page.screenshot({ path: path.join(require("node:os").tmpdir(), "ephone-novel-math-mobile.png") });
+    const appendOnly = await page.evaluate(() => {
+      const node = document.createElement("div");
+      EPhoneNovelPresentation.renderStream(node, "普通正文"); const first = node.firstChild;
+      for (let i = 1; i <= 100; i++) EPhoneNovelPresentation.renderStream(node, "普通正文" + "继续往下写。".repeat(i));
+      const reused = node.firstChild === first;
+      EPhoneNovelPresentation.renderStream(node, "改成新段落 $\\frac{1}{2}$，<img src=x> 作为正文保留。");
+      return { reused, math: node.querySelectorAll(".katex").length, images: node.querySelectorAll("img").length };
+    });
+    assert.deepEqual(appendOnly, { reused: true, math: 1, images: 0 }, "ordinary stream text appends without rebuilding the chapter; formulas and literal prose remain safe");
     // The same renderer handles streamed fragments without editing saved source.
     const incremental = await page.evaluate(() => {
       const node = document.createElement("div");
