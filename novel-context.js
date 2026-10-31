@@ -157,7 +157,7 @@
       const names = [...new Set([person.name, ...list(person.aliases)].filter((value) => typeof value === "string" && value.trim().length >= 2))];
       const hits = [];
       written.forEach((chapter, index) => {
-        const body = text(chapter?.content), summary = text(chapter?.summary);
+        const body = text(chapter?.content), summary = chapter?.summaryStale ? "" : text(chapter?.summary);
         if (names.some((name) => body.includes(name) || summary.includes(name))) hits.push(index + 1);
       });
       if (hits.length) mentions.push({ key: person.key, name: person.name, first: hits[0], last: hits.at(-1) });

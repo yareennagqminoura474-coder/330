@@ -54786,6 +54786,90 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
       _0x3d1862());
   }
   let _0x5576d5 = { activeStoryId: null, isGenerating: ![] };
+  let _ephoneNovelChapterEditor = null, _ephoneNovelDeleteTarget = null, _ephoneNovelReaderChapter = null, _ephoneNovelChapterMutation = null;
+  const _ephoneChapterBusy = id => _0x5576d5.isGenerating && _0x5576d5.generatingStoryId === id || _ephoneNovelChapterMutation !== null && _ephoneNovelChapterMutation === id;
+  async function _ephoneChapterTarget(index, expected) {
+    const storyId = _0x5576d5.activeStoryId, story = await _0x24f906.grStories.get(storyId);
+    if (_0x5576d5.activeStoryId !== storyId || !story?.chapters?.[index]) throw new Error("章节已变化，请重新打开目录。");
+    if (_ephoneChapterBusy(storyId)) throw new Error("本作品正在生成或保存，完成后即可编辑和删除。");
+    if (expected && JSON.stringify(story.chapters[index]) !== expected) throw new Error("章节已变化，请重新打开目录。");
+    return { storyId, index, chapter: structuredClone(story.chapters[index]), snapshot: JSON.stringify(story.chapters), summaryConfirmed: false };
+  }
+  function _ephoneChapterEditCount() {
+    const content = document.getElementById("gr-edit-chapter-content").value, summary = document.getElementById("gr-edit-chapter-summary").value;
+    document.getElementById("gr-edit-chapter-count").textContent = window.EPhoneNovelChapters.count(content).toLocaleString() + " 字";
+    const old = _ephoneNovelChapterEditor?.chapter;
+    document.getElementById("gr-edit-chapter-hint").textContent = old && (old.summaryStale || content !== old.content) && summary && summary === old.summary && !_ephoneNovelChapterEditor.summaryConfirmed
+      ? "正文已修改，原摘要会保留但暂不用于续写；请同步修改摘要，或留空让续写参考正文。"
+      : "摘要会供后续章节参考，可以在这里一起修改。";
+  }
+  async function _ephoneOpenChapterEditor(index, expected) {
+    try {
+      const state = await _ephoneChapterTarget(index, expected); _ephoneNovelChapterEditor = state;
+      _0x1db439();
+      document.getElementById("gr-edit-chapter-title").value = state.chapter.title || "";
+      document.getElementById("gr-edit-chapter-content").value = state.chapter.content || "";
+      document.getElementById("gr-edit-chapter-summary").value = state.chapter.summary || "";
+      document.getElementById("gr-edit-chapter-status").textContent = "";
+      _ephoneChapterEditCount(); document.getElementById("gr-chapter-edit-modal").classList.add("visible");
+    } catch (error) { alert(error.message); }
+  }
+  async function _ephoneOpenChapterDelete(index, expected) {
+    try {
+      const state = await _ephoneChapterTarget(index, expected); _ephoneNovelDeleteTarget = state;
+      document.getElementById("gr-delete-chapter-description").textContent = "将删除第 " + (index + 1) + " 章「" + (state.chapter.title || "无题") + "」，共 " + window.EPhoneNovelChapters.count(state.chapter.content).toLocaleString() + " 字。";
+      document.getElementById("gr-delete-chapter-status").textContent = "";
+      document.getElementById("gr-chapter-delete-modal").classList.add("visible");
+    } catch (error) { alert(error.message); }
+  }
+  async function _ephoneCommitChapter(state, transform) {
+    if (!state || _0x5576d5.activeStoryId !== state.storyId) throw new Error("当前作品已切换，请重新打开章节。");
+    if (_ephoneChapterBusy(state.storyId)) throw new Error("本作品正在生成或保存，请稍后再试。");
+    _ephoneNovelChapterMutation = state.storyId; _ephoneSyncNovelControls();
+    try {
+      const table = _0x24f906.grStories;
+      return await table.db.transaction("rw", table, async () => {
+        const fresh = await table.get(state.storyId);
+        if (!fresh || JSON.stringify(fresh.chapters) !== state.snapshot) throw new Error("章节已在其他位置改变，本次未覆盖；请关闭后重新打开编辑。");
+        const updated = transform(fresh); await table.put(updated); return updated;
+      });
+    } finally { _ephoneNovelChapterMutation = null; _ephoneSyncNovelControls(); }
+  }
+  document.getElementById("gr-edit-chapter-btn")?.addEventListener("click", () => { const state = _ephoneNovelReaderChapter; if (state) _ephoneOpenChapterEditor(state.index, state.chapter); });
+  document.getElementById("gr-delete-chapter-btn")?.addEventListener("click", () => { const state = _ephoneNovelReaderChapter; if (state) _ephoneOpenChapterDelete(state.index, state.chapter); });
+  document.getElementById("gr-edit-chapter-content")?.addEventListener("input", _ephoneChapterEditCount);
+  document.getElementById("gr-edit-chapter-summary")?.addEventListener("input", () => { if (_ephoneNovelChapterEditor) _ephoneNovelChapterEditor.summaryConfirmed = true; _ephoneChapterEditCount(); });
+  document.getElementById("gr-title-from-body-btn")?.addEventListener("click", () => { document.getElementById("gr-edit-chapter-title").value = window.EPhoneNovelChapters.chooseTitle(document.getElementById("gr-edit-chapter-content").value); });
+  document.getElementById("gr-edit-chapter-cancel")?.addEventListener("click", () => { document.getElementById("gr-chapter-edit-modal").classList.remove("visible"); _ephoneNovelChapterEditor = null; });
+  document.getElementById("gr-delete-chapter-cancel")?.addEventListener("click", () => { document.getElementById("gr-chapter-delete-modal").classList.remove("visible"); _ephoneNovelDeleteTarget = null; });
+  document.getElementById("gr-edit-chapter-save")?.addEventListener("click", async event => {
+    if (event.currentTarget.disabled) return;
+    const button = event.currentTarget, state = _ephoneNovelChapterEditor;
+    const changes = { title: document.getElementById("gr-edit-chapter-title").value, content: document.getElementById("gr-edit-chapter-content").value, summary: document.getElementById("gr-edit-chapter-summary").value, summaryConfirmed: state?.summaryConfirmed };
+    button.disabled = true;
+    try {
+      const updated = await _ephoneCommitChapter(state, fresh => window.EPhoneNovelChapters.edit(fresh, state.index, changes));
+      document.getElementById("gr-chapter-edit-modal").classList.remove("visible"); _ephoneNovelChapterEditor = null;
+      if (_0x5576d5.activeStoryId === state.storyId && document.getElementById("gr-reader-screen").classList.contains("active")) { await _0x5dec3b(state.storyId, state.index); _ephoneRenderChapterList(updated); }
+    } catch (error) { document.getElementById("gr-edit-chapter-status").textContent = error.message; }
+    finally { button.disabled = false; }
+  });
+  document.getElementById("gr-delete-chapter-confirm")?.addEventListener("click", async event => {
+    if (event.currentTarget.disabled) return;
+    const button = event.currentTarget, state = _ephoneNovelDeleteTarget;
+    button.disabled = true;
+    try {
+      const current = _0x5576d5.currentChapterIndex || 0;
+      const updated = await _ephoneCommitChapter(state, fresh => window.EPhoneNovelChapters.remove(fresh, state.index));
+      document.getElementById("gr-chapter-delete-modal").classList.remove("visible");
+      document.getElementById("gr-chapter-edit-modal").classList.remove("visible"); _ephoneNovelDeleteTarget = _ephoneNovelChapterEditor = null;
+      if (_0x5576d5.activeStoryId === state.storyId && document.getElementById("gr-reader-screen").classList.contains("active")) {
+        await _0x5dec3b(state.storyId, Math.max(0, Math.min(current > state.index ? current - 1 : current, updated.chapters.length - 1)));
+        _ephoneRenderChapterList(updated);
+      }
+    } catch (error) { document.getElementById("gr-delete-chapter-status").textContent = error.message; }
+    finally { button.disabled = false; }
+  });
   let _ephoneNovelRewriteStory = null;
   function _ephoneOpenNovelRewrite() {
     if (_0x5576d5.isGenerating) return;
@@ -54814,6 +54898,7 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
     document.getElementById("gr-last-response-content").value = (last.raw || "") + (last.providerError ? "\n\n【接口返回的错误】\n" + JSON.stringify({ error: last.providerError }, null, 2) : "") + (last.unparsedEvents?.length ? "\n\n【未能解析的原始数据片段】\n" + last.unparsedEvents.join("\n\n") : "");
     const seconds = (n) => Number.isFinite(n) ? (n / 1000).toFixed(1) + "秒" : "未记录", stats = last.stats;
     document.getElementById("gr-last-response-info").textContent = (last.api === "secondary" ? "副 API" : "主 API") + " · " + (last.model || "") + "。内容保存在本机，查看不会重新请求。" + (last.error ? "\n上次未保存为章节：" + last.error : "") +
+      (last.chapterEditedAt ? "\n章节已有手动修改；这里保留的是生成当时的接口原文。" : "") +
       (last.finishReason ? "\n接口结束原因：" + last.finishReason : "") + (stats ? "\n准备资料：" + seconds(stats.preparationMs) + "；请求到响应头：" + seconds(stats.headersMs) + "；首字等待：" + seconds(stats.firstTextMs) + "；接收正文：" + seconds(stats.receiveMs) + "；总耗时：" + seconds(stats.totalMs) + "。" + (Number.isFinite(stats.charactersPerSecond) ? "平均接收约" + stats.charactersPerSecond.toFixed(1) + "字/秒。" : "") : "") +
       (stats?.maxTextGapMs != null ? "\n最长未收到新正文的间隔：" + seconds(stats.maxTextGapMs) + "。" : "") + (stats?.maxByteGapMs != null ? "\n最长未收到任何数据的间隔：" + seconds(stats.maxByteGapMs) + "。" : "") +
       (last.http ? "\n接收方式：" + last.http.transport + "；HTTP " + last.http.status + (last.http.requestId ? "；接口请求编号：" + last.http.requestId : "") + "。" : "") +
@@ -54829,6 +54914,7 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
     const bar = document.getElementById("gr-generation-result-bar"), last = story?.lastGeneration;
     if (!bar) return;
     bar.hidden = !last;
+    if (last?.chapterEditedAt) { document.getElementById("gr-generation-note").textContent = "章节已手动修改，上次返回保留接口原文。"; return; }
     if (last?.providerError) {
       const error = last.providerError;
       document.getElementById("gr-generation-note").textContent = (error.type === "upstream_error" ? "上游服务" : "接口") + "报错" + (error.code != null ? "（" + error.code + "）" : "") + "，" + (last.status === "saved" ? "已保存收到的正文。" : "返回内容已保留，可查看详情。");
@@ -55244,6 +55330,9 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
     const _0x5d3484 = _0x32ce26[_0x46aac4(0x1bbd)][_0x46aac4(0xa5d)];
     if (_0x5d3484 > 0x0 && _0x29d7a8 >= _0x5d3484) _0x29d7a8 = _0x5d3484 - 0x1;
     if (_0x29d7a8 < 0x0) _0x29d7a8 = 0x0;
+    document.getElementById("gr-chapter-tools").hidden = _0x5d3484 === 0;
+    _ephoneNovelReaderChapter = _0x5d3484 ? { storyId: _0x154236, index: _0x29d7a8, chapter: JSON.stringify(_0x32ce26.chapters[_0x29d7a8]) } : null;
+    if (_ephoneNovelReaderChapter) document.getElementById("gr-chapter-word-count").textContent = window.EPhoneNovelChapters.count(_0x32ce26.chapters[_0x29d7a8].content).toLocaleString() + " 字";
     ((_0x5576d5[_0x46aac4(0x97e)] = _0x29d7a8),
       (document["getElementById"](_0x46aac4(0x1a71))["textContent"] =
         _0x32ce26[_0x46aac4(0xe6d)]));
@@ -55278,6 +55367,7 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
         "<div\x20class=\x22gr-chapter-text\x22>" +
         _ephoneNovelEscape(_0x1a9795[_0x46aac4(0xfd7)]) +
         "</div>"));
+    if (_0x1a9795.summaryStale) _0x3a1dd1.innerHTML += '<p class="gr-chapter-stale-hint">正文已修改，接续摘要待更新。续写将直接参考本章正文。</p>';
     const _0x2b442c =
       _0x46aac4(0x1be8) +
       _0x29d7a8 +
@@ -55292,7 +55382,7 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
       _0x3a1dd1[_0x46aac4(0xa9b)](_0x46aac4(0x35c))[_0x46aac4(0x9bb)](
         (_0x4259b5) => {
           const _0x23aec6 = _0x46aac4;
-          _0x4259b5[_0x23aec6(0x5d3)] = (_0xfa9353) => {
+          _0x4259b5[_0x23aec6(0x5d3)] = async (_0xfa9353) => {
             const _0x2581dc = _0x23aec6,
               _0x82a215 = parseInt(
                 _0xfa9353[_0x2581dc(0x571)][_0x2581dc(0x151)][_0x2581dc(0x749)],
@@ -55300,7 +55390,8 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
               _0x3e682a = _0x3a1dd1[_0x2581dc(0x8ad)](
                 _0x2581dc(0x916) + _0x82a215 + "\x22]",
               );
-            (_0x1be883(_0x154236, _0x82a215, _0x3e682a[_0x2581dc(0x16b0)]),
+            try {
+            (await _0x1be883(_0x154236, _0x82a215, _0x3e682a[_0x2581dc(0x16b0)]),
               (_0xfa9353[_0x2581dc(0x571)][_0x2581dc(0x71a)] =
                 _0x2581dc(0x156c)),
               setTimeout(
@@ -55309,6 +55400,7 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
                     _0x2581dc(0x1099)),
                 0x3e8,
               ));
+            } catch (error) { alert(error.message); }
           };
         },
       ));
@@ -55353,12 +55445,13 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
   function _ephoneSyncNovelControls() {
     const button = document.getElementById("gr-generate-btn"), reroll = document.getElementById("gr-reroll-btn");
     if (button) {
-      button.disabled = _0x5576d5.isGenerating;
+      button.disabled = _0x5576d5.isGenerating || _ephoneNovelChapterMutation !== null && _ephoneNovelChapterMutation === _0x5576d5.activeStoryId;
       let label = button.querySelector("#gr-gen-text");
       if (!label) { label = document.createElement("span"); label.id = "gr-gen-text"; button.prepend(label); }
       label.textContent = _0x5576d5.isGenerating ? "创作中…" : "续写";
     }
     if (reroll) reroll.disabled = _0x5576d5.isGenerating;
+    for (const action of document.querySelectorAll("#gr-chapter-tools button, #gr-chapter-list-content .gr-chapter-action, #gr-reader-content .save-summary-btn")) action.disabled = _ephoneChapterBusy(_0x5576d5.activeStoryId);
     const status = document.getElementById("gr-generation-status");
     const quietSeconds = _0x5576d5.lastProseAt ? Math.floor((Date.now() - _0x5576d5.lastProseAt) / 1000) : 0;
     if (status) {
@@ -55408,14 +55501,14 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
       (_0x372593["onclick"] = _ephoneOpenNovelRewrite);
   }
   async function _0x1be883(_0x1469a6, _0x179947, _0x2038b4) {
-    const _0x6c32a3 = _0x3ce505,
-      _0xed8e07 =
-        await _0x24f906[_0x6c32a3(0xdca)][_0x6c32a3(0x7eb)](_0x1469a6);
-    _0xed8e07 &&
-      _0xed8e07[_0x6c32a3(0x1bbd)][_0x179947] &&
-      ((_0xed8e07[_0x6c32a3(0x1bbd)][_0x179947]["summary"] = _0x2038b4),
-      await _0x24f906[_0x6c32a3(0xdca)][_0x6c32a3(0x114d)](_0xed8e07),
-      console["log"](_0x6c32a3(0x1670)));
+    if (_0x5576d5.activeStoryId !== _0x1469a6) throw new Error("当前作品已切换。");
+    const state = await _ephoneChapterTarget(_0x179947, _ephoneNovelReaderChapter?.chapter);
+    const updated = await _ephoneCommitChapter(state, story => window.EPhoneNovelChapters.edit(story, _0x179947, { summary: _0x2038b4, summaryConfirmed: true }));
+    if (_ephoneNovelReaderChapter?.storyId === _0x1469a6 && _ephoneNovelReaderChapter.index === _0x179947) {
+      _ephoneNovelReaderChapter.chapter = JSON.stringify(updated.chapters[_0x179947]);
+      document.querySelector("#gr-reader-content .gr-chapter-stale-hint")?.remove();
+    }
+    _ephoneRenderChapterList(updated);
   }
   async function _ephoneNovelSources(story, personaDb) {
     const settings = story.settings || {};
@@ -55448,6 +55541,7 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
   }
   async function _0x10ebb8(rewrite = false, rewriteDirection) {
     if (_0x5576d5.isGenerating) return;
+    if (_ephoneNovelChapterMutation !== null && _ephoneNovelChapterMutation === _0x5576d5.activeStoryId) return;
     _0x5576d5.isGenerating = true;
     const controller = new AbortController();
     _0x5576d5.controller = controller;
@@ -55500,7 +55594,7 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
         chapters = rewrite ? originalChapters.slice(0, -1) : originalChapters,
         previous = chapters.at(-1), target = Math.max(1, Number(story.settings?.outputLength) || 500);
       const progress = chapters.map((chapter, i) => "第" + (i + 1) + "章「" + (chapter.title || "无题") + "」：\n" +
-        (chapter.summary || (i === chapters.length - 1 ? "本章摘要缺失，完整正文见下文。" : chapter.content) || "（暂无记录）")).join("\n\n");
+        ((!chapter.summaryStale && chapter.summary) || (i === chapters.length - 1 ? "本章摘要缺失或待更新，完整正文见下文。" : chapter.content) || "（暂无记录）")).join("\n\n");
       const continuity = window.EPhoneNovelContext.continuity(chapters, context.people);
       const prompt = "# 写作任务\n你是小说创作者，使用所选作者「" + author.name + "」的文风：\n" + (author.style || "自然流畅，人物鲜明") +
         "\n本作品《" + story.title + "》的第" + (chapters.length + 1) + "章，正文目标约" + target + "字。以完整场景、自然对话、人物行动和合理节奏组织内容，不为凑字数重复，也不要只写摘要或开头。\n" +
@@ -55512,7 +55606,7 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
         "\n\n# 上一章完整正文（承接结尾，不重复抄写）\n" + (previous?.content || "（开篇，无上一章）") +
         "\n\n" + continuity.text +
         "\n\n# 本次剧情方向\n" + (direction || "按当前人物动机和未完成情节自然展开。") +
-        '\n\n# 输出格式\n分别使用以下标签输出，不使用JSON字符串，也不需要对正文引号或换行转义：\n<novel_title>本章标题</novel_title>\n<novel_content>完整小说正文，保留自然换行</novel_content>\n<novel_summary>给下一章用的精炼接续记录：本章真正新增或改变的事实；初次出现/再次出现的相关人物及彼此已成立的认识和称呼（不能把提及某人当成见过面）；结尾实际的时间、地点、在场者、正在进行的动作和未消退的情绪；已完成与仍待履行的约定、未解决的问题，以及各人新知道或仍不知道的重要信息。只记相关变化和下章必需线索，不堆人设、不复述全章、不把计划写成已完成；如某个特征或互动本章已充分写过，可简记为已用过、下章无需重复展示。</novel_summary>\n正文不可省略，不输出详细思维链。';
+        '\n\n# 章节标题\n写完正文后，从正文原文中选一句角色实际说过的、有本章意味的话当标题；没有合适对话时选一句关键原文。标题必须能在正文中找到，不另造抽象意象、华丽四字词组或概括性题目，不加第几章编号，不拼接不同句子，不改写原句。\n# 输出格式\n分别使用以下标签输出，不使用JSON字符串，也不需要对正文引号或换行转义：\n<novel_title>从本章正文摘录的一句话</novel_title>\n<novel_content>完整小说正文，保留自然换行</novel_content>\n<novel_summary>给下一章用的精炼接续记录：本章真正新增或改变的事实；初次出现/再次出现的相关人物及彼此已成立的认识和称呼（不能把提及某人当成见过面）；结尾实际的时间、地点、在场者、正在进行的动作和未消退的情绪；已完成与仍待履行的约定、未解决的问题，以及各人新知道或仍不知道的重要信息。只记相关变化和下章必需线索，不堆人设、不复述全章、不把计划写成已完成；如某个特征或互动本章已充分写过，可简记为已用过、下章无需重复展示。</novel_summary>\n正文不可省略，不输出详细思维链。';
       controller.signal.throwIfAborted();
       _0x5576d5.phase = "等待模型返回正文";
       _ephoneSyncNovelControls();
@@ -55562,7 +55656,7 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
       clearTimeout(paintTimer); paintTimer = 0;
       _ephoneSyncNovelControls();
       await draftQueue.catch(() => {});
-      received = { raw: output.raw, status: "received", api, model, rewrite, http: httpDetails, lifecycle: lifecycleSnapshot(), finishReason: output.finishReason, usage: output.usage, unparsedEvents: output.unparsedEvents, providerError: output.providerError || null, transportError: output.error || "",
+      received = { raw: output.raw, status: "received", api, model, rewrite, chapterIndex: chapters.length, http: httpDetails, lifecycle: lifecycleSnapshot(), finishReason: output.finishReason, usage: output.usage, unparsedEvents: output.unparsedEvents, providerError: output.providerError || null, transportError: output.error || "",
         stats: { ...output.stats, preparationMs, headersMs, maxTextGapMs: Math.max(maxTextGapMs, _0x5576d5.lastProseAt ? Date.now() - _0x5576d5.lastProseAt : 0), firstTextMs: output.stats.firstTextMs == null ? null : headersMs + output.stats.firstTextMs,
           totalMs: Date.now() - _0x5576d5.startedAt }, receivedAt: Date.now(), elapsedMs: Date.now() - _0x5576d5.startedAt };
       // Keep the paid result before trying to interpret its chapter wrapper.
@@ -55575,8 +55669,8 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
         result.partial = true;
         result.warnings = [...result.warnings, "接口未确认完整输出，已保留实际收到的全部正文；没有再次请求或自动补写。"];
       }
-      const chapter = { title: typeof result.title === "string" && result.title.trim() ? result.title : "第" + (chapters.length + 1) + "章",
-        content: result.content, summary: typeof result.summary === "string" ? result.summary : "", prevSummary: previous?.summary || "这是故事的开始。", timestamp: Date.now(), generationDirection: direction,
+      const chapter = { title: window.EPhoneNovelChapters.chooseTitle(result.content, result.title), wordCount: window.EPhoneNovelChapters.count(result.content),
+        content: result.content, summary: typeof result.summary === "string" ? result.summary : "", prevSummary: previous?.summaryStale ? "" : previous?.summary || "这是故事的开始。", timestamp: Date.now(), generationDirection: direction,
         ...(result.partial ? { generationPartial: true } : {}) };
       if (window.db.spaceProfiles.db !== personaDb) throw new Error("人物空间已切换，本次结果未写入作品，请回到原空间重试。");
       await stories.db.transaction("rw", stories, async () => {
@@ -55627,53 +55721,39 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
     }
   }
 
-  function _0x5c29da() {
-    const _0x4a5441 = _0x3ce505,
-      _0x3387d6 = document[_0x4a5441(0x1023)]("gr-chapter-sidebar"),
-      _0x5b5584 = document[_0x4a5441(0x1023)]("gr-sidebar-overlay"),
-      _0x1f53d9 = document[_0x4a5441(0x1023)](_0x4a5441(0x1798)),
-      _0x34bd6d = document["getElementById"](_0x4a5441(0x1612));
-    if (!_0x5576d5[_0x4a5441(0xf42)]) return;
-    _0x24f906[_0x4a5441(0xdca)]
-      [_0x4a5441(0x7eb)](_0x5576d5[_0x4a5441(0xf42)])
-      [_0x4a5441(0x481)]((_0x30a04d) => {
-        const _0x515ba2 = _0x4a5441;
-        ((_0x1f53d9[_0x515ba2(0x1bf6)] = ""),
-          (_0x34bd6d[_0x515ba2(0x71a)] =
-            "共\x20" +
-            _0x30a04d[_0x515ba2(0x1bbd)][_0x515ba2(0xa5d)] +
-            "\x20章"),
-          _0x30a04d[_0x515ba2(0x1bbd)][_0x515ba2(0x9bb)](
-            (_0x58d0d6, _0x2d3ecc) => {
-              const _0x4a935b = _0x515ba2,
-                _0x35c28b = document[_0x4a935b(0x139f)]("div");
-              _0x35c28b[_0x4a935b(0xf4)] = "gr-sidebar-item";
-              if (_0x2d3ecc === _0x5576d5[_0x4a935b(0x97e)])
-                _0x35c28b[_0x4a935b(0xd57)][_0x4a935b(0x17db)](
-                  _0x4a935b(0xc26),
-                );
-              ((_0x35c28b[_0x4a935b(0x1bf6)] =
-                _0x4a935b(0x1486) +
-                (_0x2d3ecc + 0x1) +
-                ".\x20" +
-                _ephoneNovelEscape(_0x58d0d6["title"] || "无题") +
-                _0x4a935b(0xfe1) +
-                new Date(_0x58d0d6[_0x4a935b(0x18df)])["toLocaleTimeString"]() +
-                "</span>\x0a\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20</div>\x0a\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20<div\x20style=\x22font-size:12px;\x20color:#999;\x20margin-left:10px;\x20margin-top:4px;\x20white-space:nowrap;\x20overflow:hidden;\x20text-overflow:ellipsis;\x22>" +
-                _ephoneNovelEscape(String(_0x58d0d6[_0x4a935b(0x104a)] || "")[_0x4a935b(0x2d0)](
-                  0x0,
-                  0x14,
-                )) +
-                _0x4a935b(0x1163)),
-                (_0x35c28b["onclick"] = () => {
-                  (_0x5dec3b(_0x30a04d["id"], _0x2d3ecc), _0x1db439());
-                }),
-                _0x1f53d9[_0x4a935b(0x3fe)](_0x35c28b));
-            },
-          ),
-          _0x3387d6[_0x515ba2(0xd57)][_0x515ba2(0x17db)](_0x515ba2(0x2fb)),
-          _0x5b5584[_0x515ba2(0xd57)]["add"]("visible"));
-      });
+  function _ephoneRenderChapterList(story) {
+    if (_0x5576d5.activeStoryId !== story.id) return;
+    const host = document.getElementById("gr-chapter-list-content"); host.replaceChildren();
+    const chapters = story.chapters || [], counts = chapters.map(chapter => window.EPhoneNovelChapters.count(chapter.content));
+    document.getElementById("gr-total-chapters").textContent = "共 " + chapters.length + " 章 · " + counts.reduce((a, b) => a + b, 0).toLocaleString() + " 字";
+    chapters.forEach((chapter, index) => {
+      const row = document.createElement("div"); row.className = "gr-sidebar-item"; row.dataset.index = index;
+      if (index === _0x5576d5.currentChapterIndex) row.classList.add("active");
+      const title = document.createElement("div"); title.className = "gr-catalog-title"; title.textContent = (index + 1) + ". " + (chapter.title || "无题"); row.append(title);
+      const meta = document.createElement("div"); meta.className = "gr-catalog-meta";
+      const count = document.createElement("span"); count.className = "gr-catalog-count"; count.textContent = counts[index].toLocaleString() + " 字"; meta.append(count);
+      const time = new Date(chapter.editedAt || chapter.timestamp);
+      if (!Number.isNaN(time.getTime())) { const date = document.createElement("span"); date.textContent = time.toLocaleDateString() + " " + time.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }); meta.append(date); }
+      row.append(meta);
+      if (chapter.summary) { const summary = document.createElement("div"); summary.className = "gr-catalog-summary"; summary.textContent = (chapter.summaryStale ? "摘要待更新 · " : "") + chapter.summary; row.append(summary); }
+      const actions = document.createElement("div"); actions.className = "gr-catalog-actions";
+      for (const [label, name, handler] of [["编辑", "edit", _ephoneOpenChapterEditor], ["删除", "delete", _ephoneOpenChapterDelete]]) {
+        const button = document.createElement("button"); button.type = "button"; button.className = "gr-chapter-action gr-catalog-" + name; button.textContent = label;
+        button.disabled = _ephoneChapterBusy(story.id);
+        button.onclick = event => { event.stopPropagation(); handler(index, JSON.stringify(chapter)); };
+        actions.append(button);
+      }
+      row.append(actions); row.onclick = () => { _0x5dec3b(story.id, index); _0x1db439(); }; host.append(row);
+    });
+  }
+  async function _0x5c29da() {
+    const id = _0x5576d5.activeStoryId;
+    if (id == null) return;
+    const story = await _0x24f906.grStories.get(id);
+    if (!story || _0x5576d5.activeStoryId !== id) return;
+    _ephoneRenderChapterList(story);
+    document.getElementById("gr-chapter-sidebar").classList.add("visible");
+    document.getElementById("gr-sidebar-overlay").classList.add("visible");
   }
   function _0x1db439() {
     const _0x29847a = _0x3ce505;
