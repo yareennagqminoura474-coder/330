@@ -132,4 +132,20 @@ assert.match(rolledBack.text, /不自动证明人物同场、见过面或知道�
 assert.equal(core.continuity([], priorPeople).mentions.length, 0);
 assert.equal(core.continuity(priorChapters, [...priorPeople, priorPeople[0]]).mentions.length, 3, "canonical identities get one appearance entry");
 assert.equal(JSON.stringify([priorChapters, priorPeople]), priorBefore, "local continuity lookup leaves chapter prose, editable summaries and persona archives unchanged");
+assert.doesNotMatch(continuity.text, /首次文字线索在第\d+章|最近在第\d+章/, "lookup metadata must not seed chapter-number references into narration");
+for (const rule of [/正文的旁白、心理和对话/, /同一章可能跨多天，多章也可能发生在同一天/, /无法确定具体间隔时/, /实际生成日期或电脑时间/, /人物确实在读书、上课/]) assert.match(continuity.text, rule);
+const timeline = [
+  { title: "第一章 那天晚上的约定", summary: "星期一晚上，他们约定三天后再见。", content: "较早完整正文", timestamp: 1000 },
+  { title: "第二章 我等你", summary: "星期四清晨，她想起那天晚上的约定。", content: "最近完整正文", timestamp: 999999999 }
+];
+const timelineBefore = JSON.stringify(timeline), recap = core.recap(timeline);
+assert.match(recap, /较早的已发生情节「那天晚上的约定」/);
+assert.match(recap, /紧接本次续写之前的情节「我等你」/);
+assert.match(recap, /星期一晚上/); assert.match(recap, /星期四清晨/);
+assert.doesNotMatch(recap, /第[一二\d]+章|999999999|1000/);
+assert.match(core.recap([{ ...timeline[0], summaryStale: true }, timeline[1]]), /较早完整正文/);
+assert.doesNotMatch(core.recap([{ ...timeline[0], summaryStale: true }, timeline[1]]), /他们约定三天后再见/);
+assert.match(core.recap([{ ...timeline[1], summaryStale: true }]), /摘要缺失或待更新，完整正文见下文/);
+assert.equal(JSON.stringify(timeline), timelineBefore, "source titles, prose, summaries and real generation timestamps are never rewritten or converted into fictional days");
+assert.equal(core.recap([]), "");
 console.log("PASS: canonical personas, relations, selected full memory/history, immutable archives, shared-persona deduplication and chapter/alias continuity lookup with deletion and rewrite boundaries");

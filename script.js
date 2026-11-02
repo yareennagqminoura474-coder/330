@@ -55635,8 +55635,7 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
       const context = await _ephoneNovelSources(story, personaDb), originalChapters = story.chapters || [],
         chapters = rewrite ? originalChapters.slice(0, -1) : originalChapters,
         previous = chapters.at(-1), target = Math.max(1, Number(story.settings?.outputLength) || 500);
-      const progress = chapters.map((chapter, i) => "第" + (i + 1) + "章「" + (chapter.title || "无题") + "」：\n" +
-        ((!chapter.summaryStale && chapter.summary) || (i === chapters.length - 1 ? "本章摘要缺失或待更新，完整正文见下文。" : chapter.content) || "（暂无记录）")).join("\n\n");
+      const progress = window.EPhoneNovelContext.recap(chapters);
       const continuity = window.EPhoneNovelContext.continuity(chapters, context.people);
       const prompt = "# 写作任务\n你是小说创作者，使用所选作者「" + author.name + "」的文风：\n" + (author.style || "自然流畅，人物鲜明") +
         "\n本作品《" + story.title + "》的第" + (chapters.length + 1) + "章，正文目标约" + target + "字。以完整场景、自然对话、人物行动和合理节奏组织内容，不为凑字数重复，也不要只写摘要或开头。\n" +
@@ -55648,7 +55647,7 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
         "\n\n# 上一章完整正文（承接结尾，不重复抄写）\n" + (previous?.content || "（开篇，无上一章）") +
         "\n\n" + continuity.text +
         "\n\n# 本次剧情方向\n" + (direction || "按当前人物动机和未完成情节自然展开。") +
-        '\n\n# 章节标题\n写完正文后，围绕本章最重要的冲突、转折、秘密或关系变化，从正文原文中选一句有代表性、有张力、让读者想继续看的角色原话当标题；没有合适对话时选一句关键原文。优先选择有潜台词或悬念、能够代表这一章独特进展的句子，避免普通寒暄、随手挑第一句话、重复人设特点或沿用前章标题；平静章节可以抓住关键情绪变化，不强行制造冲突。吸引力来自真实内容，不夸大、不编造悬念。标题必须能在正文中找到，不另造抽象意象、华丽四字词组或概括性题目，不加第几章编号，不拼接不同句子，不改写原句。\n# 输出格式\n分别使用以下标签输出，不使用JSON字符串，也不需要对正文引号或换行转义：\n<novel_title>从本章正文摘录的一句话</novel_title>\n<novel_content>完整小说正文，保留自然换行</novel_content>\n<novel_summary>给下一章用的精炼接续记录：本章真正新增或改变的事实；初次出现/再次出现的相关人物及彼此已成立的认识和称呼（不能把提及某人当成见过面）；结尾实际的时间、地点、在场者、正在进行的动作和未消退的情绪；已完成与仍待履行的约定、未解决的问题，以及各人新知道或仍不知道的重要信息。只记相关变化和下章必需线索，不堆人设、不复述全章、不把计划写成已完成；如某个特征或互动本章已充分写过，可简记为已用过、下章无需重复展示。</novel_summary>\n正文不可省略，不输出详细思维链。';
+        '\n\n# 章节标题\n写完正文后，围绕本章最重要的冲突、转折、秘密或关系变化，从正文原文中选一句有代表性、有张力、让读者想继续看的角色原话当标题；没有合适对话时选一句关键原文。优先选择有潜台词或悬念、能够代表这一章独特进展的句子，避免普通寒暄、随手挑第一句话、重复人设特点或沿用前章标题；平静章节可以抓住关键情绪变化，不强行制造冲突。吸引力来自真实内容，不夸大、不编造悬念。标题必须能在正文中找到，不另造抽象意象、华丽四字词组或概括性题目，不加第几章编号，不拼接不同句子，不改写原句。\n# 输出格式\n分别使用以下标签输出，不使用JSON字符串，也不需要对正文引号或换行转义：\n<novel_title>从本章正文摘录的一句话</novel_title>\n<novel_content>完整小说正文，保留自然换行</novel_content>\n<novel_summary>给下一章用的精炼接续记录：本章真正新增或改变的事实；初次出现/再次出现的相关人物及彼此已成立的认识和称呼（不能把提及某人当成见过面）；结尾实际的时间、地点、在场者、正在进行的动作和未消退的情绪；已完成与仍待履行的约定、未解决的问题，以及各人新知道或仍不知道的重要信息。记录故事内已有的日期、昼夜或相对时间线索；没有依据时注明时间未定，不把章节编号、实际生成时间当成故事日期，也不把一章视为一天。只记相关变化和下章必需线索，不堆人设、不复述全章、不把计划写成已完成；如某个特征或互动本章已充分写过，可简记为已用过、下章无需重复展示。</novel_summary>\n正文不可省略，不输出详细思维链。';
       controller.signal.throwIfAborted();
       _0x5576d5.phase = "等待模型返回正文";
       _ephoneSyncNovelControls();
