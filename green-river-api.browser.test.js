@@ -10,7 +10,8 @@ const { chromium } = require("playwright-core");
   });
   await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
   const origin = `http://127.0.0.1:${server.address().port}`, browser = await chromium.launch({ executablePath: "C:/Program Files/Google/Chrome/Application/chrome.exe", headless: true });
-  const calls = [], errors = [], dialogs = [], held = []; let failPrimary = false, upstreamFailure = false, invalidPrimary = "", responseFormat = "json", lengthReason = false, holdPrimary = false, serial = 0;
+  const calls = [], errors = [], dialogs = [], held = []; let failPrimary = false, upstreamFailure = false, invalidPrimary = "", responseFormat = "json", lengthReason = false, holdPrimary = false, serial = 0, shortSse = false, completionText = "";
+  const shortRaw = "<novel_title>一起去旧书店吧</novel_title><novel_content>他拿出了一本刚刚";
   const chapter = (n) => ({ title: "第" + n + "章 <约定>", content: "完整小说正文" + n + "：\n" + (n === 1 ? "陈安正在整理书架。" : n === 2 ? "林澈把旧书摆上柜台。" : "") + "日常散步和整理旧书的完整细节。".repeat(80) + '\n<约定>照旧。<img src=x onerror="window.__greenRiverInjected=true">' + "CHAPTER_END_" + n + "，数学符号（$\\in$ 与 $\\notin$）。", summary: "本章总结" + n + '：</textarea><img src=x onerror="window.__greenRiverInjected=true">' });
   try {
     const page = await browser.newPage({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true, serviceWorkers: "block" });
@@ -22,11 +23,28 @@ const { chromium } = require("playwright-core");
       if (!native && !primary && !url.startsWith("https://gr-auxiliary.invalid/")) return route.abort();
       const body = request.postDataJSON(), prompt = JSON.stringify(body), novel = prompt.includes("写作任务");
       const call = { primary, native, novel, url, body, prompt }; calls.push(call);
+      if (novel) {
+        for (const key of ["max_tokens", "max_completion_tokens", "max_output_tokens", "stop"]) assert.equal(body[key], undefined, "novel requests must not add an output cap or stop sequence");
+        assert.equal(body.generationConfig?.maxOutputTokens, undefined); assert.equal(body.generationConfig?.stopSequences, undefined);
+      }
       if (native) { assert.ok(url.includes(primary ? "novel-native-model" : "novel-native-aux-model")); assert.equal(new URL(url).searchParams.get("key"), primary ? "fake-native-primary" : "fake-native-secondary"); }
       else { assert.equal(body.model, primary ? "novel-primary-model" : "auxiliary-model"); assert.equal(request.headers().authorization, primary ? "Bearer fake-primary" : "Bearer fake-auxiliary"); }
       if (novel && failPrimary) return route.fulfill({ status: 503, body: "isolated novel provider failure" });
       if (novel && upstreamFailure) return route.fulfill({ contentType: "text/event-stream", body: 'data: ' + JSON.stringify({ choices: [{ index: 0, delta: { content: "<novel_content>上游报错前已经收到的小说正文。" } }] }) + '\n\ndata: {"error":{"message":"An internal error has occurred.","type":"upstream_error","code":500}}data: [DONE]' });
       if (novel && holdPrimary) { held.push({ route, native }); return; }
+      if (novel && shortSse) {
+        call.raw = shortRaw;
+        return route.fulfill({ contentType: "text/event-stream", body: [
+          { choices: [{ index: 0, delta: { role: "assistant", content: "" } }] },
+          { choices: [{ index: 0, delta: { content: shortRaw } }] },
+          { choices: [{ index: 0, delta: {}, finish_reason: null }] },
+          { choices: [], usage: { prompt_tokens: 58445, completion_tokens: 34 } }
+        ].map(item => "data: " + JSON.stringify(item) + "\n\n").join("") + "data: [DONE]\n\n" });
+      }
+      if (novel && completionText) {
+        call.raw = "<novel_content>" + completionText + "</novel_content><novel_summary>整理好整章的实际剧情。</novel_summary>";
+        return route.fulfill({ contentType: "application/json", body: JSON.stringify({ choices: [{ message: { content: call.raw }, finish_reason: "stop" }] }) });
+      }
       let raw;
       if (!novel) raw = JSON.stringify({ result: "auxiliary remains independent" });
       else if (invalidPrimary === "malformed") raw = '{"title":"结构无效，无可恢复的正文", "summary":';
@@ -165,6 +183,58 @@ const { chromium } = require("playwright-core");
       if (format === "partial-tags") assert.equal(latest.lastGeneration.partial, true, "a missing closing tag is marked partial rather than pretending the chapter completed");
     }
     responseFormat = "json";
+    // Tiny paid response + DONE + natural EOF is a fragment, not a finished
+    // novel. Explicit completion appends to the same chapter in one request.
+    shortSse = true;
+    const beforeShort = calls.length;
+    await generate("从书店门口开始。"); shortSse = false;
+    let shortStory = (await stories())[0]; const partialCount = shortStory.chapters.length;
+    assert.equal(calls.length, beforeShort + 1); assert.equal(shortStory.chapters.at(-1).content, "他拿出了一本刚刚");
+    assert.equal(shortStory.lastGeneration.usage.outputTokens, 34); assert.equal(shortStory.lastGeneration.assessment.partial, true);
+    assert.equal(shortStory.lastGeneration.stats.httpEOF, true); assert.equal(shortStory.lastGeneration.stats.readerCancelled, false);
+    assert.match(await page.locator("#gr-generation-note").textContent(), /正文结构未闭合/);
+    await page.locator("#gr-last-response-btn").click(); await page.waitForSelector("#gr-last-response-modal.visible");
+    assert.match(await page.locator("#gr-last-response-info").textContent(), /仅表示接口结束传输，不代表正文完整/);
+    assert.match(await page.locator("#gr-last-response-info").textContent(), /接口未提供/);
+    assert.equal(await page.locator("#gr-last-response-content").inputValue(), shortRaw);
+    await page.locator("#gr-last-response-close").click();
+    await page.screenshot({ path: path.join(require("node:os").tmpdir(), "ephone-novel-incomplete-mobile.png") });
+    await ready(); await openBook();
+    completionText = "买来的旧书。随后，两人一起归还了借书。";
+    const beforeCompletion = calls.length, beforeCompleteState = JSON.stringify(shortStory.chapters);
+    await page.locator("#gr-complete-chapter-btn").evaluate(button => { button.click(); button.click(); });
+    await finish(beforeCompleteState, true, dialogs.length);
+    shortStory = (await stories())[0];
+    assert.equal(calls.length, beforeCompletion + 1); assert.equal(shortStory.chapters.length, partialCount);
+    assert.equal(shortStory.chapters.at(-1).content, "他拿出了一本刚刚" + completionText);
+    assert.equal(shortStory.lastGeneration.raw, calls.at(-1).raw, "diagnostics keep only the exact newly received text, not a fabricated merged return");
+    assert.equal(shortStory.lastGeneration.completingChapter, true);
+    assert.equal(shortStory.chapters.at(-1).generationPartial, undefined);
+    assert.match(calls.at(-1).prompt, /补完当前未完成章节（不是新的一章）/);
+    assert.match(calls.at(-1).prompt, /他拿出了一本刚刚/);
+    assert.equal(await page.locator("#gr-complete-chapter-btn").isVisible(), false);
+    completionText = "";
+    // A partial reroll must keep the complete original. Its draft survives a
+    // failed manual completion and reload, then replaces the original once.
+    shortSse = true; const originalComplete = shortStory.chapters;
+    await page.locator("#gr-reroll-btn").click(); await page.locator("#gr-rewrite-direct").click();
+    await page.waitForFunction(async () => (await window.db.grStories.toArray())[0].lastGeneration?.status === "draft"); await settle();
+    shortSse = false;
+    assert.deepEqual((await stories())[0].chapters, originalComplete);
+    assert.match(await page.locator("#gr-generation-note").textContent(), /原章已保留/);
+    failPrimary = true; const beforeFailedComplete = dialogs.length;
+    await page.locator("#gr-complete-chapter-btn").click();
+    await finish(JSON.stringify(originalComplete), false, beforeFailedComplete); failPrimary = false;
+    assert.deepEqual((await stories())[0].chapters, originalComplete);
+    await ready(); await openBook();
+    assert.equal(await page.locator("#gr-complete-chapter-btn").textContent(), "补完重写草稿");
+    completionText = "找到的手写目录。";
+    const beforeDraftCompletion = calls.length;
+    await page.locator("#gr-complete-chapter-btn").click(); await finish(JSON.stringify(originalComplete), true, dialogs.length);
+    assert.equal(calls.length, beforeDraftCompletion + 1);
+    assert.equal((await stories())[0].chapters.length, partialCount);
+    assert.equal((await stories())[0].chapters.at(-1).content, "他拿出了一本刚刚" + completionText);
+    completionText = "";
     await chooseApi("secondary"); await ready(); await openBook();
     await page.locator('#gr-reader-screen [title="设定"]').click(); await page.waitForSelector("#gr-settings-modal.visible");
     assert.equal(await page.locator("#gr-generation-api").inputValue(), "secondary", "the per-work selection survives reload and reopening settings");

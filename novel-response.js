@@ -146,7 +146,7 @@
       const start = match.index + match[0].length, tail = text.slice(start), closing = /<\/novel_content\s*>/i.exec(tail);
       let end;
       if (closing) end = start + closing.index;
-      else { const next = /<(?:novel_summary|novel_title)\b[^>]*>/i.exec(tail); end = next ? start + next.index : text.length; partial = !next; }
+      else { const next = /<(?:novel_summary|novel_title)\b[^>]*>/i.exec(tail); end = next ? start + next.index : text.length; partial = true; }
       pieces.push(text.slice(start, end)); opening.lastIndex = closing ? end + closing[0].length : end;
       if (!closing && end === text.length) break;
     }
@@ -190,5 +190,50 @@
     const heading = /^(?:#{1,3}\s+([^\r\n]+)|([^\r\n]{1,90}第[一二三四五六七八九十百千\d]+章[^\r\n]*))/m.exec(whole);
     return result({ title: heading?.[1] || heading?.[2], content: payload, summary: "" }, fallbackTitle, "text", ["服务商返回了普通正文，已直接保留；未额外调用 API 整理格式。"]);
   }
-  return Object.freeze({ parse });
+  // HTTP/SSE completion only describes delivery. It does not close a chapter's
+  // body, fix an unfinished JSON string, or explain why a model stopped.
+  function assess(parsed, output = {}) {
+    const reason = strings(output.finishReason), warnings = [...(parsed.warnings || [])];
+    const limited = /^(length|max_tokens|max_output_tokens|continuation)$/i.test(reason);
+    const abnormal = !!reason && !/^(stop|end_turn|stop_sequence)$/i.test(reason);
+    const partial = !!(parsed.partial || output.partial || abnormal);
+    let message;
+    if (output.providerError) message = "接口报错，已保留实际收到的正文。";
+    else if (output.error) message = "接收发生错误，已保留实际收到的正文。";
+    else if (limited) message = "接口报告因输出上限结束（" + reason + "），正文可能未完。";
+    else if (abnormal) message = "接口结束原因：" + reason + "，正文未确认完整。";
+    else if (parsed.partial) message = "接口已结束返回，但正文结构未闭合，已保留收到的残篇。";
+    else if (output.partial) message = "未能确认完整接收，已保留实际正文。";
+    else message = "已保存收到的正文；传输结束不保证故事已写完。";
+    return { partial, message, warnings, bodyStatus: parsed.partial ? "incomplete" : parsed.format === "text" ? "unverified" : "closed" };
+  }
+  function continuationPrompt(content, target) {
+    const received = [...strings(content)].filter(char => !/\s/u.test(char)).length;
+    const remaining = Math.max(0, Number(target) - received);
+    return "\n\n# 补完当前未完成章节（不是新的一章）\n以下是本章已经实际收到并保存的正文。保留所有已发生事实，从最后一个字之后继续；若最后一句没写完，先接完这句话。只输出新增的后续正文，不重写、不重复已保存部分，不另开新章。" +
+      (remaining > 0 ? "整章目标约" + target + "字，已有约" + received + "字，剩余约" + remaining + "字；这是写作目标，不是截断条件，以场景自然收束为准。" : "已有正文已达到字数目标，只需把未完成的句子和当前场景自然收束，不为凑字数增加新情节。") +
+      "标题与摘要应覆盖合并后的整章。新增正文仍放在 <novel_content> 内，并在实际写完后输出 </novel_content>。\n\n# 本章已保存的正文（只作衔接依据，禁止重复输出）\n" + content;
+  }
+  function appendContent(previous, addition) {
+    const base = strings(previous), next = strings(addition);
+    if (!next) return base;
+    // Preserve every existing character. A compatible model may repeat the
+    // entire prefix despite the continuation instruction.
+    if (next.startsWith(base)) return next;
+    // Remove only a substantial, EXACT seam echo; short repeated dialogue is
+    // legitimate prose. Compute overlap in linear time even for long chapters.
+    const prefix = new Array(next.length).fill(0);
+    for (let i = 1, j = 0; i < next.length; i++) {
+      while (j && next[i] !== next[j]) j = prefix[j - 1];
+      if (next[i] === next[j]) j++;
+      prefix[i] = j;
+    }
+    let overlap = 0;
+    for (const char of base.split("")) {
+      while (overlap && (overlap === next.length || char !== next[overlap])) overlap = prefix[overlap - 1];
+      if (char === next[overlap]) overlap++;
+    }
+    return base + next.slice(overlap >= 24 ? overlap : 0);
+  }
+  return Object.freeze({ parse, assess, continuationPrompt, appendContent });
 });

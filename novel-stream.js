@@ -161,7 +161,7 @@
       maxByteGapMs: 0, completionSignal: "", abortSignalReceived: false, readerCancelled: false, recoveredEvents: 0, recoveredChars: 0 };
     let lastByteAt = null;
     const unparsedEvents = [];
-    let raw = "", complete = false, ended = false, terminal = false, broken = false, aborted = false, failure = "", finishReason = "", providerFailure = null;
+    let raw = "", complete = false, ended = false, terminal = false, broken = false, aborted = false, failure = "", finishReason = "", finishMessage = "", providerFailure = null;
     const state = { blocks: new Map(), responseParts: new Map() };
     function snapshot() {
       const receiveMs = Date.now() - started, duration = stats.firstTextMs == null ? 0 : receiveMs - stats.firstTextMs;
@@ -194,6 +194,18 @@
       if (typeof reason === "string" && reason) { finishReason = reason; complete = true; }
       if (final) { terminal = true; stats.completionSignal = "protocol_end:" + (reason || "stop"); }
     }
+    function finishMetadata(value) {
+      const responseId = value?.id || value?.responseId || value?.response?.id;
+      const responseModel = value?.model || value?.modelVersion || value?.response?.model;
+      if (typeof responseId === "string") stats.responseId = responseId;
+      if (typeof responseModel === "string") stats.responseModel = responseModel;
+      const choice = value?.choices?.find(item => item.index === 0) || value?.choices?.find(item => item.index == null);
+      const candidate = value?.candidates?.find(item => item.index === 0) || value?.candidates?.find(item => item.index == null);
+      markFinish(choice?.finish_reason || choice?.finishReason || candidate?.finishReason || candidate?.finish_reason ||
+        value?.finish_reason || value?.finishReason || value?.stop_reason || value?.promptFeedback?.blockReason || value?.prompt_feedback?.block_reason);
+      finishMessage = text(candidate?.finishMessage || candidate?.finish_message || choice?.finish_message || value?.finishMessage || value?.finish_message ||
+        value?.promptFeedback?.blockReasonMessage || value?.prompt_feedback?.block_reason_message) || finishMessage;
+    }
     function providerError(data, force = false) {
       if (data?.data?.error) data = data.data;
       if (!force && !data?.error && data?.type !== "error" && data?.type !== "response.failed") return;
@@ -210,7 +222,7 @@
       if (!data || typeof data !== "object") return;
       const value = data.data && (data.data.choices || data.data.candidates || data.data.output) ? data.data : data;
       if (eventName === "error") providerError(value, true);
-      providerError(value); usageFrom(value, usage);
+      providerError(value); usageFrom(value, usage); finishMetadata(value);
       const previousReasoning = stats.reasoningSeen;
       if (usage.reasoningTokens > 0) stats.reasoningSeen = true;
       const type = value.type || eventName;
@@ -408,7 +420,7 @@
           const unwrapped = payload?.data || payload;
           if (reasoning(unwrapped) || unwrapped?.choices?.[0]?.message && reasoning(unwrapped.choices[0].message) || unwrapped?.candidates?.[0]?.content && reasoning(unwrapped.candidates[0].content)) stats.reasoningSeen = true;
           if (usage.reasoningTokens > 0) stats.reasoningSeen = true;
-          markFinish(unwrapped?.choices?.[0]?.finish_reason || unwrapped?.candidates?.[0]?.finishReason || unwrapped?.stop_reason);
+          finishMetadata(unwrapped);
           complete = true; stats.completionSignal ||= "complete_json";
         }
       }
@@ -445,7 +457,7 @@
       if (providerFailure) { ended = true; stats.completionSignal = "provider_error"; }
       else stats.completionSignal ||= aborted ? "aborted" : "read_error";
       broken = true; failure = aborted ? "生成已停止" : error.message || String(error);
-      if (!raw && !aborted) { error.partialRaw = raw; error.unparsedEvents = unparsedEvents; error.stats = snapshot(); throw error; }
+      if (!raw && !aborted) { error.partialRaw = raw; error.unparsedEvents = unparsedEvents; error.stats = snapshot(); error.finishReason = finishReason; error.finishMessage = finishMessage; error.usage = usage; throw error; }
     } finally {
       if (reader && stats.httpEOF) {
         // Novel requests consume the entire HTTP body, even when a compatible
@@ -461,8 +473,8 @@
     }
     stats.reasoningSeen ||= usage.reasoningTokens > 0;
     emit();
-    return { raw, partial: broken || !complete || /^(?:length|max_tokens|max_output_tokens|incomplete|continuation)$/i.test(finishReason),
-      aborted, finishReason, usage, unparsedEvents, providerError: providerFailure, stats: snapshot(), ...(failure ? { error: failure } : unparsedEvents.length ? { error: "收到" + unparsedEvents.length + "个格式异常的数据包，原始片段已保留，正文可能不完整。" } : {}) };
+    return { raw, partial: broken || !complete || !!finishReason && !/^(?:stop|end_turn|stop_sequence)$/i.test(finishReason),
+      aborted, finishReason, finishMessage, usage, unparsedEvents, providerError: providerFailure, stats: snapshot(), ...(failure ? { error: failure } : unparsedEvents.length ? { error: "收到" + unparsedEvents.length + "个格式异常的数据包，原始片段已保留，正文可能不完整。" } : {}) };
   }
   return Object.freeze({ read, releaseCompleted });
 });

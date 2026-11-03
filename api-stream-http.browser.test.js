@@ -30,7 +30,7 @@ const { chromium } = require("playwright-core");
   });
   server.on("connection", socket => { sockets.add(socket); socket.on("close", () => sockets.delete(socket)); });
   await new Promise(resolve => server.listen(0, "127.0.0.1", resolve));
-  const browser = await chromium.launch({ executablePath: "C:/Program Files/Google/Chrome/Application/chrome.exe", headless: true });
+  const browser = await chromium.launch({ executablePath: process.env.EPHONE_TEST_BROWSER || "C:/Program Files/Google/Chrome/Application/chrome.exe", headless: true });
   try {
     const page = await browser.newPage({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
     await page.goto(`http://127.0.0.1:${server.address().port}`, { waitUntil: "load" });

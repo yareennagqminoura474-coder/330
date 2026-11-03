@@ -92,7 +92,7 @@ const { chromium } = require("playwright-core");
   server.on("connection", (socket) => { sockets.add(socket); socket.on("close", () => sockets.delete(socket)); });
   await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
   const origin = `http://127.0.0.1:${server.address().port}`;
-  const browser = await chromium.launch({ executablePath: "C:/Program Files/Google/Chrome/Application/chrome.exe", headless: true });
+  const browser = await chromium.launch({ executablePath: process.env.EPHONE_TEST_BROWSER || "C:/Program Files/Google/Chrome/Application/chrome.exe", headless: true });
   try {
     const page = await browser.newPage({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true, serviceWorkers: "block" });
     await page.addInitScript(() => {
@@ -227,7 +227,7 @@ const { chromium } = require("playwright-core");
     assert.equal(saved.lastGeneration.lifecycle.freezeCount, 1); assert.equal(saved.lastGeneration.lifecycle.offlineCount, 1);
     await page.locator("#gr-last-response-btn").click();
     await page.waitForSelector("#gr-last-response-modal.visible");
-    assert.match(await page.locator("#gr-last-response-info").textContent(), /收到完整结束标记.*取消信号：未触发/);
+    assert.match(await page.locator("#gr-last-response-info").textContent(), /收到 \[DONE\].*不代表正文完整.*取消信号：未触发/);
     await page.locator("#gr-last-response-close").click();
     assert.ok(saved.lastGeneration.stats.firstTextMs <= saved.lastGeneration.stats.totalMs);
     assert.equal(await page.locator("#gr-reader-content .gr-chapter-text").textContent(), first.expected.content);

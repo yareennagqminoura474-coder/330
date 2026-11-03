@@ -14,6 +14,18 @@ function controlled(type = "text/event-stream") {
 }
 const delta = (text) => ({ choices: [{ index: 0, delta: { content: text }, finish_reason: null }] });
 (async () => {
+  // The screenshot's failure: the gateway sends only a fragment then DONE and
+  // clean EOF. Retain it byte-for-byte and do not invent a model stop reason.
+  const earlyBody = '<novel_title>去看看吧</novel_title><novel_content>他拿出了一本刚刚';
+  const early = await core.read(response(event(delta(earlyBody)) + event({ choices: [], usage: { prompt_tokens: 58445, completion_tokens: 34 } }) + done), { waitForEOF: true });
+  assert.equal(early.raw, earlyBody); assert.equal(early.finishReason, ""); assert.equal(early.stats.httpEOF, true);
+  assert.equal(early.stats.readerCancelled, false); assert.equal(early.usage.outputTokens, 34);
+  for (const type of ["text/event-stream", "application/json"]) {
+    const payload = { candidates: [{ content: { parts: [{ text: "已收到正文。" }] }, finishReason: "SAFETY", finishMessage: "Provider supplied explanation" }] };
+    const blocked = await core.read(response(type === "text/event-stream" ? event(payload) + done : JSON.stringify(payload), [1024], type), { waitForEOF: true });
+    assert.equal(blocked.finishReason, "SAFETY"); assert.equal(blocked.finishMessage, "Provider supplied explanation");
+    assert.equal(blocked.partial, true); assert.equal(blocked.raw, "已收到正文。");
+  }
   // Novel mode: early terminators are advisory. Even a long delivery pause and
   // cleanup of an unrelated completed request cannot abort this paid response.
   for (const marker of [done, event({ candidates: [{ content: { parts: [] }, finishReason: "STOP" }] }), event({ type: "message_stop" }), event({ type: "response.completed" })]) {
