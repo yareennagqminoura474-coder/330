@@ -9,7 +9,7 @@ const { chromium } = require("playwright-core");
     res.setHeader("Content-Type", file.endsWith(".js") ? "application/javascript" : file.endsWith(".css") ? "text/css" : "text/html"); res.end(fs.readFileSync(file));
   });
   await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
-  const origin = `http://127.0.0.1:${server.address().port}`, browser = await chromium.launch({ executablePath: "C:/Program Files/Google/Chrome/Application/chrome.exe", headless: true });
+  const origin = `http://127.0.0.1:${server.address().port}`, browser = await chromium.launch({ executablePath: process.env.EPHONE_TEST_BROWSER || "C:/Program Files/Google/Chrome/Application/chrome.exe", headless: true });
   const calls = [], errors = [], dialogs = [], held = []; let failPrimary = false, upstreamFailure = false, invalidPrimary = "", responseFormat = "json", lengthReason = false, holdPrimary = false, serial = 0, shortSse = false, completionText = "";
   const shortRaw = "<novel_title>一起去旧书店吧</novel_title><novel_content>他拿出了一本刚刚";
   const chapter = (n) => ({ title: "第" + n + "章 <约定>", content: "完整小说正文" + n + "：\n" + (n === 1 ? "陈安正在整理书架。" : n === 2 ? "林澈把旧书摆上柜台。" : "") + "日常散步和整理旧书的完整细节。".repeat(80) + '\n<约定>照旧。<img src=x onerror="window.__greenRiverInjected=true">' + "CHAPTER_END_" + n + "，数学符号（$\\in$ 与 $\\notin$）。", summary: "本章总结" + n + '：</textarea><img src=x onerror="window.__greenRiverInjected=true">' });
@@ -44,6 +44,19 @@ const { chromium } = require("playwright-core");
       if (novel && completionText) {
         call.raw = "<novel_content>" + completionText + "</novel_content><novel_summary>整理好整章的实际剧情。</novel_summary>";
         return route.fulfill({ contentType: "application/json", body: JSON.stringify({ choices: [{ message: { content: call.raw }, finish_reason: "stop" }] }) });
+      }
+      if (novel && responseFormat.startsWith('audit-')) {
+        const expected = chapter(++serial); call.expected = expected;
+        const prose = '<novel_content>' + expected.content + '</novel_content>';
+        const packet = value => 'data: ' + JSON.stringify(value) + '\n\n';
+        const delta = content => ({ choices: [{ index: 0, delta: { content } }] });
+        let wire;
+        if (responseFormat === 'audit-snapshot') wire = packet(delta(prose)) + packet({ choices: [{ index: 0, message: { content: '<novel_content>不同的短快照' }, finish_reason: 'stop' }] });
+        if (responseFormat === 'audit-empty-delta') wire = packet(delta(prose.slice(0, 50))) + packet({ choices: [{ index: 0, delta: {}, message: { content: prose }, finish_reason: 'stop' }] });
+        if (responseFormat === 'audit-eof') wire = 'data: {"choices":[{"index":0,"delta":{"content":' + JSON.stringify(prose).slice(0, -1);
+        if (responseFormat === 'audit-separators') wire = [prose.slice(0, 50), prose.slice(50)].map(part => packet(delta(part)).replace(/\n\n$/, '\n')).join('');
+        if (responseFormat !== 'audit-eof') wire += 'data: [DONE]\n\n';
+        return route.fulfill({ contentType: 'text/event-stream', body: wire });
       }
       let raw;
       if (!novel) raw = JSON.stringify({ result: "auxiliary remains independent" });
@@ -183,6 +196,17 @@ const { chromium } = require("playwright-core");
       if (format === "partial-tags") assert.equal(latest.lastGeneration.partial, true, "a missing closing tag is marked partial rather than pretending the chapter completed");
     }
     responseFormat = "json";
+    for (const mode of ['snapshot', 'empty-delta', 'eof', 'separators']) {
+      responseFormat = 'audit-' + mode;
+      const before = calls.length;
+      await generate('同一页面连续测试接收兼容：' + mode);
+      const saved = (await stories())[0];
+      assert.equal(calls.length, before + 1);
+      assert.equal(saved.chapters.at(-1).content, calls.at(-1).expected.content, 'do not discard paid content: ' + mode);
+      assert.ok(saved.lastGeneration.wireEvidence.tail.startsWith('data: '));
+      if (mode === 'snapshot') assert.equal(saved.lastGeneration.stats.ignoredShortSnapshots, 1);
+    }
+    responseFormat = 'json';
     // Tiny paid response + DONE + natural EOF is a fragment, not a finished
     // novel. Explicit completion appends to the same chapter in one request.
     shortSse = true;
@@ -197,6 +221,15 @@ const { chromium } = require("playwright-core");
     assert.match(await page.locator("#gr-last-response-info").textContent(), /仅表示接口结束传输，不代表正文完整/);
     assert.match(await page.locator("#gr-last-response-info").textContent(), /接口未提供/);
     assert.equal(await page.locator("#gr-last-response-content").inputValue(), shortRaw);
+    const beforeWire = calls.length;
+    await page.locator('#gr-wire-details summary').click();
+    const wire = await page.locator('#gr-wire-content').inputValue();
+    assert.match(wire, /data: \{"choices"/); assert.match(wire, /"completion_tokens":34/); assert.match(wire, /data: \[DONE\]/);
+    assert.equal(wire, shortStory.lastGeneration.wireEvidence.tail);
+    assert.doesNotMatch(wire, /fake-primary|Authorization|NEW_MENTOR_PROFILE/);
+    assert.equal(calls.length, beforeWire, 'opening original packets must not spend on another request');
+    await page.locator('#gr-wire-content').scrollIntoViewIfNeeded();
+    await page.screenshot({ path: path.join(require('node:os').tmpdir(), 'ephone-novel-wire-mobile.png') });
     await page.locator("#gr-last-response-close").click();
     await page.screenshot({ path: path.join(require("node:os").tmpdir(), "ephone-novel-incomplete-mobile.png") });
     await ready(); await openBook();

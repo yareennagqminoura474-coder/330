@@ -54918,6 +54918,12 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
     const storyId = _0x5576d5.activeStoryId, story = await _0x24f906.grStories.get(storyId);
     if (_0x5576d5.activeStoryId !== storyId || !story?.lastGeneration) return;
     const last = story.lastGeneration;
+    const wireDetails = document.getElementById("gr-wire-details");
+    wireDetails.hidden = !last.wireEvidence; wireDetails.open = false;
+    document.getElementById("gr-wire-content").value = last.wireEvidence?.tail || "";
+    document.getElementById("gr-wire-info").textContent = last.wireEvidence
+      ? "这是解析前收到的接口数据，只保存在本机，不含请求密钥。" + (last.wireEvidence.truncated ? "此处仅保留最后 65,536 个字符，前部省略不代表正文被截断。" : "本次收到的原始响应已全部保留。")
+      : "旧版本未保留解析前的接口数据。";
     document.getElementById("gr-last-response-content").value = (last.raw || "") + (last.providerError ? "\n\n【接口返回的错误】\n" + JSON.stringify({ error: last.providerError }, null, 2) : "") + (last.unparsedEvents?.length ? "\n\n【未能解析的原始数据片段】\n" + last.unparsedEvents.join("\n\n") : "");
     const seconds = (n) => Number.isFinite(n) ? (n / 1000).toFixed(1) + "秒" : "未记录", stats = last.stats;
     document.getElementById("gr-last-response-info").textContent = (last.api === "secondary" ? "副 API" : "主 API") + " · " + (last.model || "") + "。内容保存在本机，查看不会重新请求。" + (last.error ? "\n上次未保存为章节：" + last.error : "") +
@@ -54934,6 +54940,7 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
       (stats?.transportErrorAlongsideProviderError ? "\n同时发生的接收错误：" + stats.transportErrorAlongsideProviderError : "") +
       (last.lifecycle ? "\n本次页面状态：切到后台 " + last.lifecycle.hiddenCount + " 次，累计 " + seconds(last.lifecycle.backgroundMs) + "；系统冻结通知 " + last.lifecycle.freezeCount + " 次；离线通知 " + last.lifecycle.offlineCount + " 次。" : "") +
       (stats?.recoveredChars ? "\n断开时额外保住已到达的 " + stats.recoveredChars + " 字（" + stats.recoveredEvents + " 个数据片段），未重新请求。" : "") +
+      (stats?.ignoredShortSnapshots ? "\n已阻止 " + stats.ignoredShortSnapshots + " 个较短的末尾快照覆盖此前收到的正文；可展开查看原始尾包。" : "") +
       (stats?.completionSignal ? "\n传输结束信号：" + ({ done_marker: "收到 [DONE]（仅表示接口结束传输，不代表正文完整）", eof_after_finish: "收到模型结束信息后连接自然结束", eof_without_finish: "连接结束，但未收到模型结束信息", complete_json: "收到完整 JSON 数据（不代表正文完整）", message_stop: "收到 message_stop", "response.completed": "收到 response.completed", "response.incomplete": "接口报告未完整生成", aborted: "请求被取消", read_error: "读取连接时出错", provider_error: "接口明确返回错误，生成未完成" }[stats.completionSignal] || stats.completionSignal) + "；取消信号：" + (stats.abortSignalReceived ? "已触发" : "未触发") + "。" : "") +
       (last.http?.reception ? "\n连接实际结束：" + ({ http_eof: "HTTP 自然结束", network_error: "浏览器报告网络错误", aborted: "请求被取消", cancelled: "接收端关闭" }[last.http.reception.end] || last.http.reception.end) + "；小手机主动取消：" + (last.http.reception.cancelledBy || "没有") + "。" : "") +
       (stats?.bytesReceived != null ? "\n已接收 " + stats.bytesReceived + " 字节、" + stats.eventCount + " 个数据包；其中 " + (stats.malformedEvents || 0) + " 个格式异常。" : "") + (last.transportError ? "\n接收提示：" + last.transportError : "") + (last.usage && (last.usage.inputTokens != null || last.usage.outputTokens != null) ? "\n接口报告用量：输入 " + (last.usage.inputTokens ?? "未提供") + "，输出 " + (last.usage.outputTokens ?? "未提供") + " tokens" + (last.usage.reasoningTokens != null ? "，其中思考 " + last.usage.reasoningTokens : "") + "。" : "");
@@ -55735,7 +55742,7 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
       clearTimeout(paintTimer); paintTimer = 0;
       _ephoneSyncNovelControls();
       await draftQueue.catch(() => {});
-      received = { raw: output.raw, status: "received", api, model, rewrite, completingChapter: !!continuation, chapterIndex: chapters.length, http: httpDetails, request: requestDetails, lifecycle: lifecycleSnapshot(), finishReason: output.finishReason, finishMessage: output.finishMessage, usage: output.usage, unparsedEvents: output.unparsedEvents, providerError: output.providerError || null, transportError: output.error || "",
+      received = { raw: output.raw, wireEvidence: output.wireEvidence, status: "received", api, model, rewrite, completingChapter: !!continuation, chapterIndex: chapters.length, http: httpDetails, request: requestDetails, lifecycle: lifecycleSnapshot(), finishReason: output.finishReason, finishMessage: output.finishMessage, usage: output.usage, unparsedEvents: output.unparsedEvents, providerError: output.providerError || null, transportError: output.error || "",
         stats: { ...output.stats, preparationMs, headersMs, maxTextGapMs: Math.max(maxTextGapMs, _0x5576d5.lastProseAt ? Date.now() - _0x5576d5.lastProseAt : 0), firstTextMs: output.stats.firstTextMs == null ? null : headersMs + output.stats.firstTextMs,
           totalMs: Date.now() - _0x5576d5.startedAt }, receivedAt: Date.now(), elapsedMs: Date.now() - _0x5576d5.startedAt };
       // Keep the paid result before trying to interpret its chapter wrapper.
@@ -55777,7 +55784,7 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
     } catch (error) {
       const stopped = error.name === "AbortError" || controller.signal.aborted;
       await draftQueue.catch(() => {});
-      if (!received && requestStartedAt !== null) received = { raw: error.partialRaw || _0x5576d5.previewRaw || "", unparsedEvents: error.unparsedEvents || [],
+      if (!received && requestStartedAt !== null) received = { raw: error.partialRaw || _0x5576d5.previewRaw || "", wireEvidence: error.wireEvidence, unparsedEvents: error.unparsedEvents || [],
         stats: { ...error.stats, preparationMs, headersMs, totalMs: Date.now() - _0x5576d5.startedAt }, http: httpDetails, request: requestDetails, lifecycle: lifecycleSnapshot(),
         transportError: error.message, providerError: error.providerError || null, finishReason: error.finishReason || "", finishMessage: error.finishMessage || "", usage: error.usage, api, model: responseModel, receivedAt: Date.now() };
       if (received && await stories.get(storyId)) await stories.update(storyId, { lastGeneration: { ...draftBackup, ...received, status: "error", error: stopped ? "已停止生成" : error.message } }).catch(() => {});

@@ -159,7 +159,15 @@
     const started = Date.now(), usage = { inputTokens: null, outputTokens: null, reasoningTokens: null, cachedInputTokens: null };
     const stats = { firstTextMs: null, firstByteMs: null, receiveMs: 0, visibleChars: 0, eventCount: 0, bytesReceived: 0, malformedEvents: 0, reasoningSeen: false, streamed: false,
       maxByteGapMs: 0, completionSignal: "", abortSignalReceived: false, readerCancelled: false, recoveredEvents: 0, recoveredChars: 0 };
-    let lastByteAt = null;
+    let lastByteAt = null, wireTail = "", wireChars = 0;
+    // A bounded LOCAL copy before parsing. `raw` below is extracted text, not
+    // the transport response; comparing it with the reader alone proves little.
+    const wireTailLimit = 65536;
+    function capture(value) {
+      wireChars += value.length;
+      wireTail = (wireTail + value).slice(-wireTailLimit);
+    }
+    const wireEvidence = () => ({ tail: wireTail, totalChars: wireChars, truncated: wireChars > wireTail.length });
     const unparsedEvents = [];
     let raw = "", complete = false, ended = false, terminal = false, broken = false, aborted = false, failure = "", finishReason = "", finishMessage = "", providerFailure = null;
     const state = { blocks: new Map(), responseParts: new Map() };
@@ -182,6 +190,13 @@
     function update(value, replace = false) {
       if (typeof value !== "string" || !value) return;
       if (replace && raw.startsWith(value)) return; // Ignore an older cumulative snapshot.
+      if (replace && value.length < raw.length) {
+        // A gateway may append a stale/shortened message snapshot with slightly
+        // different punctuation. It cannot erase already delivered delta text.
+        stats.ignoredShortSnapshots = (stats.ignoredShortSnapshots || 0) + 1;
+        broken = true;
+        return;
+      }
       const next = replace ? value : raw + value;
       if (next === raw) return;
       raw = next;
@@ -258,9 +273,12 @@
         const choice = value.choices.find((item) => item.index === 0) || value.choices.find((item) => item.index == null);
         if (choice) {
           if (reasoning(choice.delta) || reasoning(choice.message)) stats.reasoningSeen = true;
-          if (choice.delta) update(partsText(choice.delta.content));
-          else if (choice.message) update(partsText(choice.message.content), true);
-          else if (typeof choice.text === "string") update(choice.text);
+          const deltaText = partsText(choice.delta?.content);
+          if (deltaText) update(deltaText);
+          // Several compatible envelopes include delta:{} alongside message.
+          // Read that final snapshot too, including a tail absent from deltas.
+          if (choice.message) update(partsText(choice.message.content), true);
+          else if (!deltaText && typeof choice.text === "string") update(choice.text);
           markFinish(choice.finish_reason);
         }
       } else if (Array.isArray(value.candidates)) {
@@ -306,6 +324,16 @@
       }
       return packets.length ? packets : null;
     }
+    function unparsed(source) {
+      broken = true; stats.malformedEvents++; unparsedEvents.push(source);
+      // A syntactically broken packet can still contain a received text prefix.
+      // Preserve it on normal EOF/DONE too, not only on a network exception.
+      const recovered = recoverPacket(source);
+      if (recovered) {
+        const before = raw.length; event(recovered);
+        if (raw.length > before) { stats.recoveredEvents++; stats.recoveredChars += raw.length - before; }
+      }
+    }
     function dispatch() {
       if (!dataLines.length) { eventName = ""; return; }
       const data = dataLines.join("\n"), name = eventName;
@@ -317,14 +345,14 @@
         packets = joinedPackets(data);
         if (!packets) {
           if (name === "error") providerError({ message: data, type: "error" }, true);
-          if (/^[\s]*[{\[]/.test(data)) { broken = true; stats.malformedEvents++; unparsedEvents.push(data); return; }
+          if (/^[\s]*[{\[]/.test(data)) { unparsed(data); return; }
           if (!["ping", "heartbeat"].includes(name)) event(data, name);
           return;
         }
       }
       for (const packet of packets) {
         if (packet.done) { ended = !waitForEOF; complete = true; stats.completionSignal = "done_marker"; if (ended) break; else continue; }
-        if (packet.unparsed) { broken = true; stats.malformedEvents++; unparsedEvents.push(packet.unparsed); continue; }
+        if (packet.unparsed) { unparsed(packet.unparsed); continue; }
         event(packet.value, name);
       }
     }
@@ -347,6 +375,14 @@
       }
       lineBuffer = ended ? "" : lineBuffer.slice(start);
       if (flush && !ended) { if (lineBuffer) line(lineBuffer); lineBuffer = ""; dispatch(); }
+      else if (!ended && dataLines.length) {
+        // Standard multiline SSE JSON still waits until balanced. For gateways
+        // omitting blank separators, a complete API envelope is unambiguous and
+        // can be delivered now rather than buffering minutes of paid output.
+        const packets = joinedPackets(dataLines.join("\n"));
+        if (packets?.every(packet => packet.done || packet.value && typeof packet.value === "object" &&
+          (envelope(packet.value) || packet.value.type || packet.value.usage || packet.value.usageMetadata))) dispatch();
+      }
     }
     emit();
     const reader = response.body?.getReader?.(), decoder = new TextDecoder();
@@ -394,7 +430,7 @@
           const chunk = await readChunk(reader, signal);
           if (chunk.done) { stats.httpEOF = true; stats.completionSignal ||= complete ? "eof_after_finish" : "eof_without_finish"; break; }
           activity(chunk.value.byteLength);
-          const decoded = decoder.decode(chunk.value, { stream: true });
+          const decoded = decoder.decode(chunk.value, { stream: true }); capture(decoded);
           if (mode === "sse") { feed(decoded); if (terminal && !waitForEOF) ended = true; }
           else {
             wire += decoded;
@@ -403,17 +439,22 @@
             if (terminal && !waitForEOF) ended = true;
           }
         }
-        const tail = decoder.decode();
+        const tail = decoder.decode(); capture(tail);
         if (mode === "sse") feed(tail, true); else wire += tail;
       } else {
         if (signal?.aborted) throw abortError();
-        wire = await response.text(); activity(new TextEncoder().encode(wire).byteLength);
+        wire = await response.text(); capture(wire); activity(new TextEncoder().encode(wire).byteLength);
         if (/^\s*(?:data:|event:|:|id:|retry:)/.test(wire)) { mode = "sse"; stats.streamed = true; feed(wire.replace(/^\uFEFF/, ""), true); wire = ""; }
       }
       if (mode !== "sse") {
         let payload;
         try { payload = JSON.parse(wire); }
-        catch { update(wire); broken = /^[\s]*[{\[]/.test(wire); complete = !broken; }
+        catch {
+          const recovered = recoverPacket(wire);
+          if (recovered) { unparsed(wire); }
+          else { update(wire); broken = /^[\s]*[{\[]/.test(wire); }
+          complete = !broken;
+        }
         if (payload !== undefined) {
           if (Array.isArray(payload) && payload.some((part) => part?.choices || part?.candidates)) payload.forEach((part) => event(part));
           else { providerError(payload); usageFrom(payload, usage); update(extract(payload, extractText), true); }
@@ -457,7 +498,7 @@
       if (providerFailure) { ended = true; stats.completionSignal = "provider_error"; }
       else stats.completionSignal ||= aborted ? "aborted" : "read_error";
       broken = true; failure = aborted ? "生成已停止" : error.message || String(error);
-      if (!raw && !aborted) { error.partialRaw = raw; error.unparsedEvents = unparsedEvents; error.stats = snapshot(); error.finishReason = finishReason; error.finishMessage = finishMessage; error.usage = usage; throw error; }
+      if (!raw && !aborted) { error.partialRaw = raw; error.wireEvidence = wireEvidence(); error.unparsedEvents = unparsedEvents; error.stats = snapshot(); error.finishReason = finishReason; error.finishMessage = finishMessage; error.usage = usage; throw error; }
     } finally {
       if (reader && stats.httpEOF) {
         // Novel requests consume the entire HTTP body, even when a compatible
@@ -474,7 +515,7 @@
     stats.reasoningSeen ||= usage.reasoningTokens > 0;
     emit();
     return { raw, partial: broken || !complete || !!finishReason && !/^(?:stop|end_turn|stop_sequence)$/i.test(finishReason),
-      aborted, finishReason, finishMessage, usage, unparsedEvents, providerError: providerFailure, stats: snapshot(), ...(failure ? { error: failure } : unparsedEvents.length ? { error: "收到" + unparsedEvents.length + "个格式异常的数据包，原始片段已保留，正文可能不完整。" } : {}) };
+      aborted, finishReason, finishMessage, usage, unparsedEvents, wireEvidence: wireEvidence(), providerError: providerFailure, stats: snapshot(), ...(failure ? { error: failure } : unparsedEvents.length ? { error: "收到" + unparsedEvents.length + "个格式异常的数据包，原始片段已保留，正文可能不完整。" } : {}) };
   }
   return Object.freeze({ read, releaseCompleted });
 });
