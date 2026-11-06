@@ -55201,7 +55201,7 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
       ](_0x3fbba3(0x2fb)));
   }
   async function _0x4b44e8(_0x352e0a = {}, _0x1219a8 = null) {
-    await _ephoneRenderNovelPresets(_0x352e0a.presetIds || []);
+    await _ephoneRenderNovelPresets();
     document.getElementById("gr-generation-api").value = _0x352e0a.generationApi === "secondary" ? "secondary" : "primary";
     document.getElementById("gr-stream-output").checked = _0x352e0a.streamOutput !== false;
     const _0x112bcc = _0x3ce505,
@@ -55343,7 +55343,6 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
     const _0x50ebfc = {
       charIds: _0x1e524f,
       bookIds: _0x27100b,
-      presetIds: Array.from(document.querySelectorAll("#gr-preset-list input:checked"), input => input.value),
       userPersonaId: _0x274e29,
       outputLength: _0x570cf7,
       contextLimit: _0x3874fb,
@@ -55584,34 +55583,22 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
     if (Array.isArray(preset.content)) return preset.content;
     return typeof preset.content === "string" ? [{ content: preset.content }] : [];
   }
-  async function _ephoneRenderNovelPresets(selectedIds) {
+  async function _ephoneRenderNovelPresets() {
     const list = document.getElementById("gr-preset-list");
     list.replaceChildren();
-    const selected = new Set(selectedIds.map(String));
     const presets = await _0x24f906.presets.toArray();
-    for (const id of selected) {
-      if (!presets.some(preset => String(preset.id) === id)) presets.push({ id, name: "已删除的预设（请取消勾选）", content: [] });
-    }
-    if (!presets.length) list.textContent = "还没有预设，请先到小手机的「预设」中添加。";
     for (const preset of presets) {
-      const row = document.createElement("div");
-      row.style.cssText = "padding:8px 0;border-bottom:1px solid #eee;";
-      const label = document.createElement("label"), checkbox = document.createElement("input"), name = document.createElement("span");
-      checkbox.type = "checkbox";
-      checkbox.value = String(preset.id);
-      checkbox.checked = selected.has(String(preset.id));
-      name.textContent = preset.name || "未命名预设";
-      label.append(checkbox, " ", name);
+      const entries = _ephoneNovelPresetEntries(preset).filter(entry => entry.enabled !== false && entry.content);
+      if (!entries.length) continue;
       const details = document.createElement("details"), summary = document.createElement("summary"), preview = document.createElement("div");
-      summary.textContent = "查看内容";
+      details.style.cssText = "padding:8px 0;border-bottom:1px solid #eee;";
+      summary.textContent = (preset.name || "未命名预设") + "（已启用 " + entries.length + " 条）";
       preview.style.cssText = "white-space:pre-wrap;overflow-wrap:anywhere;font-size:13px;line-height:1.6;";
-      preview.textContent = _ephoneNovelPresetEntries(preset).map(entry =>
-        (entry.enabled === false ? "【未启用】" : "") + (entry.content || "")
-      ).join("\n\n") || "暂无内容";
+      preview.textContent = entries.map(entry => entry.content).join("\n\n");
       details.append(summary, preview);
-      row.append(label, details);
-      list.append(row);
+      list.append(details);
     }
+    if (!list.childElementCount) list.textContent = "目前没有已启用的预设条目。";
   }
   async function _ephoneNovelSources(story, personaDb) {
     const settings = story.settings || {};
@@ -55640,17 +55627,17 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
       if (!book) throw new Error("所选世界书已不存在，请在作品设定重新选择。");
       context.text += "\n\n# 所选世界书：" + book.name + "\n" + (book.content || []).filter((row) => row.enabled !== false).map((row) => row.content || "").join("\n\n");
     }
-    if (settings.presetIds?.length) {
-      const presets = await _0x24f906.presets.toArray();
-      for (const id of new Set(settings.presetIds.map(String))) {
-        const preset = presets.find(row => String(row.id) === id);
-        if (!preset) throw new Error("所选写作预设已删除，请在作品设定中重新选择后再创作。");
-        const content = _ephoneNovelPresetEntries(preset).filter(entry => entry.enabled !== false)
-          .map(entry => entry.content || "").filter(Boolean).join("\n\n");
-        if (content) context.text += "\n\n# 本作品选用的写作预设：" + preset.name + "\n" + content;
+    const presets = await _0x24f906.presets.toArray();
+    let hasPresetContent = false;
+    for (const preset of presets) {
+      const content = _ephoneNovelPresetEntries(preset).filter(entry => entry.enabled !== false)
+        .map(entry => entry.content || "").filter(Boolean).join("\n\n");
+      if (content) {
+        hasPresetContent = true;
+        context.text += "\n\n# 已启用的写作预设：" + (preset.name || "未命名预设") + "\n" + content;
       }
-      context.text += "\n将所选预设的写作要求应用于小说正文。输出仍采用本次要求的小说标签结构；聊天气泡、消息数组等聊天界面格式不用于小说。";
     }
+    if (hasPresetContent) context.text += "\n将已启用预设的写作要求应用于小说正文。输出仍采用本次要求的小说标签结构；聊天气泡、消息数组等聊天界面格式不用于小说。";
     return context;
   }
   async function _0x10ebb8(rewrite = false, rewriteDirection, completeChapter = false) {
