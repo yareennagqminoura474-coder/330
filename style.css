@@ -14624,6 +14624,14 @@ input[type=range] {
     white-space: pre-wrap;
     margin-bottom: 15px;
 }
+.gr-chapter-text .gr-dialogue,
+#gr-live-preview-content .gr-dialogue {
+    color: #9a4c22;
+}
+#phone-screen.dark-mode .gr-chapter-text .gr-dialogue,
+#phone-screen.dark-mode #gr-live-preview-content .gr-dialogue {
+    color: #eab88f;
+}
 
 /* 摘要折叠块 */
 .gr-summary-box {

@@ -34,7 +34,10 @@ const { chromium } = require("playwright-core");
 \begin{align}a+b&=c\\x^2+y^2&=z^2\end{align}
 
 普通价格 $20 和 $30 不应变成公式。未知公式 $\unknownCommand{x}$ 应保留。
-<img src=x onerror="window.__mathInjected=true"> 最后一行，原文保留。`;
+<img src=x onerror="window.__mathInjected=true"> 最后一行，原文保留。
+
+他抬头说：“明天一起去书店吧。”她点点头。
+她答道：「好，你说的『老地方』见。」`;
   try {
     const page = await browser.newPage({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true, serviceWorkers: "block" });
     const errors = [], fontResponses = [], unexpected = [];
@@ -70,6 +73,8 @@ const { chromium } = require("playwright-core");
     const text = await reader.textContent();
     for (const expected of ["普通价格 $20 和 $30", "$\\unknownCommand{x}$", "<img src=x", "最后一行，原文保留。", "先把"]) assert.ok(text.includes(expected), expected);
     assert.equal(await reader.locator("img, iframe, a").count(), 0);
+    assert.equal((await reader.locator('.gr-dialogue').allTextContents()).join(''), '"window.__mathInjected=true"“明天一起去书店吧。”「好，你说的『老地方』见。」');
+    assert.notEqual(await reader.locator('.gr-dialogue').first().evaluate(node => getComputedStyle(node).color), await reader.evaluate(node => getComputedStyle(node).color));
     assert.equal(await page.evaluate(() => !!window.__mathInjected), false);
     assert.equal(await page.evaluate(async id => (await window.db.grStories.get(id)).chapters[0].content, id), body);
     await page.evaluate(() => document.fonts.ready);
@@ -97,6 +102,16 @@ const { chromium } = require("playwright-core");
       return { partial, count, repeated: node.querySelectorAll(".katex").length, tail: node.textContent.endsWith("，结束。") };
     });
     assert.deepEqual(incremental, { partial: "正文 $\\frac{1}", count: 1, repeated: 1, tail: true });
+    const dialogue = await page.evaluate(() => {
+      const node = document.createElement('div');
+      EPhoneNovelPresentation.renderStream(node, '他说：“还没');
+      const partial = node.querySelector('.gr-dialogue').textContent;
+      const source = '他说：“还没讲完 $x^2$ 呢。”她笑了。"我在听。"';
+      EPhoneNovelPresentation.renderStream(node, source);
+      EPhoneNovelPresentation.render(node);
+      return { partial, highlighted: [...node.querySelectorAll('.gr-dialogue')].map(span => span.textContent).join(''), math: node.querySelectorAll('.katex').length, nested: node.querySelectorAll('.gr-dialogue .gr-dialogue').length, tail: node.textContent.endsWith('"我在听。"') };
+    });
+    assert.deepEqual(dialogue, { partial: '“还没', highlighted: '“还没讲完  呢。”"我在听。"', math: 1, nested: 0, tail: true });
     // KaTeX trust is disabled: TeX cannot create external links or HTML nodes.
     assert.equal(await page.evaluate(() => {
       const node = document.createElement("div"); EPhoneNovelPresentation.render(node, "$\\href{javascript:alert(1)}{x}$ $\\includegraphics{https://example.invalid/x.png}$");

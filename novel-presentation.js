@@ -15,11 +15,43 @@
       return body.replace(/\\([a-zA-Z]+)/g, (_, name) => symbols[name]).replace(/\\[,;:]/g, " ").replace(/\\!/g, "");
     });
   }
+  function highlightDialogue(element) {
+    for (const span of element.querySelectorAll(".gr-dialogue")) span.replaceWith(...span.childNodes);
+    const walker = element.ownerDocument.createTreeWalker(element, 4);
+    const nodes = [];
+    while (walker.nextNode()) {
+      if (!walker.currentNode.parentElement.closest(".katex, script, style")) nodes.push(walker.currentNode);
+    }
+    const closingQuotes = { "“": "”", "‘": "’", "「": "」", "『": "』", '"': '"' };
+    const stack = [];
+    for (const node of nodes) {
+      const fragment = element.ownerDocument.createDocumentFragment();
+      let buffer = "", dialogue = stack.length > 0;
+      const flush = () => {
+        if (!buffer) return;
+        const part = element.ownerDocument.createElement("span");
+        part.textContent = buffer;
+        if (dialogue) part.className = "gr-dialogue";
+        fragment.append(dialogue ? part : element.ownerDocument.createTextNode(buffer));
+        buffer = "";
+      };
+      for (const char of node.data) {
+        const closing = stack.length && char === stack[stack.length - 1];
+        const opening = !closing && closingQuotes[char];
+        const highlighted = stack.length > 0 || Boolean(opening);
+        if (highlighted !== dialogue) { flush(); dialogue = highlighted; }
+        buffer += char;
+        if (closing) stack.pop();
+        else if (opening) stack.push(opening);
+      }
+      flush();
+      node.replaceWith(fragment);
+    }
+  }
   function render(element, value) {
     if (!element) return;
     if (value !== undefined) element.textContent = String(value ?? "");
-    if (!root?.renderMathInElement || !root?.katex) return;
-    root.renderMathInElement(element, {
+    if (root?.renderMathInElement && root?.katex) root.renderMathInElement(element, {
       delimiters: [
         { left: "$$", right: "$$", display: true },
         { left: "\\[", right: "\\]", display: true },
@@ -35,17 +67,18 @@
       },
       errorCallback: () => {}
     });
+    highlightDialogue(element);
   }
   const previews = new WeakMap();
   function renderStream(element, value) {
     if (!element) return;
     value = String(value ?? "");
-    const previous = previews.get(element), hasMath = /(?<!\\)\$|\\(?:\(|\[|begin\{)/u.test(value);
-    if (!hasMath && previous?.node?.parentNode === element && value.startsWith(previous.source)) {
+    const previous = previews.get(element), hasFormatting = /(?<!\\)\$|\\(?:\(|\[|begin\{)|[“‘「『"]/u.test(value);
+    if (!hasFormatting && previous?.node?.parentNode === element && value.startsWith(previous.source)) {
       previous.node.appendData(value.slice(previous.source.length)); previous.source = value;
     } else {
       render(element, value);
-      previews.set(element, { source: value, node: !hasMath && element.childNodes.length === 1 && element.firstChild.nodeType === 3 ? element.firstChild : null });
+      previews.set(element, { source: value, node: !hasFormatting && element.childNodes.length === 1 && element.firstChild.nodeType === 3 ? element.firstChild : null });
     }
   }
   return Object.freeze({ displayText, render, renderStream });
