@@ -15732,15 +15732,19 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
         },
       ));
   }
+  let worldBookRenderVersion = 0;
   async function _0x5dd041() {
+    const renderVersion = ++worldBookRenderVersion;
     const _0xb4fa20 = _0x3ce505,
       _0x305ae0 = document[_0xb4fa20(0x1023)]("world-book-tabs"),
       _0x1d28eb = document[_0xb4fa20(0x1023)](_0xb4fa20(0x9a6));
-    ((_0x305ae0[_0xb4fa20(0x1bf6)] = ""), (_0x1d28eb["innerHTML"] = ""));
     const [_0x48de27, _0x2dba7c] = await Promise[_0xb4fa20(0x937)]([
       _0x24f906[_0xb4fa20(0x781)]["toArray"](),
       _0x24f906[_0xb4fa20(0x1345)]["orderBy"](_0xb4fa20(0xeda))["toArray"](),
     ]);
+    if (renderVersion !== worldBookRenderVersion) return;
+    _0x305ae0.replaceChildren();
+    _0x1d28eb.replaceChildren();
     _0x5ea3c1[_0xb4fa20(0x781)] = _0x48de27;
     if (_0x48de27["length"] === 0x0) {
       _0x1d28eb["innerHTML"] =
@@ -58489,8 +58493,7 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
             (document[_0x587092(0x1023)](_0x587092(0x1676))[_0x587092(0x71a)] =
               _0x413873),
             (_0x38870c = null),
-            _0x275208(_0x587092(0x19ed)),
-            await _0x5dd041());
+            _0x275208(_0x587092(0x19ed)));
         },
       ),
       document[_0x274136(0x1023)](_0x274136(0x19b6))["addEventListener"](
