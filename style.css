@@ -18679,3 +18679,17 @@ body.frame-mode-active .cphone-dock-container {
 #phone-screen.dark-mode #gr-chapter-tools { color: #aaa; }
 #phone-screen.dark-mode #gr-chapter-tools button, #phone-screen.dark-mode .gr-chapter-action { color: #afd4c1; }
 #phone-screen.dark-mode .gr-chapter-title-edit button { color: #afd4c1; background: #25352e; }
+.model-search-dialog {
+  box-sizing: border-box; width: min(92vw, 560px); max-height: 80vh; max-height: 80dvh;
+  padding: 18px; border: 0; border-radius: 18px; background: #fff; color: #222;
+}
+.model-search-dialog[open] { display: flex; flex-direction: column; gap: 12px; }
+.model-search-dialog::backdrop { background: rgba(0, 0, 0, .4); }
+.model-search-header { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-shrink: 0; }
+.model-search-close { border: 0; background: transparent; color: #006bd6; padding: 10px; font-size: 16px; }
+.model-search-input { box-sizing: border-box; width: 100%; min-height: 44px; flex-shrink: 0; padding: 10px 12px; border: 1px solid #ccc; border-radius: 10px; background: #f7f7f7; color: #222; font-size: 16px; }
+.model-search-count { color: #666; font-size: 13px; flex-shrink: 0; }
+.model-search-results { min-height: 0; overflow-y: auto; overscroll-behavior: contain; touch-action: pan-y; -webkit-overflow-scrolling: touch; }
+.model-search-option { display: block; box-sizing: border-box; width: 100%; min-height: 48px; padding: 13px 10px; border: 0; border-bottom: 1px solid #eee; background: transparent; color: inherit; text-align: left; font-size: 16px; overflow-wrap: anywhere; }
+.model-search-option[aria-pressed="true"] { background: #e9f3ff; color: #005dbb; font-weight: 600; }
+.model-search-option:focus-visible { outline: 2px solid #007aff; outline-offset: -2px; }
