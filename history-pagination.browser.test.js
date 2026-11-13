@@ -43,7 +43,10 @@ const { chromium } = require("playwright-core");
       await page.locator(`.chat-list-item[data-chat-id="${id}"]`).click(); await page.waitForSelector("#chat-interface-screen.active");
       await page.waitForFunction(() => document.querySelectorAll("#chat-messages .message-wrapper").length >= 20);
       await page.evaluate(() => { window.__historyTest.pageSize(25); return window.__historyTest.render(window.__historyTest.state.activeChatId); });
-      await page.waitForTimeout(50);
+      // Measure pagination after the chat's opening padding transition settles.
+      await page.locator("#chat-messages").evaluate(async (el) => {
+        await Promise.allSettled(el.getAnimations().map(animation => animation.finished));
+      });
     }
     const rows = () => page.locator("#chat-messages > .message-wrapper").evaluateAll((nodes) => nodes.map((node) => Number(node.querySelector("[data-timestamp]")?.dataset.timestamp ?? node.dataset.timestamp)).filter(Number.isFinite));
     async function continuous() {

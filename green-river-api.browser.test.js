@@ -32,6 +32,16 @@ const { chromium } = require("playwright-core");
       if (novel && failPrimary) return route.fulfill({ status: 503, body: "isolated novel provider failure" });
       if (novel && upstreamFailure) return route.fulfill({ contentType: "text/event-stream", body: 'data: ' + JSON.stringify({ choices: [{ index: 0, delta: { content: "<novel_content>上游报错前已经收到的小说正文。" } }] }) + '\n\ndata: {"error":{"message":"An internal error has occurred.","type":"upstream_error","code":500}}data: [DONE]' });
       if (novel && holdPrimary) { held.push({ route, native }); return; }
+      if (novel && responseFormat === "audit-empty-billed") {
+        const usage = { prompt_tokens: 99194, completion_tokens: 245, completion_tokens_details: { reasoning_tokens: 0 }, output_tokens: 0 };
+        call.wire = [
+          { choices: [{ index: 0, delta: { role: "assistant", content: "" } }], usage },
+          { choices: [{ index: 0, delta: { content: "" } }], usage },
+          { choices: [{ index: 0, delta: {}, finish_reason: "stop" }], usage: null },
+          { choices: [], usage }
+        ].map(packet => "data: " + JSON.stringify(packet) + "\n\n").join("") + "data: [DONE]\n\n";
+        return route.fulfill({ contentType: "text/event-stream", body: call.wire });
+      }
       if (novel && shortSse) {
         call.raw = shortRaw;
         return route.fulfill({ contentType: "text/event-stream", body: [
@@ -206,6 +216,18 @@ const { chromium } = require("playwright-core");
       assert.equal(await page.locator("#gr-last-response-content").inputValue(), calls.at(-1).raw);
       await page.locator("#gr-last-response-close").click(); assert.equal(calls.length, beforeView, "reviewing the saved output makes no API request");
     }
+    responseFormat = "audit-empty-billed";
+    const beforeEmpty = calls.length;
+    await reroll(false);
+    responseFormat = "json";
+    assert.equal(calls.length, beforeEmpty + 1, "empty body with reported usage must not send another paid request");
+    const emptyStory = (await stories())[0], emptyReturn = emptyStory.lastGeneration;
+    assert.deepEqual(emptyStory.chapters, preserved);
+    assert.equal(emptyReturn.raw, "");
+    assert.equal(emptyReturn.bodyCharacters, 0);
+    assert.equal(emptyReturn.usage.outputTokens, 245);
+    assert.equal(emptyReturn.wireEvidence.tail, calls.at(-1).wire);
+    assert.match(dialogs.at(-1), /未收到正文（0 字）。接口报告 245 个输出 token/);
     await config({ apiKey: "" }); const beforeMissingMain = calls.length; await reroll(false);
     assert.equal(calls.length, beforeMissingMain, "missing primary credentials do not spend on auxiliary API"); assert.deepEqual((await stories())[0].chapters, preserved, "missing main configuration must not remove the last chapter");
     assert.ok(dialogs.some((s) => s.includes("主 API")));

@@ -215,10 +215,18 @@
     if (targetDatabase.existed) await importLegacySharedSettings(nextDb);
     const previousDb = activePersonaDb;
     const previousSpaceId = activeSpaceId;
+    // Commit the preference before redirecting the shared database facade.
+    // A failed small-storage write must never leave the UI in the old space
+    // while subsequent messages/payments are written into the new space.
+    try {
+      localStorage.setItem(ACTIVE_KEY, spaceId);
+    } catch (error) {
+      if (nextDb !== sharedDb && nextDb !== previousDb) nextDb.close();
+      throw new Error("无法保存空间选择，已保留当前空间。请先导出备份，再检查浏览器存储空间。", { cause: error });
+    }
     activePersonaDb = nextDb;
     activeSpaceId = spaceId;
     activeId = spaceId;
-    localStorage.setItem(ACTIVE_KEY, spaceId);
     window.EPHONE_SPACE_ID = spaceId;
     window.EPHONE_SPACE_NAME = destination.name;
     try {
@@ -231,12 +239,13 @@
       activePersonaDb = previousDb;
       activeSpaceId = previousSpaceId;
       activeId = previousSpaceId || DEFAULT_SPACE.id;
-      localStorage.setItem(ACTIVE_KEY, previousSpaceId || DEFAULT_SPACE.id);
       window.EPHONE_SPACE_ID = previousSpaceId || DEFAULT_SPACE.id;
       window.EPHONE_SPACE_NAME =
         readSpaces().find((space) => space.id === window.EPHONE_SPACE_ID)?.name ||
         DEFAULT_SPACE.name;
       if (nextDb !== sharedDb && nextDb !== previousDb) nextDb.close();
+      try { localStorage.setItem(ACTIVE_KEY, previousSpaceId || DEFAULT_SPACE.id); }
+      catch (storageError) { console.warn("空间界面已回退，但无法保存回退位置。", storageError); }
       throw error;
     }
   }
@@ -258,7 +267,7 @@
         DEFAULT_SPACE,
         ...valid.filter((space) => space.id !== DEFAULT_SPACE.id),
       ];
-      localStorage.setItem(SPACES_KEY, JSON.stringify(spaces));
+      // Reading the list must not require a write (localStorage may be full).
       return spaces;
     } catch {
       return [DEFAULT_SPACE];
@@ -269,7 +278,7 @@
   let activeId = localStorage.getItem(ACTIVE_KEY) || DEFAULT_SPACE.id;
   if (!spaces.some((space) => space.id === activeId)) {
     activeId = DEFAULT_SPACE.id;
-    localStorage.setItem(ACTIVE_KEY, activeId);
+    try { localStorage.setItem(ACTIVE_KEY, activeId); } catch {}
   }
 
   window.EPHONE_SPACE_ID = activeId;
@@ -705,10 +714,12 @@
       const currentSpaces = readSpaces();
       const id = `space_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 9)}`;
       currentSpaces.push({ id, name });
-      localStorage.setItem(SPACES_KEY, JSON.stringify(currentSpaces));
       const createButton = overlay.querySelector(".ephone-spaces-create-button");
+      if (createButton.disabled) return;
       createButton.disabled = true;
       try {
+        try { localStorage.setItem(SPACES_KEY, JSON.stringify(currentSpaces)); }
+        catch (error) { throw new Error("无法保存新空间，原有空间不受影响。请先导出备份，再检查浏览器存储空间。", { cause: error }); }
         await switchSpace(id);
         const input = overlay.querySelector("#ephone-spaces-name");
         input.value = "";

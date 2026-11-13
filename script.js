@@ -55787,6 +55787,12 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
       controller.signal.throwIfAborted();
       _0x5576d5.phase = "正在整理并保存正文";
       _ephoneSyncNovelControls();
+      if (!received.raw.trim() && output.stats.httpEOF && !output.providerError && !output.error) {
+        received.bodyCharacters = 0;
+        const tokens = output.usage.outputTokens;
+        const usage = tokens == null ? "接口未报告输出用量。" : `接口报告 ${tokens} 个输出 token。`;
+        throw new Error("接口已结束，本次未收到正文（0 字）。" + usage + "用量和空回补偿由服务商判定。本次只发出一次请求。");
+      }
       const result = window.EPhoneNovelResponse.parse(received.raw, "第" + (chapters.length + 1) + "章");
       received.assessment = window.EPhoneNovelResponse.assess(result, output);
       received.bodyCharacters = window.EPhoneNovelChapters.count(result.content);
@@ -58378,12 +58384,11 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
           .filter((_ephoneModel) => _ephoneModel?.id);
         if (_0x4dd41b.length === 0)
           throw new Error("接口成功响应，但没有返回可用模型");
-        const _0x5b482e = document[_0x35c0bf(0x1023)](_0x318c8a);
+        const _0x5b482e = document[_0x35c0bf(0x1023)](_0x318c8a),
+          // Read the current form after the request: the user may have changed
+          // models without saving, or while the model list was being fetched.
+          _0x42db4 = _0x5b482e.value;
         _0x5b482e[_0x35c0bf(0x1bf6)] = "";
-        const _0x42db4 =
-          _0x318c8a === _0x35c0bf(0xa2f)
-            ? _0x5ea3c1[_0x35c0bf(0x162b)]["model"]
-            : _0x5ea3c1[_0x35c0bf(0x162b)][_0x35c0bf(0x3c5)];
         (_0x4dd41b[_0x35c0bf(0x9bb)]((_0x2b2beb) => {
           const _0x4afb38 = _0x35c0bf,
             _0x2452df = document[_0x4afb38(0x139f)]("option");

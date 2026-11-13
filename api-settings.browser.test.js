@@ -59,6 +59,28 @@ const { chromium } = require("playwright-core");
     await checkForm("saved-unlisted", "https://api-test.invalid/secondary", "fake-secondary");
     assert.equal(await page.locator("#model-select").inputValue(), "saved-primary");
     assert.equal(requests.length, 0); // Restoring saved models must not need network.
+    // Refreshing available models must retain the user's unsaved primary choice,
+    // including when the service no longer lists that model.
+    const refreshPrimaryModels = async () => {
+      const confirmation = page.waitForEvent("dialog");
+      await page.locator("#fetch-models-btn").click();
+      await confirmation;
+    };
+    await refreshPrimaryModels();
+    await page.locator("#model-select").tap();
+    await page.locator(".model-search-input").fill("MODEL-TWO");
+    await page.locator(".model-search-option").click();
+    assert.equal(await page.locator("#model-select").inputValue(), "model-two");
+    await refreshPrimaryModels();
+    assert.equal(await page.locator("#model-select").inputValue(), "model-two", "model refresh must not restore the old saved primary model");
+    await page.evaluate(() => {
+      const select = document.getElementById("model-select");
+      select.add(new Option("unlisted-draft", "unlisted-draft")); select.value = "unlisted-draft";
+      select.dispatchEvent(new Event("change", { bubbles: true }));
+    });
+    await refreshPrimaryModels();
+    assert.equal(await page.locator("#model-select").inputValue(), "unlisted-draft", "unlisted draft model survives a refresh");
+    await reopen(); // Discard the intentionally unsaved primary draft.
     await page.locator("#save-api-settings-btn").click();
     await saved("saved-unlisted", "https://api-test.invalid/secondary", "fake-secondary");
     await reopen();

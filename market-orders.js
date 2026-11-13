@@ -39,10 +39,10 @@
       this.npcs = this.db.tables.some((table) => table.name === "npcs") ? this.db.table("npcs") : null;
     }
     async target(binding, activeChatId) {
-      const chats = await this.chats.toArray();
+      const [chats, npcs] = await Promise.all([this.chats.toArray(), this.npcs?.toArray() || []]);
       if (binding && !binding.valid) throw new Error("本空间绑定角色已移走或删除，请到“我”重新绑定。");
       if (!binding?.key) return null;
-      const eligible = chats.filter((chat) => this.identity.participants(chat, chats).some((person) => person.key === binding.key));
+      const eligible = chats.filter((chat) => this.identity.participants(chat, chats, npcs).some((person) => person.key === binding.key));
       const chat = eligible.find((item) => item.id === activeChatId) || eligible.find((item) => item.isSpectatorGroup) || eligible[0];
       if (!chat) throw new Error("请先把绑定角色加入一个聊天，再购物或点外卖。");
       return { chatId: chat.id, recipientName: binding.name, forSelf: true };
@@ -136,7 +136,8 @@
         }))) + "\n" + cartMemory;
     }
     async captureDisclosures(chat) {
-      const chats = await this.chats.toArray(), people = this.identity.participants(chat, chats);
+      const [chats, npcs] = await Promise.all([this.chats.toArray(), this.npcs?.toArray() || []]);
+      const people = this.identity.participants(chat, chats, npcs);
       const orders = await this.orders.toArray(), results = [];
       for (const message of (chat.history || []).slice(-20)) {
         if (message.isHidden || message.marketOrder || message.role === "system" || ["narration", "thought_chain"].includes(message.type)) continue;
@@ -164,10 +165,11 @@
     async act(action, { chatId, vts, timestamp = Date.now() }) {
       const types = ["market_order_share", "market_phone_check", "market_order_arrived", "cancel_market_order"];
       if (!types.includes(action.type)) return null;
-      return this.db.transaction("rw", this.orders, this.chats, this.wallet, this.bills, async () => {
-        const chats = await this.chats.toArray(), chat = chats.find((item) => item.id === chatId);
+      return this.db.transaction("rw", this.orders, this.chats, this.wallet, this.bills, ...(this.npcs ? [this.npcs] : []), async () => {
+        const [chats, npcs] = await Promise.all([this.chats.toArray(), this.npcs?.toArray() || []]);
+        const chat = chats.find((item) => item.id === chatId);
         if (!chat) throw new Error("订单操作聊天已不存在。");
-        const people = this.identity.participants(chat, chats), actor = this.identity.resolve(people, action.name);
+        const people = this.identity.participants(chat, chats, npcs), actor = this.identity.resolve(people, action.name);
         if (!actor) throw new Error("订单操作角色不在当前聊天，或身份不明确。");
         const order = await this.orders.get(String(action.order_id || ""));
         if (!order) throw new Error("订单不存在或不属于当前空间。");

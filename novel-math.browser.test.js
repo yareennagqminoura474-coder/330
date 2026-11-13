@@ -112,6 +112,30 @@ const { chromium } = require("playwright-core");
       return { partial, highlighted: [...node.querySelectorAll('.gr-dialogue')].map(span => span.textContent).join(''), math: node.querySelectorAll('.katex').length, nested: node.querySelectorAll('.gr-dialogue .gr-dialogue').length, tail: node.textContent.endsWith('"我在听。"') };
     });
     assert.deepEqual(dialogue, { partial: '“还没', highlighted: '“还没讲完  呢。”"我在听。"', math: 1, nested: 0, tail: true });
+    const dialogueStream = await page.evaluate(() => {
+      const node = document.createElement('div'), reference = document.createElement('div');
+      let source = '他说：“还没';
+      EPhoneNovelPresentation.renderStream(node, source);
+      const first = node.firstChild, speech = node.querySelector('.gr-dialogue'), speechText = speech.firstChild;
+      const chunks = ['说完，', '先听我说。', '”她回答：', '「那就去『老地方', '』等你。」', '\n\n'];
+      const paragraph = '她说：“明天一起看书吧。”他说："好的。"旁白继续记录他们的日常。\n\n';
+      chunks.push(...Array.from({ length: 500 }, () => paragraph));
+      for (const chunk of chunks) { source += chunk; EPhoneNovelPresentation.renderStream(node, source); }
+      EPhoneNovelPresentation.render(reference, source);
+      const result = { preserved: node.firstChild === first && node.querySelector('.gr-dialogue') === speech && speech.firstChild === speechText,
+        text: node.textContent === source, formatting: node.innerHTML === reference.innerHTML, longChapter: source.length > 15000 };
+      // A manual/full render invalidates incremental state, so subsequent
+      // updates cannot append to stale nodes or lose the newly added text.
+      EPhoneNovelPresentation.render(node, '替换正文。');
+      EPhoneNovelPresentation.renderStream(node, source + '新结尾。');
+      result.afterReset = node.textContent === source + '新结尾。';
+      EPhoneNovelPresentation.renderStream(node, '更短的新稿：“你好。”');
+      result.rewrite = node.textContent === '更短的新稿：“你好。”';
+      EPhoneNovelPresentation.renderStream(node, '更短的新稿：“你好。”公式 $x^2$。');
+      result.math = node.querySelectorAll('.katex').length;
+      return result;
+    });
+    assert.deepEqual(dialogueStream, { preserved: true, text: true, formatting: true, longChapter: true, afterReset: true, rewrite: true, math: 1 }, "long dialogue streaming retains existing nodes, exact text/colour, cross-packet quotes, replacements and formula fallback");
     // KaTeX trust is disabled: TeX cannot create external links or HTML nodes.
     assert.equal(await page.evaluate(() => {
       const node = document.createElement("div"); EPhoneNovelPresentation.render(node, "$\\href{javascript:alert(1)}{x}$ $\\includegraphics{https://example.invalid/x.png}$");

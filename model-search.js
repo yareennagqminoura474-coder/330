@@ -19,11 +19,14 @@
   function render() {
     if (!activeSelect) return;
     const terms = input.value.trim().toLocaleLowerCase().split(/\s+/).filter(Boolean);
-    const all = [...activeSelect.options].filter((option) => option.value && !option.disabled && !option.parentElement.disabled);
+    const available = [...activeSelect.options].filter((option) => !option.disabled && !option.parentElement.disabled);
+    const all = available.filter((option) => option.value);
     const matches = all.filter((option) => terms.every((term) => (option.textContent + " " + option.value).toLocaleLowerCase().includes(term)));
     count.textContent = all.length ? `找到 ${matches.length} / ${all.length} 个模型` : "请先关闭此窗口，点击“拉取”获取模型。";
     const fragment = document.createDocumentFragment();
-    for (const option of matches) {
+    // Keep the original clear-selection option without counting it as a model.
+    const visible = terms.length ? matches : [...available.filter((option) => !option.value), ...matches];
+    for (const option of visible) {
       const button = document.createElement("button");
       button.type = "button";
       button.className = "model-search-option";
