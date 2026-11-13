@@ -182,7 +182,8 @@
     return written.map((chapter, index) => {
       const recent = index === written.length - 1;
       const title = text(chapter.title).replace(/^第[一二三四五六七八九十百千零〇\d]+章\s*[：:、.\-]?\s*/u, "") || "未命名情节";
-      const content = !chapter.summaryStale && chapter.summary || (recent ? "摘要缺失或待更新，完整正文见下文。" : chapter.content) || "（暂无记录）";
+      const summary = !chapter.summaryStale && text(chapter.summary).trim() ? chapter.summary : "";
+      const content = recent && summary === chapter.content ? "完整正文见下文，不重复发送。" : summary || (recent ? "摘要缺失或待更新，完整正文见下文。" : chapter.content) || "（暂无记录）";
       return (recent ? "紧接本次续写之前的情节" : "较早的已发生情节") + "「" + title + "」：\n" + content;
     }).join("\n\n");
   }

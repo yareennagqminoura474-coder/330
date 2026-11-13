@@ -54790,6 +54790,7 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
       _0x3d1862());
   }
   let _0x5576d5 = { activeStoryId: null, isGenerating: ![] };
+  let _ephoneNovelMemoryJob = null;
   let _ephoneNovelChapterEditor = null, _ephoneNovelDeleteTarget = null, _ephoneNovelReaderChapter = null, _ephoneNovelChapterMutation = null, _ephoneNovelReaderRequest = 0;
   const _ephoneNovelReading = window.EPhoneNovelReading.create({
     element: document.getElementById("gr-reader-content"),
@@ -54810,7 +54811,7 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
   new MutationObserver(() => {
     if (!document.getElementById("gr-reader-screen").classList.contains("active")) void _ephoneNovelReading.flush(false);
   }).observe(document.getElementById("gr-reader-screen"), { attributes: true, attributeFilter: ["class"] });
-  const _ephoneChapterBusy = id => _0x5576d5.isGenerating && _0x5576d5.generatingStoryId === id || _ephoneNovelChapterMutation !== null && _ephoneNovelChapterMutation === id;
+  const _ephoneChapterBusy = id => _0x5576d5.isGenerating && _0x5576d5.generatingStoryId === id || _ephoneNovelChapterMutation !== null && _ephoneNovelChapterMutation === id || _ephoneNovelMemoryJob?.id === id;
   async function _ephoneChapterTarget(index, expected) {
     const storyId = _0x5576d5.activeStoryId, story = await _0x24f906.grStories.get(storyId);
     if (_0x5576d5.activeStoryId !== storyId || !story?.chapters?.[index]) throw new Error("章节已变化，请重新打开目录。");
@@ -55214,6 +55215,7 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
   }
   async function _0x4b44e8(_0x352e0a = {}, _0x1219a8 = null) {
     await _ephoneRenderNovelPresets();
+    await _ephoneRefreshNovelMemory();
     document.getElementById("gr-generation-api").value = _0x352e0a.generationApi === "secondary" ? "secondary" : "primary";
     document.getElementById("gr-stream-output").checked = _0x352e0a.streamOutput !== false;
     const _0x112bcc = _0x3ce505,
@@ -55524,7 +55526,7 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
   function _ephoneSyncNovelControls() {
     const button = document.getElementById("gr-generate-btn"), reroll = document.getElementById("gr-reroll-btn");
     if (button) {
-      button.disabled = _0x5576d5.isGenerating || _ephoneNovelChapterMutation !== null && _ephoneNovelChapterMutation === _0x5576d5.activeStoryId;
+      button.disabled = _0x5576d5.isGenerating || _ephoneChapterBusy(_0x5576d5.activeStoryId);
       let label = button.querySelector("#gr-gen-text");
       if (!label) { label = document.createElement("span"); label.id = "gr-gen-text"; button.prepend(label); }
       label.textContent = _0x5576d5.isGenerating ? "创作中…" : "续写";
@@ -55612,6 +55614,80 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
     }
     if (!list.childElementCount) list.textContent = "目前没有已启用的预设条目。";
   }
+  async function _ephoneRefreshNovelMemory() {
+    const id = _0x5576d5.activeStoryId, status = document.getElementById("gr-memory-status"), button = document.getElementById("gr-memory-build");
+    const story = id == null ? null : await _0x24f906.grStories.get(id);
+    const plan = story ? await window.EPhoneNovelMemory.plan(story.chapters || []) : null;
+    if (_0x5576d5.activeStoryId !== id) return;
+    const job = _ephoneNovelMemoryJob;
+    button.textContent = job?.id === id ? "停止整理" : "整理旧章摘要（副 API）";
+    button.disabled = job ? job.id !== id : !plan?.batches.length || _ephoneChapterBusy(id);
+    status.textContent = job?.id === id ? job.message : !story ? "保存作品后可整理旧章节。" : plan.batches.length
+      ? `较早章节中有 ${plan.jobs.length} 章缺少有效摘要，预计需要 ${plan.batches.length} 次副 API 请求。整理后只发送摘要，正文仍在目录中。`
+      : "较早章节已有有效摘要，或尚无需要整理的旧章节；无需额外请求。";
+    if (!job && story?.lastMemoryRun?.message) status.textContent += "\n" + story.lastMemoryRun.message;
+    document.getElementById("gr-memory-result").hidden = !story?.lastMemoryRun;
+    document.getElementById("gr-memory-raw").value = story?.lastMemoryRun?.raw || "";
+  }
+  document.getElementById("gr-memory-build").addEventListener("click", async () => {
+    if (_ephoneNovelMemoryJob) { if (_ephoneNovelMemoryJob.id === _0x5576d5.activeStoryId) _ephoneNovelMemoryJob.controller.abort(); return; }
+    const id = _0x5576d5.activeStoryId, table = _0x24f906.grStories, core = window.EPhoneNovelMemory;
+    if (id == null || _ephoneChapterBusy(id)) return;
+    const job = { id, controller: new AbortController(), message: "正在检查旧章节…" };
+    _ephoneNovelMemoryJob = job; _ephoneSyncNovelControls();
+    let done = 0, lastRaw = "", lastUsage = null;
+    try {
+      const story = await table.get(id);
+      if (!story) throw new Error("作品已删除。");
+      const plan = await core.plan(story.chapters || []);
+      if (!plan.batches.length) return;
+      const originalContextSize = window.EPhoneNovelContext.recap(story.chapters || []).length;
+      const { proxyUrl, apiKey, model } = _ephoneApiFor("auxiliary");
+      for (const batch of plan.batches) {
+        job.controller.signal.throwIfAborted();
+        lastRaw = ""; lastUsage = null;
+        job.message = `正在整理第 ${done + 1}/${plan.batches.length} 批（副 API）；已完成 ${done} 批。可停止，已保存部分不丢失。`;
+        await _ephoneRefreshNovelMemory();
+        const prompt = core.prompt(batch, plan), instruction = "提炼输入各段的事实摘要，按指定 JSON 返回。";
+        let response;
+        if (proxyUrl.includes("generativelanguage.googleapis.com")) {
+          const request = _0x20e281(model, apiKey, prompt, [{ role: "user", content: instruction }]);
+          const endpoint = new URL(request.url); endpoint.pathname = endpoint.pathname.replace(/:generateContent$/, ":streamGenerateContent"); endpoint.searchParams.set("alt", "sse");
+          response = await fetch(endpoint.href, { ...request.data, signal: job.controller.signal, ephoneReceiveMode: "xhr" });
+        } else response = await _ephoneApiFetch(_ephoneBuildApiEndpoint(proxyUrl, "chat/completions"), {
+          method: "POST", stream: true, signal: job.controller.signal, ephoneReceiveMode: "xhr",
+          headers: { "Content-Type": "application/json", Authorization: "Bearer " + apiKey },
+          body: JSON.stringify({ model, messages: [{ role: "system", content: prompt }, { role: "user", content: instruction }], temperature: 0.2, stream: true })
+        });
+        if (!response.ok) throw new Error("摘要 API 请求失败：" + response.status);
+        const output = await window.EPhoneNovelStream.read(response, { signal: job.controller.signal, waitForEOF: true, extractText: window.ephoneChatResponse.extractText });
+        lastRaw = output.raw; lastUsage = output.usage;
+        job.controller.signal.throwIfAborted();
+        if (output.error || output.providerError || output.partial || output.finishReason && !/^(stop|end_turn)$/i.test(output.finishReason))
+          throw new Error("摘要返回未确认完整，未替换原文；" + (output.error || output.providerError?.message || output.finishReason || "连接未完成"));
+        const summaries = core.parse(output.raw, batch);
+        const updated = await table.db.transaction("rw", table, async () => {
+          job.controller.signal.throwIfAborted();
+          const fresh = await table.get(id); if (!fresh) throw new Error("作品已删除。");
+          const chapters = core.apply(fresh.chapters || [], plan, batch, summaries);
+          const savedChars = Math.max(0, originalContextSize - window.EPhoneNovelContext.recap(chapters).length);
+          const saved = { ...fresh, chapters, lastMemoryRun: { raw: lastRaw, usage: lastUsage, api: "secondary", model, at: Date.now(), message: `已保存 ${done + 1} 批摘要，旧章节引用减少约 ${savedChars.toLocaleString()} 个字符（不是 token 数）。` } };
+          await table.put(saved); return saved;
+        });
+        core.adopt(plan, updated.chapters); done++;
+      }
+    } catch (error) {
+      const stopped = job.controller.signal.aborted;
+      const message = (stopped ? "已停止整理。" : error.message.replace(/。+$/, "") + "。") + `本次已保存 ${done} 批，未完成部分仍使用原文；不会自动重试。`;
+      await table.update(id, { lastMemoryRun: { raw: lastRaw, usage: lastUsage, api: "secondary", at: Date.now(), message } }).catch(() => {});
+    } finally {
+      _ephoneNovelMemoryJob = null; _ephoneSyncNovelControls();
+      if (_0x5576d5.activeStoryId === id) {
+        await _ephoneRefreshNovelMemory();
+        if (document.getElementById("gr-reader-screen").classList.contains("active")) await _0x5dec3b(id, _0x5576d5.currentChapterIndex);
+      }
+    }
+  });
   async function _ephoneNovelSources(story, personaDb) {
     const settings = story.settings || {};
     if (settings.referenceSpaceDatabase && settings.referenceSpaceDatabase !== personaDb.name)
@@ -55634,16 +55710,17 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
       context.text += "\n\n# 本作品明确指定的用户身份\n" + (preset.persona || preset.content || "（未填写）") + "\n此身份属于本作品的代入设定，不自动改变其他角色档案中的原聊天对象。";
     }
     const books = settings.bookIds?.length ? await _0x24f906.worldBooks.toArray() : [];
-    for (const id of settings.bookIds || []) {
+    const references = window.EPhoneNovelMemory.references();
+    for (const id of new Set((settings.bookIds || []).map(String))) {
       const book = books.find((row) => String(row.id) === String(id));
       if (!book) throw new Error("所选世界书已不存在，请在作品设定重新选择。");
-      context.text += "\n\n# 所选世界书：" + book.name + "\n" + (book.content || []).filter((row) => row.enabled !== false).map((row) => row.content || "").join("\n\n");
+      context.text += "\n\n# 所选世界书：" + book.name + "\n" + (book.content || []).filter((row) => row.enabled !== false).map((row) => references.add(row.content || "")).join("\n\n");
     }
     const presets = await _0x24f906.presets.toArray();
     let hasPresetContent = false;
     for (const preset of presets) {
       const content = _ephoneNovelPresetEntries(preset).filter(entry => entry.enabled !== false)
-        .map(entry => entry.content || "").filter(Boolean).join("\n\n");
+        .map(entry => references.add(entry.content || "")).filter(Boolean).join("\n\n");
       if (content) {
         hasPresetContent = true;
         context.text += "\n\n# 已启用的写作预设：" + (preset.name || "未命名预设") + "\n" + content;
@@ -55654,6 +55731,7 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
   }
   async function _0x10ebb8(rewrite = false, rewriteDirection, completeChapter = false) {
     if (_0x5576d5.isGenerating) return;
+    if (_ephoneNovelMemoryJob?.id === _0x5576d5.activeStoryId) return;
     if (_ephoneNovelChapterMutation !== null && _ephoneNovelChapterMutation === _0x5576d5.activeStoryId) return;
     void _ephoneNovelReading.flush();
     _0x5576d5.isGenerating = true;

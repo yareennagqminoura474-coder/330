@@ -148,4 +148,6 @@ assert.doesNotMatch(core.recap([{ ...timeline[0], summaryStale: true }, timeline
 assert.match(core.recap([{ ...timeline[1], summaryStale: true }]), /摘要缺失或待更新，完整正文见下文/);
 assert.equal(JSON.stringify(timeline), timelineBefore, "source titles, prose, summaries and real generation timestamps are never rewritten or converted into fictional days");
 assert.equal(core.recap([]), "");
+assert.match(core.recap([{ content: '不能因空白摘要丢失的旧正文', summary: '  \n ' }, timeline[1]]), /不能因空白摘要丢失的旧正文/);
+assert.doesNotMatch(core.recap([{ content: '上一章的整段原文', summary: '上一章的整段原文' }]), /上一章的整段原文/);
 console.log("PASS: canonical personas, relations, selected full memory/history, immutable archives, shared-persona deduplication and chapter/alias continuity lookup with deletion and rewrite boundaries");

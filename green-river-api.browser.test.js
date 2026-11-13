@@ -11,6 +11,7 @@ const { chromium } = require("playwright-core");
   await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
   const origin = `http://127.0.0.1:${server.address().port}`, browser = await chromium.launch({ executablePath: process.env.EPHONE_TEST_BROWSER || "C:/Program Files/Google/Chrome/Application/chrome.exe", headless: true });
   const calls = [], errors = [], dialogs = [], held = []; let failPrimary = false, upstreamFailure = false, invalidPrimary = "", responseFormat = "json", lengthReason = false, holdPrimary = false, serial = 0, shortSse = false, completionText = "";
+  let memoryMode = 'ok';
   const shortRaw = "<novel_title>一起去旧书店吧</novel_title><novel_content>他拿出了一本刚刚";
   const chapter = (n) => ({ title: "第" + n + "章 <约定>", content: "完整小说正文" + n + "：\n" + (n === 1 ? "陈安正在整理书架。" : n === 2 ? "林澈把旧书摆上柜台。" : "") + "日常散步和整理旧书的完整细节。".repeat(80) + '\n<约定>照旧。<img src=x onerror="window.__greenRiverInjected=true">' + "CHAPTER_END_" + n + "，数学符号（$\\in$ 与 $\\notin$）。", summary: "本章总结" + n + '：</textarea><img src=x onerror="window.__greenRiverInjected=true">' });
   try {
@@ -23,6 +24,14 @@ const { chromium } = require("playwright-core");
       if (!native && !primary && !url.startsWith("https://gr-auxiliary.invalid/")) return route.abort();
       const body = request.postDataJSON(), prompt = JSON.stringify(body), novel = prompt.includes("写作任务");
       const call = { primary, native, novel, url, body, prompt }; calls.push(call);
+      if (prompt.includes('# 小说旧章记忆整理')) {
+        assert.equal(primary, false, 'summary preparation must use only the auxiliary API');
+        if (memoryMode === 'hold') { held.push({ route, native }); return; }
+        const memoryPrompt = body.messages?.[0]?.content || body.contents?.[0]?.parts?.[0]?.text || body.system_instruction?.parts?.[0]?.text || body.systemInstruction?.parts?.[0]?.text;
+        const parts = JSON.parse(memoryPrompt.split('输入正文：\n')[1]);
+        const content = JSON.stringify({ summaries: memoryMode === 'invalid' ? [] : parts.map(part => ({ id: part.id, summary: 'SAVED_OLD_FACTS：陈安和林澈已经约好周六上午归还旧书，尚未履行。两人已相识；林澈仍不知道书店的秘密。' })) });
+        return route.fulfill({ contentType: 'application/json', body: JSON.stringify(native ? { candidates: [{ content: { parts: [{ text: content }] }, finishReason: 'STOP' }] } : { choices: [{ message: { content }, finish_reason: 'stop' }] }) });
+      }
       if (novel) {
         for (const key of ["max_tokens", "max_completion_tokens", "max_output_tokens", "stop"]) assert.equal(body[key], undefined, "novel requests must not add an output cap or stop sequence");
         assert.equal(body.generationConfig?.maxOutputTokens, undefined); assert.equal(body.generationConfig?.stopSequences, undefined);
@@ -395,6 +404,70 @@ const { chromium } = require("playwright-core");
     assert.match(await page.locator("#gr-last-response-content").inputValue(), /【接口返回的错误】/);
     assert.doesNotMatch(await page.locator("#gr-last-response-content").inputValue(), /【未能解析/);
     await page.locator("#gr-last-response-close").click();
+    assert.deepEqual(errors, []);
+    upstreamFailure = false;
+    await config({ proxyUrl: 'https://gr-primary.invalid/v1', apiKey: 'fake-primary', model: 'novel-primary-model', secondaryProxyUrl: 'https://gr-auxiliary.invalid/v1', secondaryApiKey: 'fake-auxiliary', secondaryModel: 'auxiliary-model' });
+    await page.evaluate(async () => {
+      const book = (await window.db.grStories.toArray())[0];
+      await window.db.grStories.update(book.id, { lastUpdated: Date.now() + 1000000, chapters: [
+        { title: '较早的约定', content: 'OLD_FULL_TEXT：陈安和林澈约好周六归还旧书。'.repeat(1600), summary: '' },
+        { title: '已有的摘要', content: 'VALID_OLD_FULL'.repeat(500), summary: 'VALID_EXISTING_MEMORY' },
+        { title: '紧接着的事', content: 'LATEST_FULL_TEXT'.repeat(200), summary: '' }
+      ] });
+    });
+    await ready(); await openBook();
+    const memoryChapters = (await stories())[0].chapters;
+    const settings = async () => { await page.locator('#gr-reader-screen [title="设定"]').click(); await page.waitForSelector('#gr-settings-modal.visible'); };
+    await settings();
+    assert.match(await page.locator('#gr-memory-status').textContent(), /1 章.*2 次/);
+    const beforeSummary = calls.length;
+    await page.locator('#gr-memory-build').click();
+    try { await page.waitForFunction(() => document.getElementById('gr-memory-build').disabled && document.getElementById('gr-memory-status').textContent.includes('无需额外请求')); }
+    catch (error) { console.log({ memoryStatus: await page.locator('#gr-memory-status').textContent(), memoryRaw: await page.locator('#gr-memory-raw').inputValue(), pageErrors: errors, requests: calls.slice(beforeSummary).map(call => ({ primary: call.primary, native: call.native, prefix: call.prompt.slice(0, 50) })) }); throw error; }
+    assert.equal(calls.length, beforeSummary + 2, 'bounded batches make exactly the disclosed auxiliary calls');
+    const summarized = (await stories())[0];
+    assert.deepEqual(summarized.chapters.map(c => c.content), memoryChapters.map(c => c.content));
+    assert.match(summarized.chapters[0].summary, /SAVED_OLD_FACTS/);
+    for (const call of calls.slice(beforeSummary)) assert.doesNotMatch(call.prompt, /LATEST_FULL_TEXT|VALID_OLD_FULL|NEW_MENTOR_PROFILE|UPDATED_WRITING_PRESET/);
+    await page.locator('#gr-cancel-settings-btn').click();
+    await generate('继续约定的故事');
+    assert.equal(calls.length, beforeSummary + 3, 'normal novel generation still makes only one request');
+    assert.match(calls.at(-1).prompt, /LATEST_FULL_TEXT/);
+    assert.match(calls.at(-1).prompt, /SAVED_OLD_FACTS|VALID_EXISTING_MEMORY/);
+    assert.doesNotMatch(calls.at(-1).prompt, /OLD_FULL_TEXT|VALID_OLD_FULL/);
+    // Invalid auxiliary output preserves the full unsummarized chapter and is
+    // visible for inspection, without falling back to the primary model.
+    memoryMode = 'invalid'; await settings(); const beforeInvalidMemory = calls.length;
+    await page.locator('#gr-memory-build').click();
+    await page.waitForFunction(() => document.getElementById('gr-memory-status').textContent.includes('摘要数量不符'));
+    assert.equal(calls.length, beforeInvalidMemory + 1);
+    assert.equal((await stories())[0].chapters[2].summary, '');
+    memoryMode = 'hold'; await page.locator('#gr-memory-build').click();
+    await page.waitForFunction(() => document.getElementById('gr-memory-build').textContent === '停止整理');
+    while (!held.length) await new Promise(resolve => setTimeout(resolve, 20));
+    const beforeMemoryStop = calls.length;
+    await page.locator('#gr-memory-build').click();
+    await page.waitForFunction(() => document.getElementById('gr-memory-status').textContent.includes('已停止整理'));
+    assert.equal(calls.length, beforeMemoryStop);
+    for (const { route } of held.splice(0)) await route.abort().catch(() => {});
+    assert.equal((await stories())[0].chapters[2].summary, '');
+    await page.locator('#gr-cancel-settings-btn').click();
+    await config({ secondaryApiKey: '' }); await settings(); const beforeNoAuxMemory = calls.length;
+    await page.locator('#gr-memory-build').click();
+    await page.waitForFunction(() => document.getElementById('gr-memory-status').textContent.includes('副 API 尚未配置完整'));
+    assert.equal(calls.length, beforeNoAuxMemory, 'no auxiliary configuration means no paid request to any provider');
+    await page.locator('#gr-cancel-settings-btn').click();
+    await config({ secondaryProxyUrl: 'https://generativelanguage.googleapis.com/v1beta/models', secondaryApiKey: 'fake-native-secondary', secondaryModel: 'novel-native-aux-model' });
+    memoryMode = 'ok'; await settings(); const beforeNativeMemory = calls.length;
+    await page.locator('#gr-memory-build').click();
+    await page.waitForFunction(() => document.getElementById('gr-memory-status').textContent.includes('无需额外请求'));
+    assert.equal(calls.length, beforeNativeMemory + 1); assert.equal(calls.at(-1).native, true); assert.equal(calls.at(-1).primary, false);
+    await page.locator('#gr-cancel-settings-btn').click();
+    await ready(); await openBook(); await settings();
+    assert.equal(await page.locator('#gr-memory-build').isDisabled(), true, 'saved summaries survive reload and do not need another paid request');
+    assert.equal(calls.length, beforeNativeMemory + 1);
+    await page.locator('#gr-memory-status').scrollIntoViewIfNeeded();
+    await page.screenshot({ path: path.join(require('node:os').tmpdir(), 'ephone-novel-memory-mobile.png') });
     assert.deepEqual(errors, []);
     console.log("PASS: Green River saved primary/auxiliary choices and compatible/native routing, complete character/relationship/history context, local JSON/tag/plaintext recovery and exact retained output, safe literal prose, failure preservation, no fallback or retries, pending stop/duplicate-tap/navigation isolation");
   } finally { await browser.close(); await new Promise((resolve) => server.close(resolve)); }
