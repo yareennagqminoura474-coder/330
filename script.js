@@ -54922,6 +54922,10 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
     const storyId = _0x5576d5.activeStoryId, story = await _0x24f906.grStories.get(storyId);
     if (_0x5576d5.activeStoryId !== storyId || !story?.lastGeneration) return;
     const last = story.lastGeneration;
+    const requestDetails = document.getElementById("gr-request-details");
+    requestDetails.hidden = typeof last.request?.body !== "string";
+    requestDetails.open = false;
+    document.getElementById("gr-request-content").value = last.request?.body || "";
     const wireDetails = document.getElementById("gr-wire-details");
     wireDetails.hidden = !last.wireEvidence; wireDetails.open = false;
     document.getElementById("gr-wire-content").value = last.wireEvidence?.tail || "";
@@ -54972,6 +54976,10 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
     if (!last && incomplete) { document.getElementById("gr-generation-note").textContent = "末章曾未完整收到，可从已保存正文末尾补完。"; return; }
     if (last?.status === "draft") { document.getElementById("gr-generation-note").textContent = "重写返回未完整，原章已保留。残篇另存为草稿，可从断处补完。"; return; }
     if (last?.chapterEditedAt) { document.getElementById("gr-generation-note").textContent = "章节已手动修改，上次返回保留接口原文。"; return; }
+    if (last?.status === "error") {
+      document.getElementById("gr-generation-note").textContent = "本次未生成章节：" + (last.error || "未收到可用正文") + " 可查看上次返回核对。";
+      return;
+    }
     if (last?.providerError) {
       const error = last.providerError;
       document.getElementById("gr-generation-note").textContent = (error.type === "upstream_error" ? "上游服务" : "接口") + "报错" + (error.code != null ? "（" + error.code + "）" : "") + "，" + (last.status === "saved" ? "已保存收到的正文。" : "返回内容已保留，可查看详情。");
@@ -55727,6 +55735,10 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
       if (continuation) prompt += window.EPhoneNovelResponse.continuationPrompt(continuation.chapter.content, target);
       const writingInstruction = continuation ? "只接写本章已保存正文之后的剩余部分，先接完末尾断句，不重复前文。" : "请写出这一章完整正文。";
       requestDetails = { targetWords: target, stream: useStream, outputLimit: null, stopConfigured: false, mode: continuation ? "complete_chapter" : rewrite ? "rewrite" : "new_chapter" };
+      // Observe the body after payload protection. Never include the URL,
+      // authorization headers or connection settings in this local snapshot.
+      // This observer neither changes the payload nor sends another request.
+      const requestAudit = { sent(body) { requestDetails.body = typeof body === "string" ? body : JSON.stringify(body); } };
       controller.signal.throwIfAborted();
       _0x5576d5.phase = "等待模型返回正文";
       _ephoneSyncNovelControls();
@@ -55739,10 +55751,10 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
         const request = _0x20e281(model, apiKey, prompt, [{ role: "user", content: writingInstruction }]);
         const endpoint = new URL(request.url);
         if (useStream) { endpoint.pathname = endpoint.pathname.replace(/:generateContent$/, ":streamGenerateContent"); endpoint.searchParams.set("alt", "sse"); }
-        response = await fetch(endpoint.href, { ...request.data, signal: controller.signal, ephoneReceiveMode: "xhr" });
+        response = await fetch(endpoint.href, { ...request.data, signal: controller.signal, ephoneReceiveMode: "xhr", ephoneContextRequest: requestAudit });
       } else {
         response = await _ephoneApiFetch(_ephoneBuildApiEndpoint(proxyUrl, "chat/completions"), {
-          method: "POST", signal: controller.signal, stream: useStream, ephoneReceiveMode: "xhr", headers: { "Content-Type": "application/json", Authorization: "Bearer " + apiKey },
+          method: "POST", signal: controller.signal, stream: useStream, ephoneReceiveMode: "xhr", ephoneContextRequest: requestAudit, headers: { "Content-Type": "application/json", Authorization: "Bearer " + apiKey },
           body: JSON.stringify({ model, messages: [{ role: "system", content: prompt }, { role: "user", content: writingInstruction }], temperature: 0.9, stream: useStream })
         });
       }
