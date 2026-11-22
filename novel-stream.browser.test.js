@@ -167,6 +167,12 @@ const { chromium } = require("playwright-core");
     const until = async (predicate, message) => { const deadline = Date.now() + 10000; while (Date.now() < deadline) { if (await predicate()) return; await new Promise((resolve) => setTimeout(resolve, 20)); } throw new Error(message); };
     const settled = () => page.waitForFunction(() => !document.getElementById("gr-generate-btn").disabled);
     async function start(rewrite = false) {
+      const next = page.locator("#gr-next-chapter-btn");
+      if (await next.textContent() === "下一章") {
+        await page.evaluate(() => window.openChapterList());
+        await page.locator("#gr-chapter-list-content .gr-sidebar-item").last().click();
+        await page.waitForSelector("#gr-writing-controls:visible");
+      }
       const count = calls.length;
       if (rewrite) { await page.locator("#gr-reroll-btn").click(); await page.locator("#gr-rewrite-modal.visible #gr-rewrite-direct").click(); }
       else { await page.locator("#gr-direction-input").fill("继续写完整5000字正文，不改变人物关系。"); await page.locator("#gr-generate-btn").click(); }
@@ -177,8 +183,10 @@ const { chromium } = require("playwright-core");
       if (call.native) assert.equal(new URL(call.url, origin).searchParams.get("alt"), "sse"); else assert.equal(call.body.stream, true);
       return call;
     }
-    async function preview(call) {
-      call.start();
+    async function preview(call, send = true) {
+      const next = page.locator("#gr-next-chapter-btn");
+      if (await next.textContent() === "查看生成中的下一章") await next.click();
+      if (send) call.start();
       try { await page.waitForSelector("#gr-live-preview-content", { timeout: 10000 }); }
       catch (error) { console.log(JSON.stringify({ previewFailure: { ended: call.ended, destroyed: call.res.destroyed, status: await page.locator("#gr-generation-status-text").textContent(), dialogs, errors } })); throw error; }
       await until(() => page.locator("#gr-live-preview-content").textContent().then((s) => s.includes("STREAM_BODY_BEGIN_" + call.n)), "first visible stream text was buffered until EOF");
@@ -235,7 +243,26 @@ const { chromium } = require("playwright-core");
     // Per-work auxiliary selection streams through that actual connection.
     await page.locator('#gr-reader-screen [title="设定"]').click(); await page.waitForSelector("#gr-settings-modal.visible");
     await page.locator("#gr-generation-api").selectOption("secondary"); await page.locator("#gr-save-story-btn").click();
-    const secondary = await start(); assert.equal(secondary.primary, false); await preview(secondary); secondary.finish(); await settled();
+    const readerTitle = page.locator("#gr-chapter-title-display");
+    const previousTitle = await readerTitle.textContent();
+    const secondary = await start(); assert.equal(secondary.primary, false);
+    await page.evaluate(() => window.openChapterList());
+    const pendingRow = page.locator("#gr-chapter-list-content .gr-sidebar-item").last();
+    assert.match(await pendingRow.textContent(), /^2\..*生成中/, "the next chapter already exists in the catalog before the first text");
+    assert.equal(await readerTitle.textContent(), previousTitle);
+    await page.evaluate(() => document.getElementById("gr-sidebar-overlay").click());
+    secondary.start();
+    await page.waitForFunction(() => document.getElementById("gr-generation-status-text").textContent.includes("正在接收正文"));
+    assert.equal(await page.locator("#gr-live-preview").count(), 0, "received text stays out of the chapter being read");
+    await preview(secondary, false);
+    await page.locator("#gr-prev-chapter-btn").click();
+    await page.waitForFunction(title => document.getElementById("gr-chapter-title-display").textContent === title, previousTitle);
+    const oldScroll = await page.locator("#gr-reader-content").evaluate(el => { el.scrollTop = 300; return el.scrollTop; });
+    secondary.finish(); await settled();
+    assert.equal(await readerTitle.textContent(), previousTitle, "completing generation never opens the new chapter automatically");
+    assert.equal(await page.locator("#gr-reader-content").evaluate(el => el.scrollTop), oldScroll);
+    await page.locator("#gr-next-chapter-btn").click();
+    await page.locator(".gr-chapter-text").filter({ hasText: "STREAM_FULL_TAIL_" + secondary.n }).waitFor();
     assert.equal((await story()).chapters.at(-1).content, secondary.expected.content); assert.equal((await story()).lastGeneration.api, "secondary");
     assert.equal((await story()).lastGeneration.lifecycle.freezeCount, 0, "lifecycle counters do not leak from a previous generation");
     assert.equal((await story()).lastGeneration.lifecycle.offlineCount, 0);
@@ -263,6 +290,8 @@ const { chromium } = require("playwright-core");
     // Pausing a new chapter commits the visible text as the next numbered chapter.
     await page.locator("#gr-next-chapter-btn").click();
     const paused = await start(); await preview(paused);
+    await page.locator("#gr-prev-chapter-btn").click();
+    await page.waitForFunction(title => document.getElementById("gr-chapter-title-display").textContent === title, previous.at(-1).title);
     await page.locator("#gr-stop-generation-btn").click(); await settled();
     saved = await story();
     assert.deepEqual(saved.chapters.slice(0, -1), previous);
@@ -271,6 +300,8 @@ const { chromium } = require("playwright-core");
     assert.equal(saved.chapters.at(-1).generationPartial, true);
     assert.equal(saved.lastGeneration.status, "saved");
     assert.equal(calls.length, beforeAbortCalls + 2);
+    assert.equal(await readerTitle.textContent(), previous.at(-1).title, "pausing keeps the reader on the older chapter too");
+    await page.locator("#gr-next-chapter-btn").click();
     await page.locator("#gr-reader-content .gr-chapter-text").filter({ hasText: "STREAM_BODY_BEGIN_" + paused.n }).waitFor();
     await page.locator("#gr-complete-chapter-btn").waitFor();
     await page.evaluate(() => window.openChapterList());
@@ -310,6 +341,8 @@ const { chromium } = require("playwright-core");
     assert.equal(saved.chapters.length, countBeforeIgnored + 1); assert.equal(saved.chapters.at(-1).content, calls.at(-1).expected.content);
     assert.equal(saved.lastGeneration.stats.streamed, false); ignoreStream = false;
     // Stream can be disabled explicitly without a hidden second request.
+    await page.locator("#gr-next-chapter-btn").click();
+    await page.waitForSelector("#gr-writing-controls:visible");
     await page.locator('#gr-reader-screen [title="设定"]').click(); await page.waitForSelector("#gr-settings-modal.visible");
     await page.locator("#gr-stream-output").uncheck(); await page.locator("#gr-save-story-btn").click();
     const beforeLegacy = calls.length, countBeforeLegacy = (await story()).chapters.length;

@@ -83,7 +83,7 @@
         else current.index = position.chapterIndex;
       }
     }
-    function mount(story, index, restore) {
+    function mount(story, index, restore, scrollTop) {
       const token = ++epoch, saved = resolve(story.chapters, latest(story.id, story.readingPosition));
       if (!story.chapters[index]) { unmount(); return; }
       const bookmark = restore && saved.chapterIndex === index ? saved.bookmark : null;
@@ -95,7 +95,7 @@
         const metrics = bodyMetrics(), sameBodyLayout = bookmark && Number.isFinite(bookmark.bodyOffset) &&
           Math.abs((bookmark.viewportWidth || element.clientWidth) - element.clientWidth) <= 1 && Math.abs((bookmark.bodyHeight || 0) - (metrics.bodyHeight || 0)) <= 1;
         const reflow = bookmark && (Math.abs((bookmark.viewportWidth || element.clientWidth) - element.clientWidth) > 1 || Math.abs((bookmark.scrollHeight || element.scrollHeight) - element.scrollHeight) > 20);
-        const top = !bookmark ? 0 : sameBodyLayout ? (bookmark.scrollTop || 0) + metrics.bodyOffset - bookmark.bodyOffset : reflow ? (bookmark.ratio || 0) * max : bookmark.scrollTop || 0;
+        const top = scrollTop ?? (!bookmark ? 0 : sameBodyLayout ? (bookmark.scrollTop || 0) + metrics.bodyOffset - bookmark.bodyOffset : reflow ? (bookmark.ratio || 0) * max : bookmark.scrollTop || 0);
         element.scrollTop = Math.max(0, Math.min(max, top));
       }
       apply();

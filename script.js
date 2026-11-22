@@ -54791,11 +54791,10 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
   }
   let _0x5576d5 = { activeStoryId: null, isGenerating: ![] };
   let _ephoneNovelMemoryJob = null;
-  let _ephoneNovelChapterEditor = null, _ephoneNovelDeleteTarget = null, _ephoneNovelReaderChapter = null, _ephoneNovelChapterMutation = null, _ephoneNovelReaderRequest = 0;
+  let _ephoneNovelChapterEditor = null, _ephoneNovelDeleteTarget = null, _ephoneNovelReaderChapter = null, _ephoneNovelChapterMutation = null, _ephoneNovelReaderRequest = 0, _ephoneNovelReaderRendered = 0;
   const _ephoneNovelReading = window.EPhoneNovelReading.create({
     element: document.getElementById("gr-reader-content"),
     visible: () => document.getElementById("gr-reader-screen").classList.contains("active"),
-    blocked: id => _0x5576d5.isGenerating && _0x5576d5.generatingStoryId === id,
     scope: "green-river:" + location.pathname,
     save: async (id, position) => {
       const table = _0x24f906.grStories;
@@ -54991,7 +54990,7 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
       return;
     }
     if (last?.paused && last.status === "saved") {
-      document.getElementById("gr-generation-note").textContent = "已暂停，收到的正文已保存为新章。可补完本章。";
+      document.getElementById("gr-generation-note").textContent = "已暂停，收到的正文已保存到目录。可补完本章。";
       return;
     }
     if (last?.assessment?.partial && last.status === "saved") {
@@ -55402,6 +55401,41 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
       );
     _0x5dec3b(_0x5576d5[_0x21b2af(0xf42)], Math.min(_0x5576d5.currentChapterIndex || 0, _0x41cb78), { preservePosition: true });
   }
+  function _ephoneNovelVisibleChapters(story) {
+    const chapters = story.chapters || [];
+    const pending = _0x5576d5.pendingChapter;
+    // A running chapter can be opened from the reader without counting an empty draft as saved history.
+    return _0x5576d5.generatingStoryId === story.id && pending?.index === chapters.length
+      ? [...chapters, pending.chapter] : chapters;
+  }
+  function _ephoneNovelReaderIsCurrent(storyId) {
+    return _0x5576d5.activeStoryId === storyId && _ephoneNovelReaderRendered === _ephoneNovelReaderRequest
+      && document.getElementById("gr-reader-screen").classList.contains("active");
+  }
+  function _ephoneNovelChapterNavigation(story) {
+    const chapters = _ephoneNovelVisibleChapters(story);
+    const index = _0x5576d5.currentChapterIndex;
+    const previous = document.getElementById("gr-prev-chapter-btn");
+    const next = document.getElementById("gr-next-chapter-btn");
+    const controls = document.getElementById("gr-writing-controls");
+    const reroll = document.getElementById("gr-reroll-btn");
+    document.getElementById("gr-pagination-controls").style.display = chapters.length ? "flex" : "none";
+    previous.hidden = index === 0;
+    previous.onclick = () => _0x5dec3b(story.id, index - 1);
+    const following = chapters[index + 1];
+    next.hidden = Boolean(chapters[index]?.generating);
+    next.textContent = following?.generating ? "查看生成中的下一章" : following ? "下一章" : "续写下一章";
+    next.onclick = () => {
+      if (following) return _0x5dec3b(story.id, index + 1);
+      controls.style.display = "flex";
+      document.getElementById("gr-direction-input").focus({ preventScroll: true });
+    };
+    controls.style.display = following || chapters[index]?.generating ? "none" : "flex";
+    if (reroll) {
+      reroll.hidden = !story.chapters?.length;
+      reroll.onclick = _ephoneOpenNovelRewrite;
+    }
+  }
   async function _0x5dec3b(_0x154236, _0x29d7a8, options = {}) {
     const request = ++_ephoneNovelReaderRequest;
     await _ephoneNovelReading.flush();
@@ -55412,21 +55446,36 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
     const _0x32ce26 =
       await _0x24f906[_0x46aac4(0xdca)][_0x46aac4(0x7eb)](_0x154236);
     if (!_0x32ce26 || request !== _ephoneNovelReaderRequest) return;
+    _ephoneNovelReaderRendered = request;
     const resume = _0x29d7a8 === undefined || options.preservePosition;
     if (_0x29d7a8 === undefined) _0x29d7a8 = window.EPhoneNovelReading.resolve(_0x32ce26.chapters,
       _ephoneNovelReading.latest(_0x154236, _0x32ce26.readingPosition)).chapterIndex;
     _ephoneNovelResult(_0x32ce26);
-    const _0x5d3484 = _0x32ce26[_0x46aac4(0x1bbd)][_0x46aac4(0xa5d)];
+    const visibleChapters = _ephoneNovelVisibleChapters(_0x32ce26);
+    const _0x5d3484 = visibleChapters.length;
     if (_0x5d3484 > 0x0 && _0x29d7a8 >= _0x5d3484) _0x29d7a8 = _0x5d3484 - 0x1;
     if (_0x29d7a8 < 0x0) _0x29d7a8 = 0x0;
-    document.getElementById("gr-chapter-tools").hidden = _0x5d3484 === 0;
-    _ephoneNovelReaderChapter = _0x5d3484 ? { storyId: _0x154236, index: _0x29d7a8, chapter: JSON.stringify(_0x32ce26.chapters[_0x29d7a8]) } : null;
+    const displayedChapter = visibleChapters[_0x29d7a8];
+    document.getElementById("gr-chapter-tools").hidden = !displayedChapter || displayedChapter.generating;
+    _ephoneNovelReaderChapter = displayedChapter && !displayedChapter.generating ? { storyId: _0x154236, index: _0x29d7a8, chapter: JSON.stringify(displayedChapter) } : null;
     if (_ephoneNovelReaderChapter) document.getElementById("gr-chapter-word-count").textContent = window.EPhoneNovelChapters.count(_0x32ce26.chapters[_0x29d7a8].content).toLocaleString() + " 字";
     ((_0x5576d5[_0x46aac4(0x97e)] = _0x29d7a8),
       (document["getElementById"](_0x46aac4(0x1a71))["textContent"] =
         _0x32ce26[_0x46aac4(0xe6d)]));
     const _0x3a1dd1 = document["getElementById"](_0x46aac4(0x511));
     _0x3a1dd1["innerHTML"] = "";
+    _ephoneNovelChapterNavigation(_0x32ce26);
+    if (displayedChapter?.generating) {
+      document.getElementById("gr-chapter-title-display").textContent = displayedChapter.title;
+      const message = document.createElement("p");
+      message.id = "gr-pending-chapter-message";
+      message.textContent = "正在生成，等待正文…";
+      _0x3a1dd1.append(message);
+      _0x3a1dd1.scrollTop = 0;
+      _0x275208("gr-reader-screen");
+      _0x2ba2d0();
+      return;
+    }
     if (_0x5d3484 === 0x0) {
       ((document["getElementById"]("gr-chapter-title-display")[
         _0x46aac4(0x71a)
@@ -55493,35 +55542,10 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
           };
         },
       ));
-    const _0x5020d7 = document["getElementById"]("gr-prev-chapter-btn"),
-      _0x2d427a = document[_0x46aac4(0x1023)](_0x46aac4(0x7ad)),
-      _0x38df35 = document[_0x46aac4(0x1023)](_0x46aac4(0x18c7)),
-      _0x18168f = document[_0x46aac4(0x1023)](_0x46aac4(0xbb5)),
-      _0x5c8700 = document[_0x46aac4(0x1023)](_0x46aac4(0x1298));
-    ((_0x38df35[_0x46aac4(0x791)][_0x46aac4(0xab9)] = _0x46aac4(0x12c8)),
-      (_0x5020d7[_0x46aac4(0x1794)] = _0x29d7a8 === 0x0),
-      (_0x5020d7["onclick"] = () => _0x5dec3b(_0x154236, _0x29d7a8 - 0x1)),
-      _0x29d7a8 < _0x5d3484 - 0x1
-        ? ((_0x2d427a[_0x46aac4(0x71a)] = _0x46aac4(0x351)),
-          (_0x2d427a[_0x46aac4(0x5d3)] = () =>
-            _0x5dec3b(_0x154236, _0x29d7a8 + 0x1)),
-          (_0x18168f[_0x46aac4(0x791)]["display"] = _0x46aac4(0x1099)))
-        : ((_0x2d427a[_0x46aac4(0x71a)] = "续写下一章"),
-          (_0x2d427a[_0x46aac4(0x5d3)] = () => {
-            const _0x47cd5d = _0x46aac4;
-            ((_0x18168f[_0x47cd5d(0x791)][_0x47cd5d(0xab9)] =
-              _0x47cd5d(0x12c8)),
-              (_0x3a1dd1["scrollTop"] = _0x3a1dd1[_0x47cd5d(0xb2d)]),
-              document[_0x47cd5d(0x1023)](_0x47cd5d(0x44a))[
-                _0x47cd5d(0x1544)
-              ]());
-          }),
-          (_0x18168f[_0x46aac4(0x791)]["display"] = _0x46aac4(0x12c8)),
-          (_0x5c8700["onclick"] = _ephoneOpenNovelRewrite)),
-      _0x2ba2d0(),
+    (_0x2ba2d0(),
       window.EPhoneNovelPresentation.render(_0x3a1dd1.querySelector(".gr-chapter-text")),
       _0x275208("gr-reader-screen"),
-      _ephoneNovelReading.mount(_0x32ce26, _0x29d7a8, resume));
+      _ephoneNovelReading.mount(_0x32ce26, _0x29d7a8, resume, options.scrollTop));
   }
   function _0x2ba2d0() {
     const _0x183fc2 = _0x3ce505,
@@ -55563,10 +55587,13 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
     try { return window.EPhoneNovelResponse.parse(raw).content; } catch { return ""; }
   }
   function _ephoneSyncNovelPreview() {
-    if (!_0x5576d5.previewActive || _0x5576d5.activeStoryId !== _0x5576d5.generatingStoryId || !document.getElementById("gr-reader-screen")?.classList.contains("active")) return;
+    if (!_0x5576d5.previewActive || _0x5576d5.currentChapterIndex !== _0x5576d5.previewChapterIndex
+      || !_ephoneNovelReaderIsCurrent(_0x5576d5.generatingStoryId)) return;
     const host = document.getElementById("gr-reader-content"), raw = _0x5576d5.previewRaw || "";
     if (!host || !raw || _0x5576d5.previewRenderedRaw === raw && _0x5576d5.previewRenderedBusy === _0x5576d5.isGenerating && host.querySelector("#gr-live-preview")) return;
     const content = _ephoneNovelPreviewText(raw); if (!content) return;
+    const waiting = host.querySelector("#gr-pending-chapter-message");
+    if (waiting) waiting.hidden = true;
     const follow = host.scrollHeight - host.scrollTop - host.clientHeight < 100;
     let preview = host.querySelector("#gr-live-preview"); const created = !preview;
     if (!preview) { preview = document.createElement("section"); preview.id = "gr-live-preview"; const title = document.createElement("h3"), body = document.createElement("div"); title.id = "gr-live-preview-title"; body.id = "gr-live-preview-content"; preview.append(title, body); host.append(preview); }
@@ -55575,8 +55602,10 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
     _0x5576d5.receivedCharacters = content.replace(/\s/g, "").length;
     _0x5576d5.previewRenderedRaw = raw;
     _0x5576d5.previewRenderedBusy = _0x5576d5.isGenerating;
-    if (created) host.scrollTop += preview.getBoundingClientRect().top - host.getBoundingClientRect().top;
-    else if (follow) host.scrollTop = host.scrollHeight;
+    if (!waiting) {
+      if (created) host.scrollTop += preview.getBoundingClientRect().top - host.getBoundingClientRect().top;
+      else if (follow) host.scrollTop = host.scrollHeight;
+    }
   }
   function _0x308e0e(_0x23d846) {
     const _0x2ca660 = _0x3ce505,
@@ -55750,6 +55779,8 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
     _0x5576d5.startedAt = Date.now();
     _0x5576d5.phase = "正在准备资料";
     _0x5576d5.generatingStoryId = _0x5576d5.activeStoryId;
+    _0x5576d5.pendingChapter = null;
+    _0x5576d5.previewChapterIndex = null;
     _0x5576d5.previewRaw = "";
     _0x5576d5.previewRenderedRaw = "";
     _0x5576d5.previewActive = true;
@@ -55761,7 +55792,7 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
       personaDb = window.db.spaceProfiles.db,
       inputDirection = document.getElementById("gr-direction-input")?.value.trim() || "",
       button = document.getElementById("gr-generate-btn"), label = document.getElementById("gr-gen-text");
-    let received = null, api = "primary", responseModel = "", draftQueue = Promise.resolve(), lastDraftAt = 0, paintTimer = 0, maxTextGapMs = 0,
+    let received = null, finishedChapterIndex = null, api = "primary", responseModel = "", draftQueue = Promise.resolve(), lastDraftAt = 0, paintTimer = 0, maxTextGapMs = 0,
       requestStartedAt = null, preparationMs = null, headersMs = null, httpDetails = null, requestDetails = null, draftBackup = {};
     const timer = setInterval(_ephoneSyncNovelControls, 1000);
     const lifecycle = { hiddenCount: 0, freezeCount: 0, offlineCount: 0, backgroundMs: 0 };
@@ -55792,6 +55823,20 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
       if (!story) throw new Error("作品已被删除，请返回书架。");
       const continuation = completeChapter ? _ephoneIncompleteNovel(story) : null;
       if (completeChapter && !continuation) throw new Error("未完成的章节已变化，请重新打开作品后检查；没有发起 API 请求。");
+      const originalChapters = story.chapters || [];
+      const chapters = rewrite || continuation ? originalChapters.slice(0, -1) : originalChapters;
+      _0x5576d5.previewChapterIndex = chapters.length;
+      if (!rewrite && !continuation) {
+        _0x5576d5.pendingChapter = {
+          index: chapters.length,
+          chapter: { title: "第 " + (chapters.length + 1) + " 章（生成中）", content: "", generating: true }
+        };
+        if (_ephoneNovelReaderIsCurrent(storyId)) {
+          if (!chapters.length) await _0x5dec3b(storyId, 0);
+          else _ephoneNovelChapterNavigation(story);
+        }
+        if (document.getElementById("gr-chapter-sidebar").classList.contains("visible")) _ephoneRenderChapterList(story);
+      }
       if (_ephoneIncompleteNovel(story)?.draft) draftBackup = { chapterIndex: story.lastGeneration.chapterIndex, pendingChapter: story.lastGeneration.pendingChapter, pendingRewriteBase: story.lastGeneration.pendingRewriteBase };
       const direction = rewrite ? (rewriteDirection === undefined ? story.chapters?.at(-1)?.generationDirection || "" : rewriteDirection) : inputDirection || continuation?.chapter.generationDirection || "";
       api = story.settings?.generationApi === "secondary" ? "secondary" : "primary";
@@ -55804,8 +55849,7 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
       const useStream = story.settings?.streamOutput !== false;
       const author = await _0x24f906.grAuthors.get(story.authorId);
       if (!author) throw new Error("所选作者已不存在，请在作品设定重新选择文风。");
-      const context = await _ephoneNovelSources(story, personaDb), originalChapters = story.chapters || [],
-        chapters = rewrite || continuation ? originalChapters.slice(0, -1) : originalChapters,
+      const context = await _ephoneNovelSources(story, personaDb),
         previous = chapters.at(-1), target = Math.max(1, Number(story.settings?.outputLength) || 500);
       const progress = window.EPhoneNovelContext.recap(chapters);
       const continuity = window.EPhoneNovelContext.continuity(chapters, context.people);
@@ -55921,9 +55965,9 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
         fresh.lastGeneration.stats.totalMs = Date.now() - _0x5576d5.startedAt;
         await stories.put(fresh);
       });
+      finishedChapterIndex = chapters.length;
       _0x5576d5.previewActive = false;
-      if (_0x5576d5.activeStoryId === storyId && document.getElementById("gr-reader-screen")?.classList.contains("active")) {
-        await _0x5dec3b(storyId, chapters.length);
+      if (_ephoneNovelReaderIsCurrent(storyId)) {
         const input = document.getElementById("gr-direction-input"); if (!rewrite && input?.value.trim() === direction) input.value = "";
       }
     } catch (error) {
@@ -55945,6 +55989,22 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
       document.removeEventListener("visibilitychange", trackVisibility);
       document.removeEventListener("freeze", trackFreeze);
       window.removeEventListener("offline", trackOffline);
+      const pending = _0x5576d5.pendingChapter;
+      _0x5576d5.pendingChapter = null;
+      if (pending) _0x5576d5.previewActive = false;
+      const currentId = _0x5576d5.activeStoryId;
+      const current = await stories.get(currentId).catch(() => null);
+      if (currentId === storyId && current && _ephoneNovelReaderIsCurrent(storyId)) {
+        const index = _0x5576d5.currentChapterIndex;
+        if (index === finishedChapterIndex) {
+          const host = document.getElementById("gr-reader-content");
+          await _0x5dec3b(storyId, index, { scrollTop: host.scrollTop }).catch(console.error);
+        } else if (index === pending?.index && document.getElementById("gr-pending-chapter-message")) {
+          await _0x5dec3b(storyId, Math.max(0, index - 1), { preservePosition: true }).catch(console.error);
+        } else {
+          _ephoneNovelChapterNavigation(current);
+        }
+      }
       _0x5576d5.isGenerating = false;
       _0x5576d5.controller = null;
       if (!_0x5576d5.previewActive) {
@@ -55955,21 +56015,26 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
       for (const target of [button, document.getElementById("gr-generate-btn")]) if (target) target.disabled = false;
       for (const target of [label, document.getElementById("gr-gen-text")]) if (target) target.textContent = "续写";
       _ephoneSyncNovelControls();
-      const currentId = _0x5576d5.activeStoryId;
-      const current = await stories.get(currentId).catch(() => null);
-      if (_0x5576d5.activeStoryId === currentId) _ephoneNovelResult(current);
+      if (_0x5576d5.activeStoryId === currentId) {
+        _ephoneNovelResult(current);
+        if (current && document.getElementById("gr-chapter-sidebar").classList.contains("visible")) _ephoneRenderChapterList(current);
+      }
     }
   }
 
   function _ephoneRenderChapterList(story) {
     if (_0x5576d5.activeStoryId !== story.id) return;
     const host = document.getElementById("gr-chapter-list-content"); host.replaceChildren();
-    const chapters = story.chapters || [], counts = chapters.map(chapter => window.EPhoneNovelChapters.count(chapter.content));
+    const chapters = _ephoneNovelVisibleChapters(story), counts = chapters.map(chapter => window.EPhoneNovelChapters.count(chapter.content));
     document.getElementById("gr-total-chapters").textContent = "共 " + chapters.length + " 章 · " + counts.reduce((a, b) => a + b, 0).toLocaleString() + " 字";
     chapters.forEach((chapter, index) => {
       const row = document.createElement("div"); row.className = "gr-sidebar-item"; row.dataset.index = index;
       if (index === _0x5576d5.currentChapterIndex) row.classList.add("active");
-      const title = document.createElement("div"); title.className = "gr-catalog-title"; title.textContent = (index + 1) + ". " + (chapter.title || "无题"); row.append(title);
+      const title = document.createElement("div"); title.className = "gr-catalog-title";
+      title.textContent = (index + 1) + ". " + (chapter.generating ? "生成中…" : chapter.title || "无题"); row.append(title);
+      row.onclick = () => { _0x5dec3b(story.id, index); _0x1db439(); };
+      host.append(row);
+      if (chapter.generating) return;
       const meta = document.createElement("div"); meta.className = "gr-catalog-meta";
       const count = document.createElement("span"); count.className = "gr-catalog-count"; count.textContent = counts[index].toLocaleString() + " 字"; meta.append(count);
       const time = new Date(chapter.editedAt || chapter.timestamp);
@@ -55983,7 +56048,7 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
         button.onclick = event => { event.stopPropagation(); handler(index, JSON.stringify(chapter)); };
         actions.append(button);
       }
-      row.append(actions); row.onclick = () => { _0x5dec3b(story.id, index); _0x1db439(); }; host.append(row);
+      row.append(actions);
     });
   }
   async function _0x5c29da() {

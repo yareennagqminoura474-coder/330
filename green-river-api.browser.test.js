@@ -102,7 +102,14 @@ const { chromium } = require("playwright-core");
       else { const deadline = Date.now() + 10000; while (dialogs.length === beforeDialogs && Date.now() < deadline) await new Promise((resolve) => setTimeout(resolve, 20)); assert.ok(dialogs.length > beforeDialogs, "failed generation must explain failure"); }
       await settle();
     };
-    const generate = async (direction) => { const before = JSON.stringify((await stories())[0].chapters), n = dialogs.length; await page.locator("#gr-direction-input").fill(direction); await page.locator("#gr-generate-btn").click(); await finish(before, true, n); };
+    const generate = async (direction) => {
+      const before = JSON.stringify((await stories())[0].chapters), n = dialogs.length;
+      await page.locator("#gr-direction-input").fill(direction); await page.locator("#gr-generate-btn").click();
+      await finish(before, true, n);
+      const next = page.locator("#gr-next-chapter-btn");
+      if (await next.textContent() === "下一章") await next.click();
+      await page.waitForSelector("#gr-writing-controls:visible");
+    };
     const reroll = async (expected = true) => { const before = JSON.stringify((await stories())[0].chapters), n = dialogs.length; await page.locator("#gr-reroll-btn").click(); await page.locator("#gr-rewrite-modal.visible #gr-rewrite-direct").click(); await finish(before, expected, n); };
     const config = async (patch) => { await page.evaluate(async (patch) => window.db.apiConfig.update("main", patch), patch); await ready(); await openBook(); };
     const chooseApi = async (value) => {
