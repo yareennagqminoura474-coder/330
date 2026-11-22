@@ -468,7 +468,8 @@
     } catch (error) {
       aborted = signal?.aborted || error.name === "AbortError";
       providerFailure = error.providerError || null;
-      if (!aborted && !providerFailure) {
+      if (!providerFailure) {
+        // A pause can land after text bytes arrive but before the SSE separator.
         const pending = mode === "sse" ? [...dataLines, ...lineBuffer.split(/\r?\n/).filter(line => line.startsWith("data:")).map(line => line.slice(5).replace(/^ /, ""))].join("\n") : wire;
         if (pending) {
           try {

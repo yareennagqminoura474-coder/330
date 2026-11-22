@@ -260,6 +260,26 @@ const { chromium } = require("playwright-core");
     await page.locator("#gr-stop-generation-btn").click(); await settled();
     saved = await story(); assert.deepEqual(saved.chapters, previous); assert.ok(saved.lastGeneration.raw.includes("STREAM_BODY_BEGIN_" + aborted.n));
     assert.equal(saved.lastGeneration.status, "error"); assert.equal(calls.length, beforeAbortCalls + 1, "stopping does not retry a paid request");
+    // Pausing a new chapter commits the visible text as the next numbered chapter.
+    await page.locator("#gr-next-chapter-btn").click();
+    const paused = await start(); await preview(paused);
+    await page.locator("#gr-stop-generation-btn").click(); await settled();
+    saved = await story();
+    assert.deepEqual(saved.chapters.slice(0, -1), previous);
+    assert.equal(saved.chapters.length, previous.length + 1);
+    assert.equal(saved.chapters.at(-1).content, paused.expected.content.slice(0, 240));
+    assert.equal(saved.chapters.at(-1).generationPartial, true);
+    assert.equal(saved.lastGeneration.status, "saved");
+    assert.equal(calls.length, beforeAbortCalls + 2);
+    await page.locator("#gr-reader-content .gr-chapter-text").filter({ hasText: "STREAM_BODY_BEGIN_" + paused.n }).waitFor();
+    await page.locator("#gr-complete-chapter-btn").waitFor();
+    await page.evaluate(() => window.openChapterList());
+    assert.match(await page.locator("#gr-chapter-list-content .gr-sidebar-item").last().textContent(), new RegExp("^" + saved.chapters.length + "\\."));
+    await page.locator("#gr-chapter-list-content .gr-sidebar-item").last().click();
+    const noBody = await start();
+    noBody.emit("<novel_title>只有标题</novel_title>");
+    await page.locator("#gr-stop-generation-btn").click(); await settled();
+    assert.deepEqual((await story()).chapters, saved.chapters, "pausing before prose arrives does not add an empty chapter");
     // Missing SSE end marker preserves exactly the received prose as partial.
     const incomplete = await start(); await preview(incomplete); incomplete.endPartial(); await settled();
     saved = await story(); assert.equal(saved.chapters.at(-1).content, incomplete.expected.content.slice(0, 240)); assert.equal(saved.lastGeneration.partial, true);

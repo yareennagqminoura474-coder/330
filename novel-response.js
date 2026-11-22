@@ -196,9 +196,10 @@
     const reason = strings(output.finishReason), warnings = [...(parsed.warnings || [])];
     const limited = /^(length|max_tokens|max_output_tokens|continuation)$/i.test(reason);
     const abnormal = !!reason && !/^(stop|end_turn|stop_sequence)$/i.test(reason);
-    const partial = !!(parsed.partial || output.partial || abnormal);
+    const partial = !!(parsed.partial || output.partial || output.aborted || abnormal);
     let message;
     if (output.providerError) message = "接口报错，已保留实际收到的正文。";
+    else if (output.aborted) message = "已暂停，已保留实际收到的正文。";
     else if (output.error) message = "接收发生错误，已保留实际收到的正文。";
     else if (limited) message = "接口报告因输出上限结束（" + reason + "），正文可能未完。";
     else if (abnormal) message = "接口结束原因：" + reason + "，正文未确认完整。";

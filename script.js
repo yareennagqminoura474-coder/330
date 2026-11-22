@@ -54916,7 +54916,11 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
   document.getElementById("gr-rewrite-described")?.addEventListener("click", () => _ephoneSubmitNovelRewrite(true));
   document.getElementById("gr-rewrite-cancel")?.addEventListener("click", () => document.getElementById("gr-rewrite-modal").classList.remove("visible"));
   document.getElementById("gr-rewrite-description")?.addEventListener("input", (event) => { document.getElementById("gr-rewrite-described").disabled = !event.target.value.trim(); });
-  document.getElementById("gr-stop-generation-btn")?.addEventListener("click", () => _0x5576d5.controller?.abort());
+  const _ephoneNovelUserPause = new DOMException("已停止生成", "AbortError");
+  document.getElementById("gr-stop-generation-btn")?.addEventListener("click", () => {
+    _0x5576d5.controller?.abort(_ephoneNovelUserPause);
+    _ephoneSyncNovelControls();
+  });
   document.getElementById("gr-complete-chapter-btn")?.addEventListener("click", () => _0x10ebb8(false, undefined, true));
   document.getElementById("gr-last-response-close")?.addEventListener("click", () => document.getElementById("gr-last-response-modal").classList.remove("visible"));
   document.getElementById("gr-last-response-btn")?.addEventListener("click", async () => {
@@ -54984,6 +54988,10 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
     if (last?.providerError) {
       const error = last.providerError;
       document.getElementById("gr-generation-note").textContent = (error.type === "upstream_error" ? "上游服务" : "接口") + "报错" + (error.code != null ? "（" + error.code + "）" : "") + "，" + (last.status === "saved" ? "已保存收到的正文。" : "返回内容已保留，可查看详情。");
+      return;
+    }
+    if (last?.paused && last.status === "saved") {
+      document.getElementById("gr-generation-note").textContent = "已暂停，收到的正文已保存为新章。可补完本章。";
       return;
     }
     if (last?.assessment?.partial && last.status === "saved") {
@@ -55536,6 +55544,8 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
     if (completeButton) completeButton.disabled = _0x5576d5.isGenerating || _ephoneChapterBusy(_0x5576d5.activeStoryId);
     for (const action of document.querySelectorAll("#gr-chapter-tools button, #gr-chapter-list-content .gr-chapter-action, #gr-reader-content .save-summary-btn")) action.disabled = _ephoneChapterBusy(_0x5576d5.activeStoryId);
     const status = document.getElementById("gr-generation-status");
+    const stop = document.getElementById("gr-stop-generation-btn");
+    if (stop) stop.disabled = !_0x5576d5.isGenerating || _0x5576d5.controller?.signal.aborted || _0x5576d5.phase === "正在整理并保存正文";
     const quietSeconds = _0x5576d5.lastProseAt ? Math.floor((Date.now() - _0x5576d5.lastProseAt) / 1000) : 0;
     if (status) {
       status.hidden = !_0x5576d5.isGenerating;
@@ -55872,11 +55882,12 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
       received = { raw: output.raw, wireEvidence: output.wireEvidence, status: "received", api, model, rewrite, completingChapter: !!continuation, chapterIndex: chapters.length, http: httpDetails, request: requestDetails, lifecycle: lifecycleSnapshot(), finishReason: output.finishReason, finishMessage: output.finishMessage, usage: output.usage, unparsedEvents: output.unparsedEvents, providerError: output.providerError || null, transportError: output.error || "",
         stats: { ...output.stats, preparationMs, headersMs, maxTextGapMs: Math.max(maxTextGapMs, _0x5576d5.lastProseAt ? Date.now() - _0x5576d5.lastProseAt : 0), firstTextMs: output.stats.firstTextMs == null ? null : headersMs + output.stats.firstTextMs,
           totalMs: Date.now() - _0x5576d5.startedAt }, receivedAt: Date.now(), elapsedMs: Date.now() - _0x5576d5.startedAt };
-      // Keep the paid result before trying to interpret its chapter wrapper.
-      if (await stories.get(storyId)) await stories.update(storyId, { lastGeneration: { ...draftBackup, ...received } });
-      controller.signal.throwIfAborted();
+      const savePausedChapter = !rewrite && !continuation && controller.signal.reason === _ephoneNovelUserPause;
       _0x5576d5.phase = "正在整理并保存正文";
       _ephoneSyncNovelControls();
+      // Keep the paid result before trying to interpret its chapter wrapper.
+      if (await stories.get(storyId)) await stories.update(storyId, { lastGeneration: { ...draftBackup, ...received } });
+      if (!savePausedChapter) controller.signal.throwIfAborted();
       if (!received.raw.trim() && output.stats.httpEOF && !output.providerError && !output.error) {
         received.bodyCharacters = 0;
         const tokens = output.usage.outputTokens;
@@ -55884,7 +55895,7 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
         throw new Error("接口已结束，本次未收到正文（0 字）。" + usage + "用量和空回补偿由服务商判定。本次只发出一次请求。");
       }
       const result = window.EPhoneNovelResponse.parse(received.raw, "第" + (chapters.length + 1) + "章");
-      received.assessment = window.EPhoneNovelResponse.assess(result, output);
+      received.assessment = window.EPhoneNovelResponse.assess(result, savePausedChapter ? { ...output, aborted: true } : output);
       received.bodyCharacters = window.EPhoneNovelChapters.count(result.content);
       result.partial = received.assessment.partial;
       if (continuation) result.content = window.EPhoneNovelResponse.appendContent(continuation.chapter.content, result.content);
@@ -55893,7 +55904,7 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
         ...(result.partial ? { generationPartial: true } : {}) };
       if (window.db.spaceProfiles.db !== personaDb) throw new Error("人物空间已切换，本次结果未写入作品，请回到原空间重试。");
       await stories.db.transaction("rw", stories, async () => {
-        controller.signal.throwIfAborted();
+        if (!savePausedChapter) controller.signal.throwIfAborted();
         const fresh = await stories.get(storyId);
         if (!fresh || JSON.stringify(fresh.chapters || []) !== JSON.stringify(originalChapters) || JSON.stringify(fresh.settings) !== JSON.stringify(story.settings) || fresh.authorId !== story.authorId)
           throw new Error("生成期间作品内容或设定已变化，本次未覆盖已有章节。");
@@ -55905,6 +55916,7 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
         fresh.settings = { ...fresh.settings, referenceSpaceDatabase: personaDb.name };
         fresh.lastUpdated = Date.now();
         fresh.lastGeneration = { ...received, status: keepOriginal ? "draft" : "saved", warnings: result.warnings || [], partial: !!result.partial, format: result.format,
+          ...(savePausedChapter ? { paused: true } : {}),
           ...(keepOriginal ? { pendingChapter: chapter, pendingRewriteBase: continuation?.original || JSON.stringify(originalChapters.at(-1)) } : {}) };
         fresh.lastGeneration.stats.totalMs = Date.now() - _0x5576d5.startedAt;
         await stories.put(fresh);
@@ -55915,12 +55927,13 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
         const input = document.getElementById("gr-direction-input"); if (!rewrite && input?.value.trim() === direction) input.value = "";
       }
     } catch (error) {
-      const stopped = error.name === "AbortError" || controller.signal.aborted;
+      const stopped = error.name === "AbortError" || controller.signal.aborted && error.code === "NOVEL_CONTENT_MISSING";
       await draftQueue.catch(() => {});
       if (!received && requestStartedAt !== null) received = { raw: error.partialRaw || _0x5576d5.previewRaw || "", wireEvidence: error.wireEvidence, unparsedEvents: error.unparsedEvents || [],
         stats: { ...error.stats, preparationMs, headersMs, totalMs: Date.now() - _0x5576d5.startedAt }, http: httpDetails, request: requestDetails, lifecycle: lifecycleSnapshot(),
         transportError: error.message, providerError: error.providerError || null, finishReason: error.finishReason || "", finishMessage: error.finishMessage || "", usage: error.usage, api, model: responseModel, receivedAt: Date.now() };
-      if (received && await stories.get(storyId)) await stories.update(storyId, { lastGeneration: { ...draftBackup, ...received, status: "error", error: stopped ? "已停止生成" : error.message } }).catch(() => {});
+      const stoppedMessage = !rewrite && !completeChapter ? "已暂停，尚未收到可保存的正文。" : "已停止生成";
+      if (received && await stories.get(storyId)) await stories.update(storyId, { lastGeneration: { ...draftBackup, ...received, status: "error", error: stopped ? stoppedMessage : error.message } }).catch(() => {});
       if (!stopped) { console.error("绿江生成失败：", error); alert("小说生成未完成：" + error.message + (received ? "\n返回内容已保留，可点「查看上次返回」，不需要再次调用 API。" : "")); }
     }
     finally {

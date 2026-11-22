@@ -174,6 +174,12 @@ const delta = (text) => ({ choices: [{ index: 0, delta: { content: text }, finis
   const stoppedRead = core.read(stoppedStream.response, { signal: controller.signal, onProgress(value) { if (value.raw) controller.abort(); } });
   stoppedStream.push(event(delta("停止前收到的小说正文")));
   const stopped = await stoppedRead; assert.equal(stopped.raw, "停止前收到的小说正文"); assert.equal(stopped.aborted, true); assert.equal(stopped.partial, true);
+  const pausedController = new AbortController(), pausedStream = controlled();
+  const pausedRead = core.read(pausedStream.response, { signal: pausedController.signal, onActivity: () => pausedController.abort() });
+  pausedStream.push('data: {"choices":[{"delta":{"content":"暂停前已经收到的半个数据包');
+  const paused = await pausedRead;
+  assert.equal(paused.raw, "暂停前已经收到的半个数据包");
+  assert.equal(paused.aborted, true);
   const beforeStart = new AbortController(); beforeStart.abort();
   assert.equal((await core.read(controlled().response, { signal: beforeStart.signal })).aborted, true);
   await assert.rejects(() => core.read(response(event({ error: { message: "provider busy" } }, "error"))), (error) => error.partialRaw === "" && /provider busy/.test(error.message));
