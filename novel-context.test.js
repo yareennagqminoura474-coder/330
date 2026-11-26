@@ -150,4 +150,7 @@ assert.equal(JSON.stringify(timeline), timelineBefore, "source titles, prose, su
 assert.equal(core.recap([]), "");
 assert.match(core.recap([{ content: '不能因空白摘要丢失的旧正文', summary: '  \n ' }, timeline[1]]), /不能因空白摘要丢失的旧正文/);
 assert.doesNotMatch(core.recap([{ content: '上一章的整段原文', summary: '上一章的整段原文' }]), /上一章的整段原文/);
+const repeatedRecap = core.recap([timeline[0], { ...timeline[1], summary: timeline[0].summary }]);
+assert.equal(repeatedRecap.split(timeline[0].summary).length - 1, 1, "duplicate notes do not make an old event look newly happened twice");
+assert.match(repeatedRecap, /紧接本次续写之前的情节「我等你」：\n本条记录与前面完全相同/);
 console.log("PASS: canonical personas, relations, selected full memory/history, immutable archives, shared-persona deduplication and chapter/alias continuity lookup with deletion and rewrite boundaries");

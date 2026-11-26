@@ -179,13 +179,28 @@
   }
   function recap(chapters) {
     const written = list(chapters);
+    const seen = new Set();
     return written.map((chapter, index) => {
       const recent = index === written.length - 1;
       const title = text(chapter.title).replace(/^第[一二三四五六七八九十百千零〇\d]+章\s*[：:、.\-]?\s*/u, "") || "未命名情节";
       const summary = !chapter.summaryStale && text(chapter.summary).trim() ? chapter.summary : "";
-      const content = recent && summary === chapter.content ? "完整正文见下文，不重复发送。" : summary || (recent ? "摘要缺失或待更新，完整正文见下文。" : chapter.content) || "（暂无记录）";
+      const source = summary || (!recent ? text(chapter.content) : "");
+      let content = source || (recent ? "摘要缺失或待更新，完整正文见下文。" : "（暂无记录）");
+      if (recent && summary && summary === chapter.content) content = "完整正文见下文，不重复发送。";
+      else if (source && seen.has(source.trim())) content = "本条记录与前面完全相同，没有新增可确认的事实。";
+      if (source) seen.add(source.trim());
       return (recent ? "紧接本次续写之前的情节" : "较早的已发生情节") + "「" + title + "」：\n" + content;
     }).join("\n\n");
   }
-  return Object.freeze({ build, continuity, recap });
+  function progression({ hasPrevious, completing }) {
+    const firstStep = completing
+      ? "接完本章残稿的断点，在本章内写出仍未发生的行动或结果，按已写明的场景继续。"
+      : hasPrevious
+        ? "从上一章留下的实际状态继续。简短接住结尾后，用已经埋下的约定、选择的后果或人物各自的事务带出下一步。只在确有根据时转场或推移故事时间。"
+        : "从人物眼下正在做的一件事进入故事，写清他们此刻要什么、做了什么，以及事情如何因此改变。";
+    return "# 本章如何推进\n" + firstStep +
+      "\n留空自由续写时，先看近几章反复使用过的矛盾、互动和收场方式，再选择一条不同的推进路线。例如转到另一个人物正在办的事，让旧承诺遇到一个具体取舍，或让先前被忽略的小线索产生后果。选最符合眼下处境的一条，给角色留出按自己想法行事的空间。新发展可以出人意料，但回头看要能从人设和前文找到缘由，不靠生硬反转或凭空制造新危机。正文不交代选择路线的过程。" +
+      "\n把本章起点和结尾对照，至少留下一个具体变化：有人实际完成了一件事、做了有后果的选择、得知了新信息，或关系因此改变。兑现前文留下的后果可以很平静。重复同一套起因、争执、安抚和收场，即使换地点、台词或人物也不算新进展。用户指定回访旧事时，按指定方向写，呈现新的视角、信息或后果。";
+  }
+  return Object.freeze({ build, continuity, recap, progression });
 });
