@@ -55,17 +55,20 @@
     const changedBody = content !== text(old.content), changedSummary = summary !== text(old.summary);
     const chapter = { ...old, title: changes.title === undefined ? old.title : text(changes.title).trim() || chooseTitle(content), content, summary,
       summaryStale: Boolean(summary) && !(changedSummary || changes.summaryConfirmed) && (changedBody || Boolean(old.summaryStale)), editedAt: now };
+    delete chapter.generationReservation;
     const chapters = story.chapters.map((item, at) => at === index ? chapter : item);
     const readingPosition = story.readingPosition && changedBody && story.readingPosition.chapterIndex === index
       ? { ...story.readingPosition, chapterSignature: null, updatedAt: Math.max(now, (story.readingPosition.updatedAt || 0) + 1) } : story.readingPosition;
+    const last = story.lastGeneration;
+    const linked = linkedIndex(story) === index && (last?.status === "saved" || last?.reservationId && last.reservationId === old.generationReservation);
     return { ...story, ...(story.readingPosition ? { readingPosition } : {}), chapters: relink(chapters), lastUpdated: now,
-      lastGeneration: linkedIndex(story) === index && story.lastGeneration?.status === "saved" ? { ...story.lastGeneration, chapterIndex: index, chapterEditedAt: now } : story.lastGeneration };
+      lastGeneration: linked ? { ...last, status: "saved", chapterIndex: index, chapterEditedAt: now, ...(last.reservationId ? { reservationId: undefined } : {}) } : last };
   }
   function remove(story, index, now = Date.now()) {
-    target(story, index);
+    const removed = target(story, index);
     const linked = linkedIndex(story), chapters = story.chapters.filter((_, at) => at !== index);
     let lastGeneration = story.lastGeneration;
-    if (linked === index && lastGeneration?.status === "saved") lastGeneration = null;
+    if (linked === index && (lastGeneration?.status === "saved" || lastGeneration?.reservationId && lastGeneration.reservationId === removed.generationReservation)) lastGeneration = null;
     else if (linked > index) lastGeneration = { ...lastGeneration, chapterIndex: linked - 1 };
     let readingPosition = story.readingPosition;
     if (readingPosition) {

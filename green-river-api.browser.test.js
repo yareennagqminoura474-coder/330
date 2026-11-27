@@ -394,11 +394,14 @@ const { chromium } = require("playwright-core");
     assert.equal(await page.locator("#gr-stop-generation-btn").isVisible(), true, "a slow pending request exposes a stop action");
     assert.ok((await page.locator("#gr-generation-status-text").textContent()).trim());
     await page.locator("#gr-stop-generation-btn").click(); await settle();
-    assert.equal((await page.evaluate((id) => window.db.grStories.get(id), otherId)).chapters.length, 0, "stopping cannot create a fake chapter");
+    const stoppedBeforeHeaders = (await page.evaluate((id) => window.db.grStories.get(id), otherId)).chapters;
+    assert.equal(stoppedBeforeHeaders.length, 1, "even stopping before response headers keeps a chapter");
+    assert.equal(stoppedBeforeHeaders[0].content, "");
+    assert.equal(stoppedBeforeHeaders[0].generationPartial, true);
     assert.equal(calls.length, beforeStop + 1, "stopping does not retry or switch provider");
     for (const { route } of held.splice(0)) await route.abort().catch(() => {}); holdPrimary = false;
     upstreamFailure = true; const beforeUpstream = calls.length;
-    await page.locator("#gr-generate-btn").click();
+    await page.locator("#gr-complete-chapter-btn").click();
     let upstreamStory; const upstreamDeadline = Date.now() + 10000;
     while (Date.now() < upstreamDeadline) {
       upstreamStory = await page.evaluate(id => window.db.grStories.get(id), otherId);
@@ -407,6 +410,7 @@ const { chromium } = require("playwright-core");
     }
     if (!upstreamStory.chapters.length) console.log(JSON.stringify({ upstreamFailureDiagnostics: upstreamStory.lastGeneration, lastDialog: dialogs.at(-1) }));
     assert.equal(upstreamStory.chapters.at(-1).content, "上游报错前已经收到的小说正文。");
+    assert.equal(upstreamStory.chapters.length, 1, "completing the empty chapter fills it in place");
     assert.equal(upstreamStory.lastGeneration.partial, true); assert.equal(upstreamStory.lastGeneration.stats.malformedEvents, 0);
     assert.equal(calls.length, beforeUpstream + 1, "an explicit upstream failure does not cause an automatic paid retry");
     assert.match(await page.locator("#gr-generation-note").textContent(), /上游服务报错.*500/);

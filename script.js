@@ -54938,7 +54938,7 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
       : "旧版本未保留解析前的接口数据。";
     document.getElementById("gr-last-response-content").value = (last.raw || "") + (last.providerError ? "\n\n【接口返回的错误】\n" + JSON.stringify({ error: last.providerError }, null, 2) : "") + (last.unparsedEvents?.length ? "\n\n【未能解析的原始数据片段】\n" + last.unparsedEvents.join("\n\n") : "");
     const seconds = (n) => Number.isFinite(n) ? (n / 1000).toFixed(1) + "秒" : "未记录", stats = last.stats;
-    document.getElementById("gr-last-response-info").textContent = (last.api === "secondary" ? "副 API" : "主 API") + " · " + (last.model || "") + "。内容保存在本机，查看不会重新请求。" + (last.error ? "\n上次未保存为章节：" + last.error : "") +
+    document.getElementById("gr-last-response-info").textContent = (last.api === "secondary" ? "副 API" : "主 API") + " · " + (last.model || "") + "。内容保存在本机，查看不会重新请求。" + (last.error ? (last.status === "saved" ? "\n生成中断，已保留章节：" : "\n上次未保存为章节：") + last.error : "") +
       (last.chapterEditedAt ? "\n章节已有手动修改；这里保留的是生成当时的接口原文。" : "") +
       "\n接口结束原因：" + (last.finishReason || "接口未提供；不能仅凭 [DONE] 判断为什么停笔") + (last.finishMessage ? "；" + last.finishMessage : "") +
       (last.assessment ? "\n正文检查：" + last.assessment.message : "") +
@@ -54969,6 +54969,8 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
     const bar = document.getElementById("gr-generation-result-bar"), last = story?.lastGeneration;
     if (!bar) return;
     const completeButton = document.getElementById("gr-complete-chapter-btn"), incomplete = _ephoneIncompleteNovel(story);
+    const activeReservation = _0x5576d5.generatingStoryId === story?.id && _0x5576d5.pendingChapter?.id === last?.reservationId && Boolean(last?.reservationId);
+    if (activeReservation) { bar.hidden = true; return; }
     if (completeButton) {
       completeButton.hidden = !incomplete;
       completeButton.textContent = incomplete?.draft ? "补完重写草稿" : "补完未完章节";
@@ -54984,13 +54986,15 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
       document.getElementById("gr-generation-note").textContent = "本次未生成章节：" + (last.error || "未收到可用正文") + " 可查看上次返回核对。";
       return;
     }
+    if (last?.reservationId || last?.interrupted || last?.paused && last.status === "saved") {
+      const body = story.chapters?.[last.chapterIndex]?.content;
+      document.getElementById("gr-generation-note").textContent = (last.paused ? "已暂停。" : "生成已中断。") +
+        (body ? "已把收到的正文保存为未完章节。" : "本次未收到正文，已保留空白的未完章节。") + "可补完未完章节。";
+      return;
+    }
     if (last?.providerError) {
       const error = last.providerError;
       document.getElementById("gr-generation-note").textContent = (error.type === "upstream_error" ? "上游服务" : "接口") + "报错" + (error.code != null ? "（" + error.code + "）" : "") + "，" + (last.status === "saved" ? "已保存收到的正文。" : "返回内容已保留，可查看详情。");
-      return;
-    }
-    if (last?.paused && last.status === "saved") {
-      document.getElementById("gr-generation-note").textContent = "已暂停，收到的正文已保存到目录。可补完本章。";
       return;
     }
     if (last?.assessment?.partial && last.status === "saved") {
@@ -55404,9 +55408,11 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
   function _ephoneNovelVisibleChapters(story) {
     const chapters = story.chapters || [];
     const pending = _0x5576d5.pendingChapter;
-    // A running chapter can be opened from the reader without counting an empty draft as saved history.
-    return _0x5576d5.generatingStoryId === story.id && pending?.index === chapters.length
-      ? [...chapters, pending.chapter] : chapters;
+    if (_0x5576d5.generatingStoryId !== story.id || !pending || !_ephoneOwnsNovelReservation(story, pending)) return chapters;
+    return [...chapters.slice(0, -1), { ...chapters.at(-1), title: "第 " + (pending.index + 1) + " 章（生成中）", generating: true }];
+  }
+  function _ephoneOwnsNovelReservation(story, reservation) {
+    return Boolean(story && story.chapters?.length === reservation.index + 1 && story.chapters.at(-1).generationReservation === reservation.id);
   }
   function _ephoneNovelReaderIsCurrent(storyId) {
     return _0x5576d5.activeStoryId === storyId && _ephoneNovelReaderRendered === _ephoneNovelReaderRequest
@@ -55505,6 +55511,11 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
         "<div\x20class=\x22gr-chapter-text\x22>" +
         _ephoneNovelEscape(_0x1a9795[_0x46aac4(0xfd7)]) +
         "</div>"));
+    if (_0x1a9795.generationPartial && !_0x1a9795.content) {
+      const message = document.createElement("p");
+      message.textContent = "本章未收到正文。可以点「补完未完章节」从开头写。";
+      _0x3a1dd1.append(message);
+    }
     if (_0x1a9795.summaryStale) _0x3a1dd1.innerHTML += '<p class="gr-chapter-stale-hint">正文已修改，接续摘要待更新。续写将直接参考本章正文。</p>';
     const _0x2b442c =
       _0x46aac4(0x1be8) +
@@ -55792,8 +55803,30 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
       personaDb = window.db.spaceProfiles.db,
       inputDirection = document.getElementById("gr-direction-input")?.value.trim() || "",
       button = document.getElementById("gr-generate-btn"), label = document.getElementById("gr-gen-text");
-    let received = null, finishedChapterIndex = null, api = "primary", responseModel = "", draftQueue = Promise.resolve(), lastDraftAt = 0, paintTimer = 0, maxTextGapMs = 0,
+    let received = null, reservation = null, finishedChapterIndex = null, api = "primary", responseModel = "", draftQueue = Promise.resolve(), lastDraftAt = 0, paintTimer = 0, maxTextGapMs = 0,
       requestStartedAt = null, preparationMs = null, headersMs = null, httpDetails = null, requestDetails = null, draftBackup = {};
+    async function saveReservedChapter(generation, interrupted = false) {
+      const title = "第 " + (reservation.index + 1) + " 章（未完）";
+      let parsed;
+      try { parsed = window.EPhoneNovelResponse.parse(generation.raw, title); }
+      catch (error) { if (error.code !== "NOVEL_CONTENT_MISSING") throw error; }
+      return stories.db.transaction("rw", stories, async () => {
+        const fresh = await stories.get(storyId);
+        if (!_ephoneOwnsNovelReservation(fresh, reservation)) return false;
+        const chapter = fresh.chapters[reservation.index];
+        if (parsed?.content) {
+          chapter.content = parsed.content;
+          chapter.wordCount = window.EPhoneNovelChapters.count(parsed.content);
+          chapter.summary = parsed.summary || "";
+          if (interrupted) chapter.title = window.EPhoneNovelChapters.chooseTitle(chapter.content, parsed.title);
+        }
+        if (interrupted) delete chapter.generationReservation;
+        fresh.lastGeneration = { ...generation, chapterIndex: reservation.index, bodyCharacters: chapter.wordCount, partial: true,
+          ...(interrupted ? { status: "saved", interrupted: true } : { reservationId: reservation.id }) };
+        await stories.put(fresh);
+        return true;
+      });
+    }
     const timer = setInterval(_ephoneSyncNovelControls, 1000);
     const lifecycle = { hiddenCount: 0, freezeCount: 0, offlineCount: 0, backgroundMs: 0 };
     let hiddenSince = document.hidden ? Date.now() : null, wakeLock = null, wakeRequest = null, generationFinished = false;
@@ -55825,22 +55858,34 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
       if (completeChapter && !continuation) throw new Error("未完成的章节已变化，请重新打开作品后检查；没有发起 API 请求。");
       const originalChapters = story.chapters || [];
       const chapters = rewrite || continuation ? originalChapters.slice(0, -1) : originalChapters;
-      _0x5576d5.previewChapterIndex = chapters.length;
-      if (!rewrite && !continuation) {
-        _0x5576d5.pendingChapter = {
-          index: chapters.length,
-          chapter: { title: "第 " + (chapters.length + 1) + " 章（生成中）", content: "", generating: true }
-        };
-        if (_ephoneNovelReaderIsCurrent(storyId)) {
-          if (!chapters.length) await _0x5dec3b(storyId, 0);
-          else _ephoneNovelChapterNavigation(story);
-        }
-        if (document.getElementById("gr-chapter-sidebar").classList.contains("visible")) _ephoneRenderChapterList(story);
-      }
-      if (_ephoneIncompleteNovel(story)?.draft) draftBackup = { chapterIndex: story.lastGeneration.chapterIndex, pendingChapter: story.lastGeneration.pendingChapter, pendingRewriteBase: story.lastGeneration.pendingRewriteBase };
       const direction = rewrite ? (rewriteDirection === undefined ? story.chapters?.at(-1)?.generationDirection || "" : rewriteDirection) : inputDirection || continuation?.chapter.generationDirection || "";
       api = story.settings?.generationApi === "secondary" ? "secondary" : "primary";
       _0x5576d5.api = api;
+      _0x5576d5.previewChapterIndex = chapters.length;
+      if (!rewrite && !continuation) {
+        const pending = { index: chapters.length, id: crypto.randomUUID() };
+        const reserved = await stories.db.transaction("rw", stories, async () => {
+          const fresh = await stories.get(storyId);
+          if (!fresh || JSON.stringify(fresh.chapters || []) !== JSON.stringify(originalChapters) || JSON.stringify(fresh.settings) !== JSON.stringify(story.settings) || fresh.authorId !== story.authorId)
+            throw new Error("作品内容或设定已变化，请重新打开作品。");
+          fresh.chapters = [...originalChapters, {
+            title: "第 " + (pending.index + 1) + " 章（未完）", content: "", summary: "", wordCount: 0,
+            timestamp: Date.now(), generationDirection: direction, generationPartial: true, generationReservation: pending.id
+          }];
+          fresh.lastUpdated = Date.now();
+          fresh.lastGeneration = { status: "received", reservationId: pending.id, chapterIndex: pending.index, raw: "", api, partial: true, bodyCharacters: 0 };
+          await stories.put(fresh);
+          return fresh;
+        });
+        reservation = _0x5576d5.pendingChapter = pending;
+        if (_ephoneNovelReaderIsCurrent(storyId)) {
+          if (!chapters.length) await _0x5dec3b(storyId, 0);
+          else _ephoneNovelChapterNavigation(reserved);
+        }
+        if (document.getElementById("gr-chapter-sidebar").classList.contains("visible")) _ephoneRenderChapterList(reserved);
+      }
+      if (_ephoneIncompleteNovel(story)?.draft) draftBackup = { chapterIndex: story.lastGeneration.chapterIndex, pendingChapter: story.lastGeneration.pendingChapter, pendingRewriteBase: story.lastGeneration.pendingRewriteBase };
+      controller.signal.throwIfAborted();
       let connection;
       if (api === "secondary") connection = _ephoneApiFor("auxiliary");
       else connection = _ephoneApiFor("novel");
@@ -55853,7 +55898,8 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
       const context = await _ephoneNovelSources(story, personaDb);
       const progress = window.EPhoneNovelContext.recap(chapters);
       const continuity = window.EPhoneNovelContext.continuity(chapters, context.people);
-      const progression = window.EPhoneNovelContext.progression({ hasPrevious: Boolean(previous), completing: Boolean(continuation) });
+      const hasContinuationText = Boolean(continuation?.chapter.content?.trim());
+      const progression = window.EPhoneNovelContext.progression({ hasPrevious: Boolean(previous), completing: hasContinuationText });
       let prompt = "# 写作任务\n你是小说创作者，使用所选作者「" + author.name + "」的文风：\n" + (author.style || "自然流畅，人物鲜明") +
         "\n本作品《" + story.title + "》的第" + (chapters.length + 1) + "章，正文目标约" + target + "字。以完整场景、自然对话、人物行动和合理节奏组织内容，不为凑字数重复，也不要只写摘要或开头。\n" +
         "# 使用资料的约束\n先完整核对人物档案、关系双方的身份/年龄/辈分、说话习惯和已发生事实，再写正文。不把群聊当作一个人物，不互换档案里的‘我’，不凭同群就编造亲属/师徒/恋爱关系。称呼和行为必须与明确关系一致。\n" +
@@ -55866,8 +55912,8 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
         "\n\n" + progression +
         "\n\n# 本次剧情方向\n" + (direction || "按当前人物动机和未完成情节自然展开。") +
         '\n\n# 章节标题\n写完正文后，围绕本章最重要的冲突、转折、秘密或关系变化，从正文原文中选一句有代表性、有张力、让读者想继续看的角色原话当标题；没有合适对话时选一句关键原文。优先选择有潜台词或悬念、能够代表这一章独特进展的句子，避免普通寒暄、随手挑第一句话、重复人设特点或沿用前章标题；平静章节可以抓住关键情绪变化，不强行制造冲突。吸引力来自真实内容，不夸大、不编造悬念。标题必须能在正文中找到，不另造抽象意象、华丽四字词组或概括性题目，不加第几章编号，不拼接不同句子，不改写原句。\n# 输出格式\n分别使用以下标签输出，不使用JSON字符串，也不需要对正文引号或换行转义：\n<novel_title>从本章正文摘录的一句话</novel_title>\n<novel_content>完整小说正文，保留自然换行</novel_content>\n<novel_summary>给下一章用的精炼接续记录：本章真正新增或改变的事实；初次出现/再次出现的相关人物及彼此已成立的认识和称呼（不能把提及某人当成见过面）；结尾实际的时间、地点、在场者、正在进行的动作和未消退的情绪；已完成与仍待履行的约定、未解决的问题，以及各人新知道或仍不知道的重要信息。记录故事内已有的日期、昼夜或相对时间线索；没有依据时注明时间未定，不把章节编号、实际生成时间当成故事日期，也不把一章视为一天。分四项简记：已发生的变化、已写过的桥段、仍待兑现的线索、章末状态。写明哪个角色做了哪件事、带来了什么后果，以及旧线索是已经兑现、发生变化还是仍未解决。只记与续写有关的内容，不复述整章，也不把计划写成已完成。</novel_summary>\n正文不可省略，不输出详细思维链。';
-      if (continuation) prompt += window.EPhoneNovelResponse.continuationPrompt(continuation.chapter.content, target);
-      const writingInstruction = continuation ? "只接写本章已保存正文之后的剩余部分，先接完末尾断句，不重复前文。" : "请写出这一章完整正文。";
+      if (hasContinuationText) prompt += window.EPhoneNovelResponse.continuationPrompt(continuation.chapter.content, target);
+      const writingInstruction = hasContinuationText ? "只接写本章已保存正文之后的剩余部分，先接完末尾断句，不重复前文。" : "请写出这一章完整正文。";
       requestDetails = { targetWords: target, stream: useStream, outputLimit: null, stopConfigured: false, mode: continuation ? "complete_chapter" : rewrite ? "rewrite" : "new_chapter" };
       // Observe the body after payload protection. Never include the URL,
       // authorization headers or connection settings in this local snapshot.
@@ -55916,7 +55962,10 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
             if (now - lastDraftAt >= 3000) {
               lastDraftAt = now;
               const draft = { ...draftBackup, raw: update.raw, status: "received", api, model, rewrite, receivedAt: now, elapsedMs: now - _0x5576d5.startedAt };
-              draftQueue = draftQueue.catch(() => {}).then(async () => { if (await stories.get(storyId)) await stories.update(storyId, { lastGeneration: draft }); });
+              draftQueue = draftQueue.catch(() => {}).then(async () => {
+                if (reservation) await saveReservedChapter(draft);
+                else if (await stories.get(storyId)) await stories.update(storyId, { lastGeneration: draft });
+              });
             }
           }
         } });
@@ -55932,7 +55981,8 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
       _0x5576d5.phase = "正在整理并保存正文";
       _ephoneSyncNovelControls();
       // Keep the paid result before trying to interpret its chapter wrapper.
-      if (await stories.get(storyId)) await stories.update(storyId, { lastGeneration: { ...draftBackup, ...received } });
+      if (reservation) await saveReservedChapter(received);
+      else if (await stories.get(storyId)) await stories.update(storyId, { lastGeneration: { ...draftBackup, ...received } });
       if (!savePausedChapter) controller.signal.throwIfAborted();
       if (!received.raw.trim() && output.stats.httpEOF && !output.providerError && !output.error) {
         received.bodyCharacters = 0;
@@ -55952,7 +56002,9 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
       await stories.db.transaction("rw", stories, async () => {
         if (!savePausedChapter) controller.signal.throwIfAborted();
         const fresh = await stories.get(storyId);
-        if (!fresh || JSON.stringify(fresh.chapters || []) !== JSON.stringify(originalChapters) || JSON.stringify(fresh.settings) !== JSON.stringify(story.settings) || fresh.authorId !== story.authorId)
+        const freshChapters = fresh?.chapters || [];
+        const comparableChapters = reservation ? freshChapters.slice(0, -1) : freshChapters;
+        if (!fresh || reservation && !_ephoneOwnsNovelReservation(fresh, reservation) || JSON.stringify(comparableChapters) !== JSON.stringify(originalChapters) || JSON.stringify(fresh.settings) !== JSON.stringify(story.settings) || fresh.authorId !== story.authorId)
           throw new Error("生成期间作品内容或设定已变化，本次未覆盖已有章节。");
         // An unfinished reroll must not replace a complete, paid-for chapter.
         // Its exact return remains locally available and can be continued with
@@ -55975,11 +56027,13 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
     } catch (error) {
       const stopped = error.name === "AbortError" || controller.signal.aborted && error.code === "NOVEL_CONTENT_MISSING";
       await draftQueue.catch(() => {});
-      if (!received && requestStartedAt !== null) received = { raw: error.partialRaw || _0x5576d5.previewRaw || "", wireEvidence: error.wireEvidence, unparsedEvents: error.unparsedEvents || [],
+      if (!received && (reservation || requestStartedAt !== null)) received = { raw: error.partialRaw || _0x5576d5.previewRaw || "", wireEvidence: error.wireEvidence, unparsedEvents: error.unparsedEvents || [],
         stats: { ...error.stats, preparationMs, headersMs, totalMs: Date.now() - _0x5576d5.startedAt }, http: httpDetails, request: requestDetails, lifecycle: lifecycleSnapshot(),
         transportError: error.message, providerError: error.providerError || null, finishReason: error.finishReason || "", finishMessage: error.finishMessage || "", usage: error.usage, api, model: responseModel, receivedAt: Date.now() };
-      const stoppedMessage = !rewrite && !completeChapter ? "已暂停，尚未收到可保存的正文。" : "已停止生成";
-      if (received && await stories.get(storyId)) await stories.update(storyId, { lastGeneration: { ...draftBackup, ...received, status: "error", error: stopped ? stoppedMessage : error.message } }).catch(() => {});
+      const failure = { ...draftBackup, ...received, status: "error", error: stopped ? "已停止生成" : error.message, paused: stopped };
+      if (reservation) {
+        if (await saveReservedChapter(failure, true).catch(console.error)) finishedChapterIndex = reservation.index;
+      } else if (received && await stories.get(storyId)) await stories.update(storyId, { lastGeneration: failure }).catch(() => {});
       if (!stopped) { console.error("绿江生成失败：", error); alert("小说生成未完成：" + error.message + (received ? "\n返回内容已保留，可点「查看上次返回」，不需要再次调用 API。" : "")); }
     }
     finally {
