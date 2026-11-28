@@ -54791,6 +54791,145 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
   }
   let _0x5576d5 = { activeStoryId: null, isGenerating: ![] };
   let _ephoneNovelMemoryJob = null;
+  const _ephonePlotNotebook = document.getElementById("gr-notebook");
+  const _ephonePlotNoteForm = document.getElementById("gr-notebook-form");
+  const _ephonePlotNoteText = document.getElementById("gr-notebook-text");
+  const _ephonePlotNoteKind = document.getElementById("gr-notebook-kind");
+  const _ephonePlotNoteStatus = document.getElementById("gr-notebook-status");
+  const _ephonePlotNoteSave = document.getElementById("gr-notebook-save");
+  const _ephonePlotNoteCancel = document.getElementById("gr-notebook-cancel");
+  const _ephonePlotNoteKinds = window.EPhoneNovelContext.notebookKinds;
+  let _ephonePlotNoteSession = null;
+  for (const [value, label] of Object.entries(_ephonePlotNoteKinds)) {
+    _ephonePlotNoteKind.add(new Option(label, value));
+  }
+  function _ephoneEditPlotNote(note = null) {
+    _ephonePlotNoteSession.edit = note;
+    _ephonePlotNoteText.value = note?.text || "";
+    _ephonePlotNoteKind.value = note?.kind || "open";
+    _ephonePlotNoteSave.textContent = note ? "保存修改" : "添加记录";
+    _ephonePlotNoteCancel.hidden = !note;
+    _ephonePlotNoteStatus.textContent = "";
+  }
+  function _ephoneRenderPlotNotes(story) {
+    const host = document.getElementById("gr-notebook-notes");
+    const notes = Array.isArray(story.plotNotebook) ? story.plotNotebook : [];
+    const { included } = window.EPhoneNovelContext.notebookContext(notes);
+    host.replaceChildren();
+    for (const [kind, label] of Object.entries(_ephonePlotNoteKinds)) {
+      const group = notes.filter(note => note?.kind === kind && typeof note.id === "string");
+      if (!group.length) continue;
+      const section = document.createElement("section"), heading = document.createElement("h3");
+      heading.textContent = label;
+      section.append(heading);
+      for (const note of group.slice().reverse()) {
+        const row = document.createElement("div"), body = document.createElement("p"), actions = document.createElement("div");
+        row.className = "gr-notebook-entry";
+        body.textContent = note.text;
+        actions.className = "gr-notebook-actions";
+        for (const [label, action] of [
+          ["编辑", () => { _ephoneEditPlotNote(note); _ephonePlotNoteText.focus(); }],
+          ["删除", () => _ephoneSavePlotNote(note, null)]
+        ]) {
+          const button = document.createElement("button");
+          button.type = "button";
+          button.className = "gr-text-btn";
+          button.textContent = label;
+          button.addEventListener("click", () => { if (!_ephonePlotNoteSession?.busy) action(); });
+          actions.append(button);
+        }
+        if (!included.has(note.id)) {
+          const hint = document.createElement("span");
+          hint.textContent = "仅手账显示";
+          actions.prepend(hint);
+        }
+        row.append(body, actions);
+        section.append(row);
+      }
+      host.append(section);
+    }
+    if (!host.childElementCount) {
+      const hint = document.createElement("p");
+      hint.textContent = "你还没有手写记录。可以先从下面的章节摘要找线索。";
+      host.append(hint);
+    }
+  }
+  async function _ephoneSavePlotNote(expected, changes) {
+    const session = _ephonePlotNoteSession;
+    if (!session || session.busy || _0x5576d5.activeStoryId !== session.storyId) return;
+    session.busy = true;
+    _ephonePlotNoteSave.disabled = true;
+    try {
+      const table = _0x24f906.grStories;
+      const story = await table.db.transaction("rw", table, async () => {
+        const fresh = await table.get(session.storyId);
+        if (!fresh) throw new Error("作品已不存在。");
+        const notes = Array.isArray(fresh.plotNotebook) ? fresh.plotNotebook : [];
+        const current = expected && notes.find(note => note?.id === expected.id);
+        if (expected && (!current || current.kind !== expected.kind || current.text !== expected.text))
+          throw new Error("这条记录已在别处修改，请重新打开手账。");
+        fresh.plotNotebook = expected ? notes.filter(note => note?.id !== expected.id) : notes.slice();
+        if (changes) fresh.plotNotebook.push({ id: expected?.id || crypto.randomUUID(), ...changes });
+        await table.update(session.storyId, { plotNotebook: fresh.plotNotebook });
+        return fresh;
+      });
+      if (_ephonePlotNoteSession !== session) return;
+      if (changes || session.edit?.id === expected?.id) _ephoneEditPlotNote();
+      _ephonePlotNoteStatus.textContent = changes ? "已保存" : "已删除";
+      _ephoneRenderPlotNotes(story);
+    } catch (error) {
+      if (_ephonePlotNoteSession === session) _ephonePlotNoteStatus.textContent = error.message;
+    } finally {
+      session.busy = false;
+      if (_ephonePlotNoteSession === session) _ephonePlotNoteSave.disabled = false;
+    }
+  }
+  document.getElementById("gr-notebook-open").addEventListener("click", async () => {
+    const storyId = _0x5576d5.activeStoryId;
+    const story = await _0x24f906.grStories.get(storyId);
+    if (!story || !_ephoneNovelReaderIsCurrent(storyId) || _ephonePlotNotebook.open) return;
+    _ephonePlotNoteSession = { storyId, edit: null, busy: false };
+    _ephonePlotNoteSave.disabled = false;
+    _ephoneEditPlotNote();
+    _ephoneRenderPlotNotes(story);
+    const summaries = document.getElementById("gr-notebook-summary-list");
+    summaries.replaceChildren();
+    (story.chapters || []).slice().reverse().forEach((chapter, i, chapters) => {
+      if (typeof chapter.summary !== "string" || !chapter.summary.trim() || chapter.summaryStale) return;
+      const entry = document.createElement("details"), title = document.createElement("summary"), body = document.createElement("p");
+      title.textContent = "第 " + (chapters.length - i) + " 章 · " + (chapter.title || "无题");
+      body.textContent = chapter.summary;
+      entry.append(title, body);
+      summaries.append(entry);
+    });
+    if (!summaries.childElementCount) {
+      const hint = document.createElement("p");
+      hint.textContent = "这本书还没有可用的章节摘要。";
+      summaries.append(hint);
+    }
+    document.getElementById("gr-notebook-summaries").open = false;
+    _ephonePlotNotebook.showModal();
+    _ephonePlotNotebook.querySelector(".gr-notebook-scroll").scrollTop = 0;
+  });
+  document.getElementById("gr-notebook-close").addEventListener("click", () => _ephonePlotNotebook.close());
+  _ephonePlotNotebook.addEventListener("close", () => { _ephonePlotNoteSession = null; });
+  _ephonePlotNoteCancel.addEventListener("click", () => _ephoneEditPlotNote());
+  _ephonePlotNoteForm.addEventListener("submit", event => {
+    event.preventDefault();
+    const text = _ephonePlotNoteText.value.trim();
+    if (!text) { _ephonePlotNoteStatus.textContent = "请先填写手账内容。"; return; }
+    const kind = _ephonePlotNoteKind.value;
+    if (Object.hasOwn(_ephonePlotNoteKinds, kind)) void _ephoneSavePlotNote(_ephonePlotNoteSession?.edit, { kind, text });
+  });
+  const _ephoneNovelDirectionCards = document.getElementById("gr-direction-cards");
+  _ephoneNovelDirectionCards.addEventListener("click", event => {
+    const card = event.target.closest("button[data-direction]");
+    if (!card) return;
+    const input = document.getElementById("gr-direction-input"), direction = input.value.trim(), addition = card.dataset.direction;
+    if (!direction.includes(addition)) input.value = direction ? direction + " " + addition : addition;
+    _ephoneNovelDirectionCards.open = false;
+    _ephoneNovelDirectionCards.querySelector("summary").focus({ preventScroll: true });
+  });
   let _ephoneNovelChapterEditor = null, _ephoneNovelDeleteTarget = null, _ephoneNovelReaderChapter = null, _ephoneNovelChapterMutation = null, _ephoneNovelReaderRequest = 0, _ephoneNovelReaderRendered = 0;
   const _ephoneNovelReading = window.EPhoneNovelReading.create({
     element: document.getElementById("gr-reader-content"),
@@ -55900,6 +56039,7 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
       const continuity = window.EPhoneNovelContext.continuity(chapters, context.people);
       const hasContinuationText = Boolean(continuation?.chapter.content?.trim());
       const progression = window.EPhoneNovelContext.progression({ hasPrevious: Boolean(previous), completing: hasContinuationText });
+      const notebook = window.EPhoneNovelContext.notebookContext(story.plotNotebook).text;
       let prompt = "# 写作任务\n你是小说创作者，使用所选作者「" + author.name + "」的文风：\n" + (author.style || "自然流畅，人物鲜明") +
         "\n本作品《" + story.title + "》的第" + (chapters.length + 1) + "章，正文目标约" + target + "字。以完整场景、自然对话、人物行动和合理节奏组织内容，不为凑字数重复，也不要只写摘要或开头。\n" +
         "# 使用资料的约束\n先完整核对人物档案、关系双方的身份/年龄/辈分、说话习惯和已发生事实，再写正文。不把群聊当作一个人物，不互换档案里的‘我’，不凭同群就编造亲属/师徒/恋爱关系。称呼和行为必须与明确关系一致。\n" +
@@ -55910,6 +56050,7 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
         "\n\n# 上一章完整正文（承接结尾，不重复抄写）\n" + (previous?.content || "（开篇，无上一章）") +
         "\n\n" + continuity.text +
         "\n\n" + progression +
+        (notebook ? "\n\n" + notebook : "") +
         "\n\n# 本次剧情方向\n" + (direction || "按当前人物动机和未完成情节自然展开。") +
         '\n\n# 章节标题\n写完正文后，围绕本章最重要的冲突、转折、秘密或关系变化，从正文原文中选一句有代表性、有张力、让读者想继续看的角色原话当标题；没有合适对话时选一句关键原文。优先选择有潜台词或悬念、能够代表这一章独特进展的句子，避免普通寒暄、随手挑第一句话、重复人设特点或沿用前章标题；平静章节可以抓住关键情绪变化，不强行制造冲突。吸引力来自真实内容，不夸大、不编造悬念。标题必须能在正文中找到，不另造抽象意象、华丽四字词组或概括性题目，不加第几章编号，不拼接不同句子，不改写原句。\n# 输出格式\n分别使用以下标签输出，不使用JSON字符串，也不需要对正文引号或换行转义：\n<novel_title>从本章正文摘录的一句话</novel_title>\n<novel_content>完整小说正文，保留自然换行</novel_content>\n<novel_summary>给下一章用的精炼接续记录：本章真正新增或改变的事实；初次出现/再次出现的相关人物及彼此已成立的认识和称呼（不能把提及某人当成见过面）；结尾实际的时间、地点、在场者、正在进行的动作和未消退的情绪；已完成与仍待履行的约定、未解决的问题，以及各人新知道或仍不知道的重要信息。记录故事内已有的日期、昼夜或相对时间线索；没有依据时注明时间未定，不把章节编号、实际生成时间当成故事日期，也不把一章视为一天。分四项简记：已发生的变化、已写过的桥段、仍待兑现的线索、章末状态。写明哪个角色做了哪件事、带来了什么后果，以及旧线索是已经兑现、发生变化还是仍未解决。只记与续写有关的内容，不复述整章，也不把计划写成已完成。</novel_summary>\n正文不可省略，不输出详细思维链。';
       if (hasContinuationText) prompt += window.EPhoneNovelResponse.continuationPrompt(continuation.chapter.content, target);

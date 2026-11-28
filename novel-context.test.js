@@ -153,4 +153,16 @@ assert.doesNotMatch(core.recap([{ content: '上一章的整段原文', summary: 
 const repeatedRecap = core.recap([timeline[0], { ...timeline[1], summary: timeline[0].summary }]);
 assert.equal(repeatedRecap.split(timeline[0].summary).length - 1, 1, "duplicate notes do not make an old event look newly happened twice");
 assert.match(repeatedRecap, /紧接本次续写之前的情节「我等你」：\n本条记录与前面完全相同/);
+assert.equal(core.notebookContext(undefined).text, "", "books with no notes add nothing to the generation context");
+const notebook = [
+  { id: "h", kind: "hold", text: "暂缓书店转让线索" },
+  { id: "n", kind: "next", text: "林澈向邻居归还旧书" },
+  ...Array.from({ length: 20 }, (_, i) => ({ id: String(i), kind: "done", text: "已写过的场景".repeat(25) + i }))
+];
+const originalNotes = JSON.stringify(notebook);
+const notebookOutput = core.notebookContext(notebook);
+assert.match(notebookOutput.text, /暂缓：暂缓书店转让线索/);
+assert.match(notebookOutput.text, /下次想看：林澈向邻居归还旧书/);
+assert.ok(notebookOutput.included.size < notebook.length && notebookOutput.included.has("h") && notebookOutput.included.has("n"));
+assert.equal(JSON.stringify(notebook), originalNotes);
 console.log("PASS: canonical personas, relations, selected full memory/history, immutable archives, shared-persona deduplication and chapter/alias continuity lookup with deletion and rewrite boundaries");

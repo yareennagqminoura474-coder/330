@@ -18675,6 +18675,35 @@ body.frame-mode-active .cphone-dock-container {
 #gr-edit-chapter-save { background: #1b4f3e; color: #fff; border-color: #1b4f3e; }
 #gr-edit-chapter-cancel { color: #1b4f3e; border-color: #1b4f3e; }
 #gr-reader-screen > .gr-header > div { flex: 1; min-width: 0; margin: 0 8px; }
+#gr-notebook-open { flex: none; padding-inline: 6px; white-space: nowrap; font-size: 13px; }
+#gr-writing-controls { flex-wrap: wrap; }
+#gr-writing-controls > .gr-input-group { min-width: 0; flex: 1 1 7rem; }
+#gr-direction-cards { order: -1; flex: 0 0 100%; font-size: 13px; }
+#gr-direction-cards > summary { width: fit-content; padding: 6px 0; color: var(--gr-primary); cursor: pointer; }
+.gr-direction-options { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; margin-top: 4px; }
+.gr-direction-options button { min-height: 36px; padding: 5px 6px; border: 1px solid #cddfd4; border-radius: 6px; background: #edf5f0; color: #1b4f3e; font: inherit; cursor: pointer; }
+#gr-notebook { box-sizing: border-box; width: min(92vw, 520px); max-height: 83dvh; padding: 0; border: 1px solid #d5e3dc; border-radius: 13px; background: #fdfefc; color: #263a30; }
+#gr-notebook[open] { display: flex; flex-direction: column; }
+#gr-notebook::backdrop { background: rgba(16, 35, 27, .42); }
+.gr-notebook-header { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 12px 16px; border-bottom: 1px solid #d5e3dc; }
+.gr-notebook-header h2 { margin: 0; font-size: 18px; }
+.gr-notebook-scroll { min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: 12px 16px 16px; font-size: 14px; }
+#gr-notebook-form label { display: block; margin: 0 0 5px; font-weight: 600; }
+#gr-notebook-form select, #gr-notebook-form textarea { box-sizing: border-box; width: 100%; margin: 0 0 10px; }
+#gr-notebook-form textarea { resize: vertical; min-height: 4.5rem; }
+.gr-notebook-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; font-size: 13px; }
+#gr-notebook .gr-text-btn { color: #245344; padding: 6px 8px; }
+#gr-notebook-save { background: #1b4f3e; color: #fff; }
+#gr-notebook-status:empty { display: none; }
+#gr-notebook-notes > section, #gr-notebook-summaries { margin-top: 14px; padding-top: 10px; border-top: 1px solid #d5e3dc; }
+#gr-notebook-notes h3 { margin: 0 0 5px; font-size: 14px; }
+.gr-notebook-entry { padding: 5px 0; }
+.gr-notebook-entry p, #gr-notebook-summary-list p { margin: 4px 0 5px; white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.55; }
+#gr-notebook-summary-list details { margin-top: 10px; }
+#gr-notebook summary { cursor: pointer; overflow-wrap: anywhere; }
+#phone-screen.dark-mode .gr-direction-options button { background: #25352e; color: #afd4c1; border-color: #526859; }
+body:has(#phone-screen.dark-mode) #gr-notebook { color-scheme: dark; background: #222b26; color: #e1efe5; border-color: #455b4e; }
+body:has(#phone-screen.dark-mode) #gr-notebook .gr-text-btn { color: #afd4c1; }
 #gr-chapter-title-display { max-width: 100%; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; overflow-wrap: anywhere; line-height: 1.5; }
 #phone-screen.dark-mode #gr-chapter-tools { color: #aaa; }
 #phone-screen.dark-mode #gr-chapter-tools button, #phone-screen.dark-mode .gr-chapter-action { color: #afd4c1; }

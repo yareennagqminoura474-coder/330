@@ -202,5 +202,26 @@
       "\n留空自由续写时，先看近几章反复使用过的矛盾、互动和收场方式，再选择一条不同的推进路线。例如转到另一个人物正在办的事，让旧承诺遇到一个具体取舍，或让先前被忽略的小线索产生后果。选最符合眼下处境的一条，给角色留出按自己想法行事的空间。新发展可以出人意料，但回头看要能从人设和前文找到缘由，不靠生硬反转或凭空制造新危机。正文不交代选择路线的过程。" +
       "\n把本章起点和结尾对照，至少留下一个具体变化：有人实际完成了一件事、做了有后果的选择、得知了新信息，或关系因此改变。兑现前文留下的后果可以很平静。重复同一套起因、争执、安抚和收场，即使换地点、台词或人物也不算新进展。用户指定回访旧事时，按指定方向写，呈现新的视角、信息或后果。";
   }
-  return Object.freeze({ build, continuity, recap, progression });
+  const notebookKinds = Object.freeze({
+    character: "人物近况", done: "已写过", open: "未完线索", hold: "暂缓", next: "下次想看"
+  });
+  function notebookContext(notes) {
+    const recent = list(notes).filter(note => typeof note?.id === "string" && Object.hasOwn(notebookKinds, note.kind) && text(note.text).trim()).reverse();
+    const priority = recent.filter(note => note.kind === "hold" || note.kind === "next");
+    const entries = [], included = new Set();
+    let available = 1200;
+    for (const note of [...priority, ...recent]) {
+      if (included.has(note.id)) continue;
+      const line = "- " + notebookKinds[note.kind] + "：" + note.text.trim().replace(/\s+/gu, " ");
+      if (line.length + 1 > available) continue;
+      entries.push(line);
+      included.add(note.id);
+      available -= line.length + 1;
+    }
+    return {
+      included,
+      text: entries.length ? "# 作者的剧情手账\n人物近况供衔接。已写过的桥段按已发生处理。暂缓的线索先留着，未完线索择机推进；下次想看是后续偏好，若与本次明确指定的方向冲突，以本次方向为准。\n" + entries.join("\n") : ""
+    };
+  }
+  return Object.freeze({ build, continuity, recap, progression, notebookKinds, notebookContext });
 });
