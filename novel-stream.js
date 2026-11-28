@@ -154,7 +154,7 @@
     }
     return null;
   }
-  async function read(response, { signal, onProgress, onActivity, extractText, waitForEOF = false } = {}) {
+  async function read(response, { signal, onProgress, onActivity, extractText, waitForEOF = false, arrayDecoder } = {}) {
     releaseCompleted();
     const started = Date.now(), usage = { inputTokens: null, outputTokens: null, reasoningTokens: null, cachedInputTokens: null };
     const stats = { firstTextMs: null, firstByteMs: null, receiveMs: 0, visibleChars: 0, eventCount: 0, bytesReceived: 0, malformedEvents: 0, reasoningSeen: false, streamed: false,
@@ -424,6 +424,12 @@
       }
       return false;
     }
+    let array = null, tryArray = Boolean(arrayDecoder);
+    function feedArray(chunk) {
+      if (array.feed(chunk)) return true;
+      if (array.supported) throw new Error("接口返回的流式数组格式不完整。");
+      array = null; tryArray = false; return false;
+    }
     try {
       if (reader) {
         while (!ended) {
@@ -431,22 +437,38 @@
           if (chunk.done) { stats.httpEOF = true; stats.completionSignal ||= complete ? "eof_after_finish" : "eof_without_finish"; break; }
           activity(chunk.value.byteLength);
           const decoded = decoder.decode(chunk.value, { stream: true }); capture(decoded);
-          if (mode === "sse") { feed(decoded); if (terminal && !waitForEOF) ended = true; }
+          if (mode === "array") feedArray(decoded);
+          else if (mode === "sse") { feed(decoded); if (terminal && !waitForEOF) ended = true; }
           else {
             wire += decoded;
-            if (/^\s*(?:data:|event:|:|id:|retry:)/.test(wire)) { mode = "sse"; stats.streamed = true; feed(wire.replace(/^\uFEFF/, "")); wire = ""; }
+            if (tryArray && /^\s*\[/.test(wire)) {
+              let part = decoded;
+              if (!array) {
+                array = arrayDecoder(packet => packet && (packet.candidates || packet.choices || packet.error || packet.usageMetadata), packet => {
+                  mode = "array"; stats.streamed = true; wire = ""; event(packet);
+                });
+                part = wire;
+              }
+              feedArray(part);
+            }
+            else if (/^\s*(?:data:|event:|:|id:|retry:)/.test(wire)) { mode = "sse"; stats.streamed = true; feed(wire.replace(/^\uFEFF/, "")); wire = ""; }
             else if (!waitForEOF && completeJson()) { ended = true; stats.completionSignal = "complete_json"; }
             if (terminal && !waitForEOF) ended = true;
           }
         }
         const tail = decoder.decode(); capture(tail);
-        if (mode === "sse") feed(tail, true); else wire += tail;
+        if (mode === "sse") feed(tail, true);
+        else if (mode === "array") {
+          feedArray(tail);
+          if (array.closed) { complete = true; stats.completionSignal ||= "complete_json"; }
+          else { broken = true; if (array.remainder) unparsed(array.remainder); }
+        } else wire += tail;
       } else {
         if (signal?.aborted) throw abortError();
         wire = await response.text(); capture(wire); activity(new TextEncoder().encode(wire).byteLength);
         if (/^\s*(?:data:|event:|:|id:|retry:)/.test(wire)) { mode = "sse"; stats.streamed = true; feed(wire.replace(/^\uFEFF/, ""), true); wire = ""; }
       }
-      if (mode !== "sse") {
+      if (mode !== "sse" && mode !== "array") {
         let payload;
         try { payload = JSON.parse(wire); }
         catch {
@@ -470,7 +492,7 @@
       providerFailure = error.providerError || null;
       if (!providerFailure) {
         // A pause can land after text bytes arrive but before the SSE separator.
-        const pending = mode === "sse" ? [...dataLines, ...lineBuffer.split(/\r?\n/).filter(line => line.startsWith("data:")).map(line => line.slice(5).replace(/^ /, ""))].join("\n") : wire;
+        const pending = mode === "array" ? array.remainder : mode === "sse" ? [...dataLines, ...lineBuffer.split(/\r?\n/).filter(line => line.startsWith("data:")).map(line => line.slice(5).replace(/^ /, ""))].join("\n") : wire;
         if (pending) {
           try {
             let packets;

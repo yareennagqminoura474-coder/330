@@ -18260,13 +18260,14 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
       const _ephoneNySpectatorSystem = _0x404106 + (await window.EPhoneNY?.prompt(_0x326f3d) || "");
       _ephoneSpectatorController.signal.throwIfAborted();
       const _ephoneSpectatorComplete = await window.ephoneChatResponse.complete(async () => {
+        const streamReply = window.EPhoneTwinTail.chatStream;
         const _ephoneContextRequest = window.ephoneRequestContext?.start(_0x24f906, _0x326f3d.id, _0x45d813, 1) || { finish: async (raw) => raw };
         const _ephoneRequestMessages = window.ephoneCharacterWalletCore?.withBalanceReminder(_0x235416, _ephoneSpectatorFinance.reminder) || _0x235416;
         let _0x4799c0 = _0x4dfdb5[_0xd07074(0x1507)](_0xd07074(0x328)),
           _0x13b518;
         if (_0x4799c0) {
           let _0x29aa1f = _0x20e281(_0x45d813, _0x570fe9, _ephoneNySpectatorSystem, _ephoneRequestMessages);
-          _0x13b518 = await fetch(_0x29aa1f[_0xd07074(0x863)], {
+          _0x13b518 = await fetch(window.EPhoneTwinTail.nativeUrl(_0x29aa1f[_0xd07074(0x863)], streamReply), {
             ..._0x29aa1f.data, signal: _ephoneSpectatorController.signal, ephoneContextRequest: _ephoneContextRequest,
           });
         } else
@@ -18282,6 +18283,7 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
             },
             body: JSON[_0xd07074(0x1baf)]({
               model: _0x45d813,
+              ...(streamReply ? { stream: true } : {}),
               messages: [
                 { role: _0xd07074(0xd77), content: _ephoneNySpectatorSystem },
                 ..._ephoneRequestMessages,
@@ -18300,7 +18302,7 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
               (_0x45883a[_0xd07074(0x110f)]?.[_0xd07074(0xeb4)] || "未知错误"),
           );
         }
-        return await _ephoneContextRequest.finish(await _0x13b518.json());
+        return await _ephoneContextRequest.finish(await window.EPhoneTwinTail.chat(_0x13b518, _ephoneSpectatorController.signal, "QQ 观看模式", streamReply));
       }, {
         signal: _ephoneSpectatorController.signal, parse: _0x297b4d,
         isRenderable: (item) => item.type === "narration" || !!window.ephoneGroupContext.resolveSpeaker(_ephoneGroupContext.profiles, item.name),
@@ -20951,6 +20953,7 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
       }
       const _ephoneNyReplySystem = _0x539674 + (await window.EPhoneNY?.prompt(_0x5b16cb) || "");
       const _ephoneCompleteReply = await window.ephoneChatResponse.complete(async () => {
+        const streamReply = window.EPhoneTwinTail.chatStream;
         const _ephoneContextRequest = window.ephoneRequestContext?.start(_0x24f906, _0x5b16cb.id, _0x1d2298, 1) || { finish: async (raw) => raw };
         const _ephoneRequestMessages = window.ephoneCharacterWalletCore?.withBalanceReminder(_0x4e7a2c, _ephoneReplyFinance.reminder) || _0x4e7a2c;
         let _0x401894 = _0x275228 === GEMINI_API_URL,
@@ -20959,7 +20962,7 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
         try {
           if (_0x25b2a9?.data) { _0x25b2a9.data.signal = _0xephoneController.signal; _0x25b2a9.data.ephoneContextRequest = _ephoneContextRequest; }
           _0x114828 = _0x401894
-            ? await fetch(_0x25b2a9[_0x25f1e5(0x863)], _0x25b2a9["data"])
+            ? await fetch(window.EPhoneTwinTail.nativeUrl(_0x25b2a9[_0x25f1e5(0x863)], streamReply), _0x25b2a9["data"])
             : await _ephoneApiFetch(
                 _ephoneBuildApiEndpoint(_0x275228, "chat/completions"),
                 {
@@ -20978,7 +20981,7 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
                   ],
                   temperature:
                     _0x5ea3c1["globalSettings"][_0x25f1e5(0x8ae)] || 0.8,
-                  stream: ![],
+                  stream: streamReply,
                 }),
               });
         } catch (_0x3a545a) {
@@ -21026,7 +21029,7 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
           }
           throw new Error(_0x3ebff3);
         }
-        return await _ephoneContextRequest.finish(await _0x114828.json());
+        return await _ephoneContextRequest.finish(await window.EPhoneTwinTail.chat(_0x114828, _0xephoneController.signal, "QQ 回复", streamReply));
       }, {
         signal: _0xephoneController.signal, parse: _0x297b4d,
         isRenderable: (item) => !_0x5b16cb.isGroup || item.type === "narration" ||
@@ -56083,7 +56086,7 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
       if (!response.ok) throw new Error("API 请求失败：" + response.status + " - " + await response.text());
       // Consume this one HTTP response through natural EOF. Compatible APIs
       // can send protocol end markers before their final prose/usage arrives.
-      const output = await window.EPhoneNovelStream.read(response, { signal: controller.signal, waitForEOF: true, extractText: window.ephoneChatResponse.extractText,
+      const output = await window.EPhoneTwinTail.read(response, { signal: controller.signal, waitForEOF: true, extractText: window.ephoneChatResponse.extractText,
         onActivity: () => { _0x5576d5.lastDataAt = Date.now(); },
         onProgress: (update) => {
           _0x5576d5.phase = update.phase === "thinking" ? "接口正在处理，尚未收到正文" : update.phase === "writing" ? "正在接收正文" : "等待模型返回正文";
@@ -56107,7 +56110,7 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
               });
             }
           }
-        } });
+        } }, "绿江小说");
       if (response.ephoneReceiveDiagnostics) httpDetails.reception = { ...response.ephoneReceiveDiagnostics };
       _0x5576d5.previewRaw = output.raw;
       clearTimeout(paintTimer); paintTimer = 0;

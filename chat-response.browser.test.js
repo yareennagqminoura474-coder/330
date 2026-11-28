@@ -29,6 +29,7 @@ const { chromium } = require("playwright-core");
         if (holdRequest) { heldRoute = route; return; }
         const fixture = fixtures.shift();
         if (!fixture) return route.fulfill({ status: 500, body: "Missing isolated test fixture" });
+        if (fixture.sse) return route.fulfill({ contentType: "text/event-stream", body: fixture.sse });
         if (fixture.httpStatus) return route.fulfill({ status: fixture.httpStatus, contentType: "application/json", body: JSON.stringify({ error: { message: "isolated HTTP 500 failure" } }) });
         if (fixture.rawHttp) return route.fulfill({ contentType: "application/json", body: fixture.rawHttp });
         return route.fulfill({ contentType: "application/json", body: JSON.stringify(fixture) });
@@ -163,6 +164,23 @@ const { chromium } = require("playwright-core");
       assert.ok(!JSON.stringify(manualRequests).includes("本轮回复完整性修复"));
       assert.ok(await page.evaluate(async (id) => (await window.db.chats.get(id)).history.some((item) => item.content === "原生接口手动请求的正文。"), id));
     }
+    await page.evaluate(() => window.showScreen("api-settings-screen"));
+    await page.locator("#twintail-chat").check();
+    await page.reload({ waitUntil: "domcontentloaded" }); await page.waitForFunction(() => window.ephoneAppReady);
+    assert.equal(await page.evaluate(() => window.EPhoneTwinTail.chatStream), true);
+    for (const id of ["reply-person", "reply-watch"]) {
+      const visible = "双马尾接收完整回复。";
+      const sse = "data: " + JSON.stringify(gemini(json([header, reply(visible)]))) + "\n\ndata: [DONE]\n\n";
+      assert.equal((await generate(id, [{ sse }])).length, 1);
+      assert.ok(await page.evaluate(async ({ id, visible }) => (await window.db.chats.get(id)).history.some(item => item.content === visible), { id, visible }));
+    }
+    await page.evaluate(() => window.showScreen("api-settings-screen"));
+    await page.locator("#twintail-view").click();
+    assert.match(await page.locator("#twintail-body").inputValue(), /双马尾接收完整回复/);
+    assert.doesNotMatch(await page.locator("#twintail-body").inputValue(), /hidden thoughts/);
+    await page.locator("#twintail-dialog button").click();
+    await page.locator("#twintail-enabled").uncheck();
+    assert.equal(await page.locator("#twintail-chat").isDisabled(), true);
     assert.deepEqual(errors, []);
     console.log("PASS: all three chat modes preserve long/length-marked and incomplete-JSON text, unnamed replies and narration after time headers; no output caps or extra requests, unfinished payments stay inert, real empty/errors/cancellation still work");
   } finally { await browser.close(); await new Promise((resolve) => server.close(resolve)); }
