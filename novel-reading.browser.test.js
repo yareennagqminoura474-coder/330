@@ -57,12 +57,25 @@ const { chromium } = require("playwright-core");
     await page.evaluate(() => window.closeChapterList()); await page.locator("#gr-delete-chapter-btn").click(); await page.locator("#gr-delete-chapter-confirm").click(); await page.waitForSelector("#gr-chapter-delete-modal.visible", { state: "hidden" });
     await page.waitForTimeout(100); await near(0); assert.match(await page.locator("#gr-chapter-title-display").textContent(), /章节3/);
     await open("书乙"); await near(bTop); await choose(2); await near(0); const nextTop = await scroll(.35);
+    await choose(0); await near(bTop);
+    const pageButton = async (selector, chapter) => {
+      await page.locator(selector).click();
+      await until(() => page.locator("#gr-chapter-title-display").textContent().then(value => value === "章节" + chapter), "chapter button did not navigate");
+      await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+    };
+    await pageButton("#gr-next-chapter-btn", 2); await near(0);
+    const middleTop = await scroll(.63);
+    await pageButton("#gr-next-chapter-btn", 3); await near(nextTop);
+    await pageButton("#gr-prev-chapter-btn", 2); await near(middleTop);
+    await pageButton("#gr-prev-chapter-btn", 1); await near(bTop);
+    await choose(2); await near(nextTop);
     await open("书甲"); await open("书乙"); await near(nextTop); assert.match(await page.locator("#gr-chapter-title-display").textContent(), /章节3/);
     // Close/reload immediately after a real scroll notification, before the
     // debounced IndexedDB save. The tiny pending-coordinate journal recovers it.
     const immediateTop = await host.evaluate(node => { node.dispatchEvent(new Event("touchstart")); node.scrollTop = (node.scrollHeight - node.clientHeight) * .58; node.dispatchEvent(new Event("scroll")); return node.scrollTop; });
     await page.reload({ waitUntil: "domcontentloaded" }); await page.waitForFunction(() => window.ephoneAppReady);
     await open("书乙"); await near(immediateTop);
+    await choose(1); await near(middleTop); await choose(0); await near(bTop); await choose(2); await near(immediateTop);
     await page.evaluate(() => window.openGreenRiverScreen()); const retained = (await book(ids[1])).readingPosition.scrollTop; await page.waitForTimeout(500);
     assert.equal((await book(ids[1])).readingPosition.scrollTop, retained, "hidden reader dimensions never overwrite progress with zero");
     assert.equal(apiCalls.length, 0); assert.deepEqual(errors, []);

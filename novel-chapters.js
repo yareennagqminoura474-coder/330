@@ -61,7 +61,10 @@
       ? { ...story.readingPosition, chapterSignature: null, updatedAt: Math.max(now, (story.readingPosition.updatedAt || 0) + 1) } : story.readingPosition;
     const last = story.lastGeneration;
     const linked = linkedIndex(story) === index && (last?.status === "saved" || last?.reservationId && last.reservationId === old.generationReservation);
-    return { ...story, ...(story.readingPosition ? { readingPosition } : {}), chapters: relink(chapters), lastUpdated: now,
+    const saved = story.chapterReadingPositions?.[index];
+    return { ...story, ...(story.readingPosition ? { readingPosition } : {}),
+      ...(saved && changedBody ? { chapterReadingPositions: { ...story.chapterReadingPositions, [index]: { ...saved, chapterSignature: null } } } : {}),
+      chapters: relink(chapters), lastUpdated: now,
       lastGeneration: linked ? { ...last, status: "saved", chapterIndex: index, chapterEditedAt: now, ...(last.reservationId ? { reservationId: undefined } : {}) } : last };
   }
   function remove(story, index, now = Date.now()) {
@@ -71,14 +74,21 @@
     if (linked === index && (lastGeneration?.status === "saved" || lastGeneration?.reservationId && lastGeneration.reservationId === removed.generationReservation)) lastGeneration = null;
     else if (linked > index) lastGeneration = { ...lastGeneration, chapterIndex: linked - 1 };
     let readingPosition = story.readingPosition;
+    const positions = {};
+    for (const p of Object.values(story.chapterReadingPositions || {})) {
+      if (p.chapterIndex === index) continue;
+      const at = p.chapterIndex > index ? p.chapterIndex - 1 : p.chapterIndex;
+      positions[at] = { ...p, chapterIndex: at };
+    }
     if (readingPosition) {
       const at = readingPosition.chapterIndex;
       readingPosition = chapters.length ? { ...readingPosition,
         chapterIndex: Math.min(at > index ? at - 1 : at, chapters.length - 1),
-        ...(at === index ? { chapterSignature: null, scrollTop: 0, ratio: 0, scrollHeight: 0, bodyOffset: null, bodyHeight: null } : {}),
+        ...(at === index ? positions[Math.min(index, chapters.length - 1)] || { chapterSignature: null, scrollTop: 0, ratio: 0, scrollHeight: 0, bodyOffset: null, bodyHeight: null } : {}),
         updatedAt: Math.max(now, (readingPosition.updatedAt || 0) + 1) } : null;
     }
-    return { ...story, ...(story.readingPosition ? { readingPosition } : {}), chapters: relink(chapters), lastGeneration, lastUpdated: now };
+    return { ...story, ...(story.readingPosition ? { readingPosition } : {}),
+      ...(story.chapterReadingPositions ? { chapterReadingPositions: positions } : {}), chapters: relink(chapters), lastGeneration, lastUpdated: now };
   }
   return Object.freeze({ count, chooseTitle, edit, remove });
 });

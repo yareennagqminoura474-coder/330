@@ -54939,10 +54939,8 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
       const table = _0x24f906.grStories;
       await table.db.transaction("rw", table, async () => {
         const story = await table.get(id);
-        if (!story || (story.readingPosition?.updatedAt || 0) > position.updatedAt) return;
-        const index = story.chapters.findIndex(chapter => window.EPhoneNovelReading.signature(chapter) === position.chapterSignature);
-        if (index < 0) return;
-        await table.update(id, { readingPosition: { ...position, chapterIndex: index } });
+        const update = story && window.EPhoneNovelReading.positionUpdate(story, position);
+        if (update) await table.update(id, update);
       });
     }
   });
@@ -55015,7 +55013,7 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
     try {
       const updated = await _ephoneCommitChapter(state, fresh => window.EPhoneNovelChapters.edit(fresh, state.index, changes));
       document.getElementById("gr-chapter-edit-modal").classList.remove("visible"); _ephoneNovelChapterEditor = null;
-      if (_0x5576d5.activeStoryId === state.storyId && document.getElementById("gr-reader-screen").classList.contains("active")) { await _0x5dec3b(state.storyId, state.index, { preservePosition: true }); _ephoneRenderChapterList(updated); }
+      if (_0x5576d5.activeStoryId === state.storyId && document.getElementById("gr-reader-screen").classList.contains("active")) { await _0x5dec3b(state.storyId, state.index); _ephoneRenderChapterList(updated); }
     } catch (error) { document.getElementById("gr-edit-chapter-status").textContent = error.message; }
     finally { button.disabled = false; }
   });
@@ -55029,7 +55027,7 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
       document.getElementById("gr-chapter-delete-modal").classList.remove("visible");
       document.getElementById("gr-chapter-edit-modal").classList.remove("visible"); _ephoneNovelDeleteTarget = _ephoneNovelChapterEditor = null;
       if (_0x5576d5.activeStoryId === state.storyId && document.getElementById("gr-reader-screen").classList.contains("active")) {
-        await _0x5dec3b(state.storyId, Math.max(0, Math.min(current > state.index ? current - 1 : current, updated.chapters.length - 1)), { preservePosition: true });
+        await _0x5dec3b(state.storyId, Math.max(0, Math.min(current > state.index ? current - 1 : current, updated.chapters.length - 1)));
         _ephoneRenderChapterList(updated);
       }
     } catch (error) { document.getElementById("gr-delete-chapter-status").textContent = error.message; }
@@ -55542,7 +55540,7 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
         0x0,
         _0x5241cd[_0x21b2af(0x1bbd)][_0x21b2af(0xa5d)] - 0x1,
       );
-    _0x5dec3b(_0x5576d5[_0x21b2af(0xf42)], Math.min(_0x5576d5.currentChapterIndex || 0, _0x41cb78), { preservePosition: true });
+    _0x5dec3b(_0x5576d5[_0x21b2af(0xf42)], Math.min(_0x5576d5.currentChapterIndex || 0, _0x41cb78));
   }
   function _ephoneNovelVisibleChapters(story) {
     const chapters = story.chapters || [];
@@ -55592,7 +55590,6 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
       await _0x24f906[_0x46aac4(0xdca)][_0x46aac4(0x7eb)](_0x154236);
     if (!_0x32ce26 || request !== _ephoneNovelReaderRequest) return;
     _ephoneNovelReaderRendered = request;
-    const resume = _0x29d7a8 === undefined || options.preservePosition;
     if (_0x29d7a8 === undefined) _0x29d7a8 = window.EPhoneNovelReading.resolve(_0x32ce26.chapters,
       _ephoneNovelReading.latest(_0x154236, _0x32ce26.readingPosition)).chapterIndex;
     _ephoneNovelResult(_0x32ce26);
@@ -55619,6 +55616,7 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
       _0x3a1dd1.scrollTop = 0;
       _0x275208("gr-reader-screen");
       _0x2ba2d0();
+      _ephoneNovelReading.mount(_0x32ce26, _0x29d7a8, { live: true });
       return;
     }
     if (_0x5d3484 === 0x0) {
@@ -55695,7 +55693,7 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
     (_0x2ba2d0(),
       window.EPhoneNovelPresentation.render(_0x3a1dd1.querySelector(".gr-chapter-text")),
       _0x275208("gr-reader-screen"),
-      _ephoneNovelReading.mount(_0x32ce26, _0x29d7a8, resume, options.scrollTop));
+      _ephoneNovelReading.mount(_0x32ce26, _0x29d7a8, options));
   }
   function _0x2ba2d0() {
     const _0x183fc2 = _0x3ce505,
@@ -56009,7 +56007,7 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
             throw new Error("作品内容或设定已变化，请重新打开作品。");
           fresh.chapters = [...originalChapters, {
             title: "第 " + (pending.index + 1) + " 章（未完）", content: "", summary: "", wordCount: 0,
-            timestamp: Date.now(), generationDirection: direction, generationPartial: true, generationReservation: pending.id
+            timestamp: Date.now(), readingId: pending.id, generationDirection: direction, generationPartial: true, generationReservation: pending.id
           }];
           fresh.lastUpdated = Date.now();
           fresh.lastGeneration = { status: "received", reservationId: pending.id, chapterIndex: pending.index, raw: "", api, partial: true, bodyCharacters: 0 };
@@ -56137,6 +56135,7 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
       result.partial = received.assessment.partial;
       if (continuation) result.content = window.EPhoneNovelResponse.appendContent(continuation.chapter.content, result.content);
       const chapter = { title: window.EPhoneNovelChapters.chooseTitle(result.content, result.title), wordCount: window.EPhoneNovelChapters.count(result.content),
+        ...(reservation ? { readingId: reservation.id } : {}),
         content: result.content, summary: typeof result.summary === "string" ? result.summary : "", prevSummary: previous?.summaryStale ? "" : previous?.summary || "这是故事的开始。", timestamp: Date.now(), generationDirection: direction,
         ...(result.partial ? { generationPartial: true } : {}) };
       if (window.db.spaceProfiles.db !== personaDb) throw new Error("人物空间已切换，本次结果未写入作品，请回到原空间重试。");
@@ -56197,7 +56196,7 @@ document["addEventListener"](_0xca61b6(0xc5a), () => {
           const host = document.getElementById("gr-reader-content");
           await _0x5dec3b(storyId, index, { scrollTop: host.scrollTop }).catch(console.error);
         } else if (index === pending?.index && document.getElementById("gr-pending-chapter-message")) {
-          await _0x5dec3b(storyId, Math.max(0, index - 1), { preservePosition: true }).catch(console.error);
+          await _0x5dec3b(storyId, Math.max(0, index - 1)).catch(console.error);
         } else {
           _ephoneNovelChapterNavigation(current);
         }

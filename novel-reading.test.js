@@ -2,6 +2,16 @@ const assert = require("node:assert/strict"), reading = require("./novel-reading
 const book = { id: 1, chapters: [1, 2, 3].map(timestamp => ({ title: "标题" + timestamp, content: "正文" + timestamp, timestamp })), lastUpdated: 10 };
 const position = { chapterIndex: 1, chapterSignature: reading.signature(book.chapters[1]), scrollTop: 340, ratio: .4, scrollHeight: 1400, updatedAt: 5 };
 book.readingPosition = position;
+const third = { ...position, chapterIndex: 2, chapterSignature: reading.signature(book.chapters[2]), scrollTop: 900, updatedAt: 12 };
+const migrated = { ...book, ...reading.positionUpdate(book, third) };
+assert.deepEqual(migrated.chapterReadingPositions[1], position);
+assert.deepEqual(migrated.readingPosition, third);
+const lateSave = reading.positionUpdate(migrated, { ...position, scrollTop: 400, updatedAt: 8 });
+assert.equal(lateSave.chapterReadingPositions[1].scrollTop, 400);
+assert.deepEqual(lateSave.readingPosition, third);
+const withoutThird = chapters.remove(migrated, 2, 15);
+assert.equal(withoutThird.readingPosition.scrollTop, 340);
+assert.equal(withoutThird.chapterReadingPositions[2], undefined);
 assert.equal(reading.signature({ ...book.chapters[1], title: "新标题" }), position.chapterSignature);
 const removed = chapters.remove(book, 0, 20);
 assert.equal(removed.readingPosition.chapterIndex, 0); assert.equal(removed.readingPosition.scrollTop, 340);
